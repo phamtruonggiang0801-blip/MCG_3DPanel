@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Addin Type="Standard">
+  <ClassId>{98765432-ABCD-1234-EFGH-0123456789AB}</ClassId>
+  <ClientId>{98765432-ABCD-1234-EFGH-0123456789AB}</ClientId>
+  <DisplayName>Ship Design Tools</DisplayName>
+  <Description>Phần mềm thiết kế kết cấu tàu thủy</Description>
+  
+  <Assembly>C:\CustomTools\Inventor\InventorShipDesign.dll</Assembly>  
+  <LoadOnStartUp>1</LoadOnStartUp>
+  <SoftwareVersionGreaterThan>26</SoftwareVersionGreaterThan>
+</Addin>
