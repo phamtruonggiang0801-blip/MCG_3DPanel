@@ -25,18 +25,5 @@ Quá trình checkout = Pull (kéo dự án từ Github về local)
 
 B1: Trước khi làm thì luôn PULL về để đồng bộ hóa với hệ thống
 B2: Khi kết thúc phiên làm việc thì cần Commit & Sync để đồng bộ lên hệ thống
-Note: Trường hợp xảy ra Conflict
 
-- Nhiều hơn 1 người cùng sửa 1 nội dung và up lên hệ thống?
 
-* Phân phạm vi công việc cụ thể, tránh chồng lấn
-* Nếu có chồng lấn, Github cho phép tất cả các update đó đều được thực hiện đồng bộ nhưng báo Conflict trên hệ thống, khi đó admin sẽ quyết định
-
-Module 1 <--> function a
-Module 2 <--> function a
-Module 3 <--> function a
-Nhưng khi cần thay đổi function a để các hệ thống về sau đơn giản hơn, tối ưu hơn thì một số user có thể tùy chỉnh function a này?
-
-Test chia Branch để up lên hệ thống chứ không trực tiếp commit thẳng lên nhánh main. Khi đó admin sẽ quyết định phiên bản mới có ok không, nếu có thì admin sẽ merge vào nhánh main, nếu không thì sẽ reject để làm lại
-
-Test pull from local
