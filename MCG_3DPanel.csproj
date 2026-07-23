@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>8.0</LangVersion>
+    <RootNamespace>MCG_3DPanel</RootNamespace>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <!-- AutoCAD tự nạp DLL; không copy assembly của AutoCAD vào output -->
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <AppendTargetFrameworkToOutputPath>true</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <!-- Debug: DLL kèm timestamp => NETLOAD nạp lại được mà KHÔNG cần restart AutoCAD (file mới, không bị khoá). -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <AssemblyName>MCG_3DPanel_$([System.DateTime]::Now.ToString('yyyyMMdd_HHmmss'))</AssemblyName>
+  </PropertyGroup>
+  <!-- Release: tên ổn định cho bundle autoload. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <AssemblyName>MCG_3DPanel</AssemblyName>
+  </PropertyGroup>
+
+  <!-- Tham chiếu AutoCAD 2023 .NET API. Private=false => KHÔNG copy vào bin -->
+  <ItemGroup>
+    <Reference Include="AcCoreMgd">
+      <HintPath>C:\Program Files\Autodesk\AutoCAD 2023\AcCoreMgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AcDbMgd">
+      <HintPath>C:\Program Files\Autodesk\AutoCAD 2023\AcDbMgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AcMgd">
+      <HintPath>C:\Program Files\Autodesk\AutoCAD 2023\AcMgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AcDbMgdBrep">
+      <HintPath>C:\Program Files\Autodesk\AutoCAD 2023\AcDbMgdBrep.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>
