@@ -36,8 +36,14 @@ namespace MCG_3DPanel.Services
                 PartCollector.Collect(tr, topRef, topRef.BlockTransform, all);
                 Debug.WriteLine($"{LOG_PREFIX} Thu {all.Count} closed polyline.");
 
-                // Định tuyến theo LAYER (+ màu cho AM_3).
+                // 1b. Lọc về ĐÚNG panel: chỉ giữ part thuộc 2 block con (chứa Top Plate + chứa Web chính).
+                //     Part ở block con KHÁC (dù đúng Layer/Color) là của đối tượng khác → bỏ.
+                FilterToPanelBlocks(all);
+                Debug.WriteLine($"{LOG_PREFIX} Sau lọc block panel: {all.Count} part.");
+
+                // Định tuyến theo LAYER (+ màu cho AM_3). AM_0 HOÃN lại để tách tấm/cutout trước web.
                 var topCands = new List<PanelPart>();
+                var am0 = new List<PanelPart>();
                 var webCands = new List<PanelPart>();
                 var hpParts = new List<PanelPart>();
                 var fbParts = new List<PanelPart>();
@@ -54,7 +60,7 @@ namespace MCG_3DPanel.Services
                             result.Parts.Add(p);
                             break;
                         case ClassifyUtil.LAYER_WEB:
-                            webCands.Add(p);
+                            am0.Add(p);
                             break;
                         case ClassifyUtil.LAYER_FBHP:
                             if (p.ColorIndex == ClassifyUtil.COLOR_HP) { p.Type = PartType.HP; hpParts.Add(p); }
@@ -65,16 +71,49 @@ namespace MCG_3DPanel.Services
                 }
 
                 // Top Plate = AREA lớn nhất trên layer 0.
+                PanelPart top = null;
                 if (topCands.Count > 0)
                 {
-                    var top = topCands.OrderByDescending(p => p.Area).First();
+                    top = topCands.OrderByDescending(p => p.Area).First();
                     top.Type = PartType.TopPlate;
                     result.TopPlate = top;
                     result.Parts.Add(top);
                 }
+                ObjectId topKey = top != null ? OwnerBlock(top) : ObjectId.Null;
+                var faceplates = result.OfType(PartType.FacePlate).ToList();
+
+                // CutOut layer-0: polyline layer 0 khác Top Plate, cùng block Top Plate, nằm HẲN trong biên.
+                if (top != null)
+                    foreach (var p in topCands)
+                    {
+                        if (ReferenceEquals(p, top)) continue;
+                        if (OwnerBlock(p) == topKey && ClassifyUtil.StrictlyInside(p, top, ClassifyUtil.EDGE_TOL))
+                        { p.Type = PartType.CutOut; result.Parts.Add(p); }
+                    }
+
+                // AM_0: tách CutOut / BackingPlate / ClosedPlate; phần còn lại mới đưa vào Web/Bracket.
+                foreach (var p in am0)
+                {
+                    if (top != null && OwnerBlock(p) == topKey
+                        && ClassifyUtil.StrictlyInside(p, top, ClassifyUtil.EDGE_TOL))
+                    { p.Type = PartType.CutOut; result.Parts.Add(p); continue; }
+
+                    if (PlateDetector.IsBackingPlate(p))
+                    { p.Type = PartType.BackingPlate; result.Parts.Add(p); continue; }
+
+                    bool touches = hpParts.Any(h => ClassifyUtil.Adjacent(p, h, ClassifyUtil.ADJ_TOL))
+                                || fbParts.Any(f => ClassifyUtil.Adjacent(p, f, ClassifyUtil.ADJ_TOL));
+                    if (!touches && PlateDetector.IsClosedPlate(p, faceplates))
+                    { p.Type = PartType.ClosedPlate; result.Parts.Add(p); continue; }
+
+                    webCands.Add(p);
+                }
 
                 // 2. Web vs Bracket
                 WebBracketSplitter.Split(webCands, hpParts, fbParts, result);
+
+                // 2b. Tách Girder End (GE) khỏi Bracket (collinear + liên tục với Web chính)
+                GirderEndDetector.Apply(result, hpParts, fbParts);
 
                 // 3. Mã bracket + hướng bụng HP
                 Point3d center = result.TopPlate?.Centroid ?? Point3d.Origin;
@@ -86,5 +125,36 @@ namespace MCG_3DPanel.Services
             Debug.WriteLine($"{LOG_PREFIX} {result.Summary()}");
             return result;
         }
+
+        /// <summary>
+        /// Giữ lại đúng part của panel: gom theo BLOCK CON cấp 1 (<c>IdPath[1]</c>), chỉ giữ 2 block —
+        /// block chứa TOP PLATE (polyline layer 0 diện tích lớn nhất) và block chứa WEB CHÍNH
+        /// (tổng chiều dài member AM_0 lớn nhất). Part ở block con khác bị loại (là đối tượng khác).
+        /// Không xác định được Top Plate ⇒ giữ nguyên (an toàn).
+        /// </summary>
+        private static void FilterToPanelBlocks(List<PanelPart> all)
+        {
+            if (all.Count == 0) return;
+
+            var top = all.Where(p => p.Layer == ClassifyUtil.LAYER_TOPPLATE)
+                         .OrderByDescending(p => p.Area).FirstOrDefault();
+            if (top == null) return;
+
+            ObjectId topKey = OwnerBlock(top);
+            ObjectId webKey = all.Where(p => p.Layer == ClassifyUtil.LAYER_WEB)
+                                 .GroupBy(OwnerBlock)
+                                 .OrderByDescending(g => g.Sum(p => p.MemberLength))
+                                 .Select(g => g.Key)
+                                 .DefaultIfEmpty(topKey)
+                                 .First();
+
+            var keep = new HashSet<ObjectId> { topKey, webKey };
+            all.RemoveAll(p => !keep.Contains(OwnerBlock(p)));
+        }
+
+        /// <summary>Block con cấp 1 chứa part = <c>IdPath[1]</c> (phần tử 0 là block ngoài cùng được pick).
+        /// Part nằm trực tiếp trong block ngoài cùng (không qua block con) ⇒ ObjectId.Null.</summary>
+        private static ObjectId OwnerBlock(PanelPart p)
+            => (p.IdPath != null && p.IdPath.Length >= 3) ? p.IdPath[1] : ObjectId.Null;
     }
 }

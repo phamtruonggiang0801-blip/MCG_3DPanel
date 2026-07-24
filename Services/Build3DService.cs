@@ -22,6 +22,7 @@ namespace MCG_3DPanel.Services
 
         private readonly List<IPartBuilder> _builders = new List<IPartBuilder>
         {
+            new GirderEndBuilder(), // GE — đầu Web tại HP/FB
             new BracketBuilder(),   // Bracket có mã knee (OB/IB/FB)
             new HpBuilder(),        // HP tiết diện bulb thật
             new PlateBuilder(),     // TopPlate/Web/Flange/FacePlate/FlatBar + fallback
@@ -29,6 +30,7 @@ namespace MCG_3DPanel.Services
 
         private readonly IProfileService _profile = new ProfileService();
         private readonly IHpProfileService _hpProfile = new HpProfileService();
+        private readonly IGeProfileService _geProfile = new GeProfileService();
 
         public BuildResult Build(Database db, ClassificationResult cls, PanelInput input, PanelPosition position)
         {
@@ -50,6 +52,7 @@ namespace MCG_3DPanel.Services
                     Position = position,
                     Profile = _profile,
                     HpProfile = _hpProfile,
+                    GeProfile = _geProfile,
                 };
 
                 int made = 0;

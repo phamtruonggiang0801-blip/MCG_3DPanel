@@ -41,5 +41,22 @@ namespace MCG_3DPanel.Services.Classify
 
         /// <summary>Polyline là rectangle (Flange) hay không (Face Plate nếu không).</summary>
         public static bool IsRectangle(PanelPart p) => p.VertexCount == 4 || p.VertexCount == 5;
+
+        /// <summary>Diện tích chồng lấn bbox 2D của 2 part (0 nếu rời nhau).</summary>
+        public static double OverlapArea(PanelPart a, PanelPart b)
+        {
+            Extents3d A = a.Bounds, B = b.Bounds;
+            double ox = Math.Min(A.MaxPoint.X, B.MaxPoint.X) - Math.Max(A.MinPoint.X, B.MinPoint.X);
+            double oy = Math.Min(A.MaxPoint.Y, B.MaxPoint.Y) - Math.Max(A.MinPoint.Y, B.MinPoint.Y);
+            return (ox > 0 && oy > 0) ? ox * oy : 0.0;
+        }
+
+        /// <summary>bbox của <paramref name="inner"/> nằm HẲN trong bbox <paramref name="outer"/> (lùi vào ≥ tol mỗi cạnh).</summary>
+        public static bool StrictlyInside(PanelPart inner, PanelPart outer, double tol)
+        {
+            Extents3d i = inner.Bounds, o = outer.Bounds;
+            return i.MinPoint.X > o.MinPoint.X + tol && i.MaxPoint.X < o.MaxPoint.X - tol &&
+                   i.MinPoint.Y > o.MinPoint.Y + tol && i.MaxPoint.Y < o.MaxPoint.Y - tol;
+        }
     }
 }

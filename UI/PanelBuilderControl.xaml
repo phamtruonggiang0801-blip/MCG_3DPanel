@@ -42,6 +42,60 @@
             <Setter Property="Margin" Value="0,10,0,0"/>
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
+
+        <!-- Tab header tối màu -->
+        <Style TargetType="TabItem">
+            <Setter Property="Background" Value="#FF333333"/>
+            <Setter Property="Foreground" Value="#FFEAEAEA"/>
+            <Setter Property="Padding" Value="14,6"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="#FF555555" BorderThickness="1,1,1,0"
+                                CornerRadius="3,3,0,0" Margin="0,0,3,0" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter ContentSource="Header" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#FF3C6EB4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- DataGrid tối màu -->
+        <Style TargetType="DataGrid">
+            <Setter Property="Background" Value="#FF1E1E1E"/>
+            <Setter Property="Foreground" Value="#FFEAEAEA"/>
+            <Setter Property="RowBackground" Value="#FF2B2B2B"/>
+            <Setter Property="AlternatingRowBackground" Value="#FF323232"/>
+            <Setter Property="BorderBrush" Value="#FF555555"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="#FF444444"/>
+            <Setter Property="VerticalGridLinesBrush" Value="#FF444444"/>
+            <Setter Property="RowHeaderWidth" Value="0"/>
+        </Style>
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#FF3C3C3C"/>
+            <Setter Property="Foreground" Value="#FFEAEAEA"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="BorderBrush" Value="#FF555555"/>
+            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+        </Style>
+        <Style TargetType="DataGridCell">
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="6,3"/>
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#FF3C6EB4"/>
+                    <Setter Property="Foreground" Value="White"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
     </UserControl.Resources>
 
     <Grid Margin="12">
@@ -58,58 +112,108 @@
                        Style="{StaticResource Hint}" Margin="0,2,0,0"/>
         </StackPanel>
 
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <StackPanel>
-                <!-- Step 1 -->
-                <Border Style="{StaticResource Card}">
+        <TabControl x:Name="TabMain" Grid.Row="1" Background="Transparent" BorderThickness="0">
+            <!-- ============ TAB 1: INPUT ============ -->
+            <TabItem Header="Input">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,8,0,0">
                     <StackPanel>
-                        <TextBlock Text="Step 1 — Inspect &amp; classify" Style="{StaticResource StepTitle}"/>
-                        <TextBlock Text="Inspect exports every object (incl. nested blocks) to JSON. Classify detects the part types (Top Plate / Web / Flange / Flat Bar / HP / Bracket)."
-                                   Style="{StaticResource Hint}"/>
-                        <Button x:Name="BtnInspect" Content="Inspect Panel  →  JSON"
-                                Style="{StaticResource PrimaryBtn}" Click="BtnInspect_Click"/>
+                        <!-- Step 1 -->
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Step 1 — Inspect &amp; classify" Style="{StaticResource StepTitle}"/>
+                                <TextBlock Text="Inspect exports every object (incl. nested blocks) to JSON. Classify detects the part types (Top Plate / Web / Flange / Flat Bar / HP / Bracket)."
+                                           Style="{StaticResource Hint}"/>
+                                <Button x:Name="BtnInspect" Content="Inspect Panel  →  JSON"
+                                        Style="{StaticResource PrimaryBtn}" Click="BtnInspect_Click"/>
 
-                        <TextBlock Text="Panel position (for OB/IB brackets)" Style="{StaticResource Label}"/>
-                        <ComboBox x:Name="CmbPanelPos" SelectedIndex="0"
-                                  Background="#FF1E1E1E" Foreground="Black" Padding="4,3">
-                            <ComboBoxItem Content="Center"/>
-                            <ComboBoxItem Content="Port Side"/>
-                            <ComboBoxItem Content="Starboard Side"/>
-                        </ComboBox>
+                                <TextBlock Text="Panel position (for OB/IB brackets)" Style="{StaticResource Label}"/>
+                                <ComboBox x:Name="CmbPanelPos" SelectedIndex="0"
+                                          Background="#FF1E1E1E" Foreground="Black" Padding="4,3">
+                                    <ComboBoxItem Content="Center"/>
+                                    <ComboBoxItem Content="Port Side"/>
+                                    <ComboBoxItem Content="Starboard Side"/>
+                                </ComboBox>
 
-                        <Button x:Name="BtnClassify" Content="Classify Panel  →  report"
-                                Style="{StaticResource PrimaryBtn}" Click="BtnClassify_Click"/>
+                                <Button x:Name="BtnClassify" Content="Classify Panel  →  Result grid"
+                                        Style="{StaticResource PrimaryBtn}" Click="BtnClassify_Click"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Step 2 -->
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Step 2 — Build parameters (mm)" Style="{StaticResource StepTitle}"/>
+
+                                <TextBlock Text="Top Plate — thickness" Style="{StaticResource Label}"/>
+                                <TextBox x:Name="TxtTopPlateThk" Text="6"/>
+
+                                <TextBlock Text="Web — height (H)" Style="{StaticResource Label}"/>
+                                <TextBox x:Name="TxtWebHeight" Text="374"/>
+
+                                <TextBlock Text="Flange — thickness" Style="{StaticResource Label}"/>
+                                <TextBox x:Name="TxtFlangeThk" Text="20"/>
+
+                                <TextBlock Text="Flat Bar — spec (height*thickness, e.g. 120*6)" Style="{StaticResource Label}"/>
+                                <TextBox x:Name="TxtFlatBarSpec" Text="120*6"/>
+
+                                <TextBlock Text="HP — spec (height*thickness, e.g. 120*6)" Style="{StaticResource Label}"/>
+                                <TextBox x:Name="TxtHpSpec" Text="120*6"/>
+
+                                <Button x:Name="BtnBuild" Content="Build 3D  →  preview"
+                                        Style="{StaticResource PrimaryBtn}" Click="BtnBuild_Click"/>
+                                <TextBlock Text="Pick the panel, then choose Yes/No at the command line to keep or discard the 3D model."
+                                           Style="{StaticResource Hint}" Margin="0,6,0,0"/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
-                </Border>
+                </ScrollViewer>
+            </TabItem>
 
-                <!-- Step 2 -->
-                <Border Style="{StaticResource Card}">
-                    <StackPanel>
-                        <TextBlock Text="Step 2 — Build parameters (mm)" Style="{StaticResource StepTitle}"/>
+            <!-- ============ TAB 2: RESULT ============ -->
+            <TabItem Header="Result">
+                <Grid Margin="0,8,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
 
-                        <TextBlock Text="Top Plate — thickness" Style="{StaticResource Label}"/>
-                        <TextBox x:Name="TxtTopPlateThk" Text="6"/>
+                    <TextBlock Grid.Row="0"
+                               Text="Click a row to highlight &amp; zoom the object in the drawing. Edit the last column to correct a wrong type, then Export."
+                               Style="{StaticResource Hint}" Margin="0,0,0,6"/>
 
-                        <TextBlock Text="Web — height (H)" Style="{StaticResource Label}"/>
-                        <TextBox x:Name="TxtWebHeight" Text="374"/>
+                    <DataGrid x:Name="GridResult" Grid.Row="1"
+                              AutoGenerateColumns="False" CanUserAddRows="False"
+                              CanUserDeleteRows="False" HeadersVisibility="Column"
+                              SelectionMode="Single" SelectionUnit="FullRow"
+                              GridLinesVisibility="Horizontal"
+                              SelectionChanged="GridResult_SelectionChanged">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Handle" Binding="{Binding Handle}"
+                                                IsReadOnly="True" Width="90"/>
+                            <DataGridTextColumn Header="Type (detected)" Binding="{Binding DetectedType}"
+                                                IsReadOnly="True" Width="*"/>
+                            <DataGridTextColumn Header="Correct type" Binding="{Binding CorrectedType}"
+                                                Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
 
-                        <TextBlock Text="Flange — thickness" Style="{StaticResource Label}"/>
-                        <TextBox x:Name="TxtFlangeThk" Text="20"/>
-
-                        <TextBlock Text="Flat Bar — spec (height*thickness, e.g. 120*6)" Style="{StaticResource Label}"/>
-                        <TextBox x:Name="TxtFlatBarSpec" Text="120*6"/>
-
-                        <TextBlock Text="HP — spec (height*thickness, e.g. 120*6)" Style="{StaticResource Label}"/>
-                        <TextBox x:Name="TxtHpSpec" Text="120*6"/>
-
-                        <Button x:Name="BtnBuild" Content="Build 3D  →  preview"
-                                Style="{StaticResource PrimaryBtn}" Click="BtnBuild_Click"/>
-                        <TextBlock Text="Pick the panel, then choose Yes/No at the command line to keep or discard the 3D model."
-                                   Style="{StaticResource Hint}" Margin="0,6,0,0"/>
-                    </StackPanel>
-                </Border>
-            </StackPanel>
-        </ScrollViewer>
+                    <!-- Thanh cố định: info co giãn bên trái, nút Export LUÔN hiện bên phải -->
+                    <Grid Grid.Row="2" Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" x:Name="TxtGridInfo" Text="No classification yet."
+                                   Style="{StaticResource Hint}" VerticalAlignment="Center"
+                                   TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,0,10,0"/>
+                        <Button Grid.Column="1" x:Name="BtnExport" Content="Export grid  →  CSV"
+                                Style="{StaticResource PrimaryBtn}" Margin="0" MinWidth="150"
+                                Click="BtnExport_Click"/>
+                    </Grid>
+                </Grid>
+            </TabItem>
+        </TabControl>
 
         <!-- Status bar -->
         <Border Grid.Row="2" Background="#FF1E1E1E" CornerRadius="3" Padding="8,6" Margin="0,4,0,0">

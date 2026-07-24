@@ -59,7 +59,8 @@ namespace MCG_3DPanel.Services.Builders
             // F = overhang − 15; overhang<50 → under50 (F=15, nâng đáy cách flange 30).
             k.Overhang = OverhangProj(part, cls);
             k.Under50 = k.Overhang < 50.0;
-            k.F = k.Under50 ? 15.0 : k.Overhang - 15.0;
+            // F = overhang − 15; KẸP ≤ S − R30 (FacePlate loe vượt qua toe-HP → chân đứng cách toe-HP R30).
+            k.F = k.Under50 ? 15.0 : Math.Min(k.Overhang - 15.0, k.S - 30.0);
             k.Huse = k.Under50 ? input.WebHeight - 30.0 : input.WebHeight;
 
             KneeDtop(part.Code, input, out double dtop, out double ledge);
@@ -285,21 +286,35 @@ namespace MCG_3DPanel.Services.Builders
         }
 
         /// <summary>
-        /// Overhang = flange gần nhất vươn xa nhất theo memberDir tính từ anchor.
-        /// Xử lý đúng cả flange ĐỐI XỨNG lẫn LỆCH. Fallback: đối xứng.
+        /// Overhang = TẤM ĐỠ (Flange HOẶC Face Plate) vươn xa nhất theo memberDir tính từ anchor.
+        /// Chọn tấm đỡ = Flange/FacePlate gần bracket nhất (bracket nằm TRÊN tấm nào).
+        ///  - Flange (chữ nhật): chiếu 4 góc bbox (xử lý cả flange lệch).
+        ///  - Face Plate (loe, nv&gt;5): RAY-CAST dọc memberDir từ anchor → mép FacePlate xa nhất TẠI dải bracket
+        ///    (bbox không đại diện vì loe không đều). Xem skill panel-parts-reference (Face Plate).
+        /// Fallback (không tấm đỡ): đối xứng.
         /// </summary>
         public static double OverhangProj(PanelPart part, ClassificationResult cls)
         {
             AnchorDir(part, cls, out Point3d anchor, out Vector3d dir, out _);
-            Extents3d? fb = null; double best = double.MaxValue;
-            foreach (var f in cls.OfType(PartType.Flange))
-            {
-                double d = GeometryUtil.DistToBox(part.Centroid, f.Bounds);
-                if (d < best) { best = d; fb = f.Bounds; }
-            }
-            if (!fb.HasValue) return (NearestFlangeWidth(part, cls) - part.FootprintThickness) / 2.0;
 
-            Extents3d b = fb.Value;
+            // Tấm đỡ gần nhất: xét cả Flange lẫn FacePlate.
+            PanelPart support = null; double best = double.MaxValue;
+            foreach (var f in cls.OfType(PartType.Flange))
+            { double d = GeometryUtil.DistToBox(part.Centroid, f.Bounds); if (d < best) { best = d; support = f; } }
+            foreach (var fp in cls.OfType(PartType.FacePlate))
+            { double d = GeometryUtil.DistToBox(part.Centroid, fp.Bounds); if (d < best) { best = d; support = fp; } }
+
+            if (support == null)
+                return (NearestFlangeWidth(part, cls) - part.FootprintThickness) / 2.0;
+
+            // FacePlate loe (có đỉnh thật) → ray-cast mép thật; ngược lại chiếu góc bbox.
+            if (support.Type == PartType.FacePlate && support.Vertices != null && support.Vertices.Length >= 3)
+            {
+                double t = RayMaxHit(anchor, dir, support.Vertices);
+                if (t > 0) return t;
+            }
+
+            Extents3d b = support.Bounds;
             double oh = double.MinValue;
             var corners = new[]
             {
@@ -312,6 +327,30 @@ namespace MCG_3DPanel.Services.Builders
                 if (pr > oh) oh = pr;
             }
             return oh;
+        }
+
+        /// <summary>
+        /// Ray từ <paramref name="o"/> theo <paramref name="dir"/> cắt biên polygon; trả t LỚN NHẤT (t&gt;0)
+        /// = khoảng cách tới mép polygon xa nhất theo hướng dir (tại đúng dải ngang của ray). 0 nếu không cắt.
+        /// </summary>
+        private static double RayMaxHit(Point3d o, Vector3d dir, Point3d[] v)
+        {
+            double px = -dir.Y, py = dir.X;               // pháp tuyến ray (để giải giao)
+            double tMax = 0;
+            int n = v.Length;
+            for (int i = 0; i < n; i++)
+            {
+                Point3d a = v[i], b = v[(i + 1) % n];
+                double ex = b.X - a.X, ey = b.Y - a.Y;
+                double denom = ex * px + ey * py;
+                if (Math.Abs(denom) < 1e-9) continue;      // cạnh song song ray
+                double s = ((o.X - a.X) * px + (o.Y - a.Y) * py) / denom;   // vị trí trên cạnh [0,1]
+                if (s < -1e-6 || s > 1 + 1e-6) continue;
+                double hx = a.X + s * ex, hy = a.Y + s * ey;
+                double t = (hx - o.X) * dir.X + (hy - o.Y) * dir.Y;         // khoảng dọc ray
+                if (t > tMax) tMax = t;
+            }
+            return tMax;
         }
 
         // ─── Chẩn đoán ────────────────────────────────────────────────────

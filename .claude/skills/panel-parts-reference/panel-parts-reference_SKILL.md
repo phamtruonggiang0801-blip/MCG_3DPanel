@@ -98,6 +98,32 @@ Vì footprint 2D trong Plan đã đúng, mọi loại dựng bằng **Region →
 > Với bản đứng (Web/FB/HP): extrude footprint mỏng theo Z chính là "dựng tường" —
 > chiều dày = bề rộng footprint, chiều cao = đoạn extrude. Không cần dựng box thủ công.
 
+## 4b. WEB — chuyển bậc CHIỀU DÀY: taper **1:4** (đã xác nhận)
+
+Web đổi chiều dày (web-tier) KHÔNG cắt vuông mà **vát chuyển tiếp theo tỉ lệ 1:4**
+(lệch ngang 1 ⟶ chạy dọc 4).
+
+- Thực đo panel: đoạn web thk **6 → 10** (chênh 4mm) có đoạn vát dài **16mm** dọc trục ⇒ **4 : 16 = 1 : 4** ✔.
+- Công thức: `chiều dài vát = 4 × |Δthickness|` (Δ = hiệu 2 bậc dày).
+- Vát nằm ở **một bên** (bên dày thêm), cạnh còn lại thẳng.
+- ⚠️ Vì có vát, footprint web-tier là polyline **5 đỉnh** (không phải 4) — đừng nhầm là hình khác.
+- Áp dụng cho **mọi** chỗ web đổi bậc dày, kể cả tại Girder End (xem [[girder-end]] khi có).
+
+## 4c. FACE PLATE làm "tấm đỡ" Bracket/GE (thay Flange khi bracket nằm trên nó)
+
+Face Plate = AM_11 **KHÔNG chữ nhật** (nv > 5, hình loe ở góc panel). Bracket/GE nằm trên FacePlate
+**vẫn theo quy tắc toe cách mép gần nhất 15mm** — nhưng phải đo theo **mép FacePlate**, KHÔNG phải Flange.
+
+- **Chọn tấm đỡ** = Flange **hoặc** FacePlate có `DistToBox` tới bracket nhỏ nhất (tấm bracket nằm trên).
+  Bracket góc: FacePlate d≈0–120 (rộng ~500) vs Flange d≈430–488 (rộng 120) → phải lấy FacePlate.
+- **FacePlate loe KHÔNG đều** ⇒ overhang = **RAY-CAST** dọc `memberDir` từ anchor, lấy mép polygon xa nhất
+  **TẠI đúng dải ngang của bracket** (`BracketBuilder.RayMaxHit`). Dùng bbox sẽ lấy nhầm mép ở chỗ loe nhất
+  (thực đo: cùng FacePlate, mép biến thiên 500→430 theo vị trí Y).
+- `F = overhang − 15` (như Flange). Cần lưu **`PanelPart.Vertices`** (đỉnh thật) — `PartCollector` đã set.
+- **Phần loe VƯỢT quá toe-HP** ⇒ **KẸP** `F ≤ S − R30` (Bracket) / `Lb ≤ L − R30` (GE):
+  chân đứng, toe-flange cách toe-HP đúng **R30**. Tránh chân vươn quá vị trí HP.
+- GE dùng chung `OverhangProj` nên tự hưởng lợi. Xem [[bracket-identification]], [[girder-end]].
+
 ## 5. Đầu ra
 
 - Solid đặt Layer **`Mechanical-AM_0`**, Color **ByLayer**.

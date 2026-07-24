@@ -16,6 +16,14 @@ namespace MCG_3DPanel.Services.Classify
         /// <summary>Duyệt đệ quy blockRef, gom part vào <paramref name="outParts"/>.</summary>
         public static void Collect(Transaction tr, BlockReference blockRef, Matrix3d accum, List<PanelPart> outParts)
         {
+            Collect(tr, blockRef, accum, outParts, new List<ObjectId> { blockRef.ObjectId });
+        }
+
+        /// <summary><paramref name="pathPrefix"/> = chuỗi ObjectId các blockRef container đã duyệt
+        /// (từ ngoài cùng), để dựng FullSubentityPath cho highlight entity lồng.</summary>
+        private static void Collect(Transaction tr, BlockReference blockRef, Matrix3d accum,
+                                    List<PanelPart> outParts, List<ObjectId> pathPrefix)
+        {
             var btr = (BlockTableRecord)tr.GetObject(blockRef.BlockTableRecord, OpenMode.ForRead);
             foreach (ObjectId id in btr)
             {
@@ -24,14 +32,22 @@ namespace MCG_3DPanel.Services.Classify
 
                 if (ent is BlockReference nested)
                 {
-                    Collect(tr, nested, accum * nested.BlockTransform, outParts);
+                    var childPrefix = new List<ObjectId>(pathPrefix) { nested.ObjectId };
+                    Collect(tr, nested, accum * nested.BlockTransform, outParts, childPrefix);
                     continue;
                 }
 
                 if (ent is Polyline pl && pl.Closed)
                 {
                     var part = BuildPart(pl, accum);
-                    if (part != null) outParts.Add(part);
+                    if (part != null)
+                    {
+                        var full = new ObjectId[pathPrefix.Count + 1];
+                        pathPrefix.CopyTo(full);
+                        full[pathPrefix.Count] = pl.ObjectId;
+                        part.IdPath = full;
+                        outParts.Add(part);
+                    }
                 }
             }
         }
@@ -82,6 +98,7 @@ namespace MCG_3DPanel.Services.Classify
                     MemberLength = length,
                     Centroid = c,
                     Bounds = bounds,
+                    Vertices = pts.ToArray(),
                     Transform = accum,
                     IsHorizontal = horiz,
                     PerpCenter = horiz ? c.Y : c.X,

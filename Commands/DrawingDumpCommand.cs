@@ -1,20 +1,22 @@
 using System;
-using System.Globalization;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Runtime;
+using MCG_3DPanel.Utilities;
 
 [assembly: CommandClass(typeof(MCG_3DPanel.Commands.DrawingDumpCommand))]
 
 namespace MCG_3DPanel.Commands
 {
     /// <summary>
-    /// Lệnh <c>MCG_DumpDrawing</c> — dump TOÀN BỘ entity (Model Space + mọi block definition)
-    /// ra file <c>.dump.txt</c> cạnh file DWG. Dùng phân tích bản vẽ tham số (OB-OB1.dwg, IB-IB1.dwg…).
-    /// Tách riêng khỏi <see cref="PanelCommands"/> vì đây là công cụ CHẨN ĐOÁN, không thuộc luồng dựng 3D.
+    /// Lệnh <c>MCG_DumpDrawing</c> — dump TOÀN BỘ entity (Model Space + mọi block definition) ra file
+    /// <c>.dump.json</c> cạnh file DWG. JSON (thay txt cũ) để đọc bằng code đáng tin: vertices/bulge là SỐ,
+    /// block lồng nhau rõ ràng, dễ diff/lọc. Dùng phân tích bản vẽ tham số (GE/OB/IB…).
+    /// Tách khỏi <see cref="PanelCommands"/> vì là công cụ CHẨN ĐOÁN.
     /// </summary>
     public class DrawingDumpCommand
     {
@@ -28,7 +30,7 @@ namespace MCG_3DPanel.Commands
             Editor ed = doc.Editor;
             Database db = doc.Database;
 
-            var sb = new StringBuilder();
+            var blocks = new List<object>();
             using (doc.LockDocument())
             using (Transaction tr = db.TransactionManager.StartTransaction())
             {
@@ -36,67 +38,151 @@ namespace MCG_3DPanel.Commands
                 foreach (ObjectId btrId in bt)
                 {
                     var btr = (BlockTableRecord)tr.GetObject(btrId, OpenMode.ForRead);
-                    if (btr.IsAnonymous || btr.IsLayout && btr.Name != BlockTableRecord.ModelSpace) continue;
-                    string tag = btr.Name == BlockTableRecord.ModelSpace ? "MODEL SPACE" : "BLOCK \"" + btr.Name + "\"";
-                    sb.Append($"===== {tag} =====\n");
+                    if (btr.IsAnonymous) continue;   // bỏ block ẩn (dim/hatch def); GIỮ Model + Layout(paper) + block def
+
+                    bool isModel = btr.Name == BlockTableRecord.ModelSpace;
+                    string space = isModel ? "model" : btr.IsLayout ? "paper" : "block";
+
+                    var ents = new List<object>();
                     foreach (ObjectId id in btr)
                     {
                         var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
-                        if (ent != null) sb.Append(Describe(ent));
+                        if (ent != null) ents.Add(Describe(ent, tr));
                     }
+                    blocks.Add(new JsonObject
+                    {
+                        { "block", isModel ? "*MODEL_SPACE" : btr.Name },
+                        { "space", space },              // model | paper (layout) | block (definition)
+                        { "isModelSpace", isModel },
+                        { "count", ents.Count },
+                        { "entities", ents },
+                    });
                 }
                 tr.Commit();
             }
 
+            var root = new JsonObject
+            {
+                { "drawing", string.IsNullOrEmpty(db.Filename) ? "" : Path.GetFileName(db.Filename) },
+                { "blockCount", blocks.Count },
+                { "blocks", blocks },
+            };
+
             string outPath = string.IsNullOrEmpty(db.Filename)
-                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "drawing.dump.txt")
-                : Path.ChangeExtension(db.Filename, ".dump.txt");
-            File.WriteAllText(outPath, sb.ToString(), Encoding.UTF8);
-            ed.WriteMessage($"\n{LOG_PREFIX} Dump: {outPath}\n");
+                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "drawing.dump.json")
+                : Path.ChangeExtension(db.Filename, ".dump.json");
+            File.WriteAllText(outPath, JsonWriter.Serialize(root), Encoding.UTF8);
+            ed.WriteMessage($"\n{LOG_PREFIX} Dump JSON: {outPath}\n");
             ReportOutput.OpenFile(outPath);
         }
 
-        private static string F(double v) => v.ToString("0.###", CultureInfo.InvariantCulture);
-
-        /// <summary>Một dòng (hoặc nhiều dòng với Polyline) mô tả entity, đủ để dựng lại hình học.</summary>
-        private static string Describe(Entity ent)
+        /// <summary>Mô tả 1 entity thành JsonObject — đủ để dựng lại hình học.</summary>
+        private static object Describe(Entity ent, Transaction tr)
         {
             string L = ent.Layer;
             int c = ent.Color.ColorIndex;
 
+            if (ent is BlockReference br)
+            {
+                string bn;
+                try
+                {
+                    var id = br.IsDynamicBlock ? br.DynamicBlockTableRecord : br.BlockTableRecord;
+                    bn = ((BlockTableRecord)tr.GetObject(id, OpenMode.ForRead)).Name;
+                }
+                catch { bn = "?"; }
+
+                // Đọc Block Attribute (note quy cách thường để dạng này): tag + giá trị text.
+                var attrs = new List<object>();
+                try
+                {
+                    foreach (ObjectId aid in br.AttributeCollection)
+                    {
+                        if (tr.GetObject(aid, OpenMode.ForRead) is AttributeReference ar)
+                            attrs.Add(new JsonObject { { "tag", ar.Tag }, { "text", ar.TextString } });
+                    }
+                }
+                catch { /* block không có attribute */ }
+
+                var obj = new JsonObject
+                {
+                    { "type", "BlockRef" }, { "layer", L }, { "color", c }, { "name", bn },
+                    { "x", br.Position.X }, { "y", br.Position.Y },
+                    { "rot", br.Rotation }, { "sx", br.ScaleFactors.X }, { "sy", br.ScaleFactors.Y },
+                };
+                if (attrs.Count > 0) obj.Add("attributes", attrs);
+                return obj;
+            }
             if (ent is Polyline pl)
             {
-                var sb = new StringBuilder();
-                sb.Append($"POLYLINE layer={L} color={c} closed={pl.Closed} nv={pl.NumberOfVertices}\n");
+                var verts = new List<object>(pl.NumberOfVertices);
                 for (int i = 0; i < pl.NumberOfVertices; i++)
                 {
                     var p = pl.GetPoint2dAt(i);
-                    sb.Append($"   v{i}: ({F(p.X)},{F(p.Y)}) bulge={F(pl.GetBulgeAt(i))}\n");
+                    verts.Add(new JsonObject
+                    {
+                        { "x", p.X }, { "y", p.Y }, { "bulge", pl.GetBulgeAt(i) },
+                    });
                 }
-                return sb.ToString();
+                return new JsonObject
+                {
+                    { "type", "Polyline" }, { "layer", L }, { "color", c },
+                    { "closed", pl.Closed }, { "nv", pl.NumberOfVertices }, { "vertices", verts },
+                };
             }
             if (ent is Line ln)
-                return $"LINE   layer={L} color={c} ({F(ln.StartPoint.X)},{F(ln.StartPoint.Y)})->({F(ln.EndPoint.X)},{F(ln.EndPoint.Y)}) len={F(ln.Length)}\n";
+                return new JsonObject
+                {
+                    { "type", "Line" }, { "layer", L }, { "color", c },
+                    { "x0", ln.StartPoint.X }, { "y0", ln.StartPoint.Y },
+                    { "x1", ln.EndPoint.X }, { "y1", ln.EndPoint.Y }, { "len", ln.Length },
+                };
             if (ent is Arc arc)
-                return $"ARC    layer={L} color={c} c=({F(arc.Center.X)},{F(arc.Center.Y)}) r={F(arc.Radius)} ang {F(arc.StartAngle)}->{F(arc.EndAngle)}\n";
+                return new JsonObject
+                {
+                    { "type", "Arc" }, { "layer", L }, { "color", c },
+                    { "cx", arc.Center.X }, { "cy", arc.Center.Y }, { "r", arc.Radius },
+                    { "a0", arc.StartAngle }, { "a1", arc.EndAngle },
+                };
             if (ent is Circle cir)
-                return $"CIRCLE layer={L} color={c} c=({F(cir.Center.X)},{F(cir.Center.Y)}) r={F(cir.Radius)}\n";
+                return new JsonObject
+                {
+                    { "type", "Circle" }, { "layer", L }, { "color", c },
+                    { "cx", cir.Center.X }, { "cy", cir.Center.Y }, { "r", cir.Radius },
+                };
             if (ent is DBText t)
-                return $"TEXT   layer={L} color={c} pos=({F(t.Position.X)},{F(t.Position.Y)}) h={F(t.Height)} \"{t.TextString}\"\n";
+                return new JsonObject
+                {
+                    { "type", "Text" }, { "layer", L }, { "color", c },
+                    { "x", t.Position.X }, { "y", t.Position.Y }, { "h", t.Height }, { "text", t.TextString },
+                };
             if (ent is MText mt)
-                return $"MTEXT  layer={L} color={c} pos=({F(mt.Location.X)},{F(mt.Location.Y)}) \"{mt.Text}\"\n";
+                return new JsonObject
+                {
+                    { "type", "MText" }, { "layer", L }, { "color", c },
+                    { "x", mt.Location.X }, { "y", mt.Location.Y }, { "text", mt.Text },
+                };
             if (ent is Dimension dim)
-                return $"DIM    layer={L} color={c} type={ent.GetType().Name} meas={F(dim.Measurement)} text=\"{dim.DimensionText}\"\n";
+                return new JsonObject
+                {
+                    { "type", "Dim" }, { "layer", L }, { "color", c },
+                    { "dimType", ent.GetType().Name }, { "meas", dim.Measurement }, { "text", dim.DimensionText },
+                };
             if (ent is Solid3d s3d)
             {
                 try
                 {
-                    var ext = s3d.GeometricExtents;
-                    return $"SOLID3D layer={L} color={c} bbox=({F(ext.MinPoint.X)},{F(ext.MinPoint.Y)},{F(ext.MinPoint.Z)})->({F(ext.MaxPoint.X)},{F(ext.MaxPoint.Y)},{F(ext.MaxPoint.Z)})\n";
+                    var e = s3d.GeometricExtents;
+                    return new JsonObject
+                    {
+                        { "type", "Solid3d" }, { "layer", L }, { "color", c },
+                        { "min", new List<object> { e.MinPoint.X, e.MinPoint.Y, e.MinPoint.Z } },
+                        { "max", new List<object> { e.MaxPoint.X, e.MaxPoint.Y, e.MaxPoint.Z } },
+                    };
                 }
-                catch { return $"SOLID3D layer={L} color={c} (no ext)\n"; }
+                catch { return new JsonObject { { "type", "Solid3d" }, { "layer", L }, { "color", c } }; }
             }
-            return $"OTHER  {ent.GetType().Name} layer={L} color={c}\n";
+            return new JsonObject { { "type", ent.GetType().Name }, { "layer", L }, { "color", c } };
         }
     }
 }

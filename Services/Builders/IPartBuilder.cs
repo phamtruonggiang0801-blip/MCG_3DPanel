@@ -18,6 +18,7 @@ namespace MCG_3DPanel.Services.Builders
 
         public IProfileService Profile { get; set; }
         public IHpProfileService HpProfile { get; set; }
+        public IGeProfileService GeProfile { get; set; }
 
         /// <summary>Dòng chẩn đoán (builder tự thêm). PanelCommands quyết định có ghi ra file hay không.</summary>
         public List<string> Report { get; } = new List<string>();

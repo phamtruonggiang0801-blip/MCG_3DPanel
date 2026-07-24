@@ -1,4 +1,7 @@
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using Autodesk.AutoCAD.ApplicationServices;
@@ -48,9 +51,73 @@ namespace MCG_3DPanel.UI
             SetStatus("Select a panel block to classify…");
             var result = PanelCommands.RunClassify(pos);
             if (result == null)
+            {
                 SetStatus("Classification cancelled.", error: true);
-            else
-                SetStatus(result.Summary());
+                return;
+            }
+
+            PopulateResultGrid(result);
+            SetStatus(result.Summary());
+            TabMain.SelectedIndex = 1;   // nhảy sang tab Result
+        }
+
+        // ─── Tab Result: grid + highlight + export ────────────────────────
+
+        private void PopulateResultGrid(MCG_3DPanel.Services.ClassificationResult result)
+        {
+            var rows = ResultRow.From(result);
+            GridResult.ItemsSource = rows;
+            TxtGridInfo.Text = rows.Count == 0
+                ? "No parts detected."
+                : $"{rows.Count} objects  ·  {result.Summary()}";
+        }
+
+        private void GridResult_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (GridResult.SelectedItem is ResultRow row)
+                EntityHighlighter.Show(row.Path, row.Bounds);
+        }
+
+        private void BtnExport_Click(object sender, RoutedEventArgs e)
+        {
+            var rows = GridResult.ItemsSource as IEnumerable<ResultRow>;
+            if (rows == null || !rows.Any())
+            {
+                SetStatus("Nothing to export — classify a panel first.", error: true);
+                return;
+            }
+
+            var dlg = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Export result grid",
+                Filter = "CSV file (*.csv)|*.csv",
+                FileName = "MCG_PanelResult_" + System.DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".csv",
+                InitialDirectory = System.Environment.GetFolderPath(System.Environment.SpecialFolder.DesktopDirectory),
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            try
+            {
+                var sb = new StringBuilder();
+                sb.AppendLine("Handle,DetectedType,CorrectedType");
+                foreach (var r in rows)
+                    sb.AppendLine($"{Csv(r.Handle)},{Csv(r.DetectedType)},{Csv(r.CorrectedType)}");
+                File.WriteAllText(dlg.FileName, sb.ToString(), Encoding.UTF8);
+                SetStatus("Exported: " + Path.GetFileName(dlg.FileName));
+                ReportOutput.OpenFile(dlg.FileName);
+            }
+            catch (System.Exception ex)
+            {
+                SetStatus("Export failed: " + ex.Message, error: true);
+            }
+        }
+
+        /// <summary>Escape 1 ô CSV (bọc "" nếu chứa , " hoặc xuống dòng).</summary>
+        private static string Csv(string s)
+        {
+            s = s ?? "";
+            if (s.IndexOfAny(new[] { ',', '"', '\n', '\r' }) < 0) return s;
+            return "\"" + s.Replace("\"", "\"\"") + "\"";
         }
 
         private void BtnBuild_Click(object sender, RoutedEventArgs e)

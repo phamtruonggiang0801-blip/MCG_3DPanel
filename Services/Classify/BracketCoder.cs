@@ -10,7 +10,7 @@ namespace MCG_3DPanel.Services.Classify
     /// <summary>
     /// BƯỚC 3 — Gán MÃ bracket (OB/IB/FB + hậu tố dày) và đóng dấu hướng BỤNG lên từng HP.
     ///
-    /// - Đầu tự do bracket chạm **Flat Bar** → `FB`; chạm **HP** → `OB` (lưng) / `IB` (bụng).
+    /// - Đầu tự do bracket chạm **Flat Bar** → `BF` (BracketFlatbar); chạm **HP** → `OB` (lưng) / `IB` (bụng).
     /// - Hướng bụng HP (<see cref="BellyDir"/>): HP **ngoài cùng** → bụng RA NGOÀI (override mọi panel type);
     ///   HP **bên trong** → theo **CHIỀU ĐỔ** (HP đứng: +X; HP ngang: Center về giữa / Port −Y / Starboard +Y).
     /// - Kiểm chứng panel thật: Center → 25 OB / 0 IB; Port → 24 OB / 1 IB.
@@ -56,7 +56,7 @@ namespace MCG_3DPanel.Services.Classify
                 string baseCode;
                 if (fb != null && (hp == null ||
                         ClassifyUtil.DistToBox(free, fb.Bounds) <= ClassifyUtil.DistToBox(free, hp.Bounds)))
-                    baseCode = "FB";
+                    baseCode = "BF";                      // Bracket trên Flat Bar (trước đây ghi "FB")
                 else if (hp != null)
                     baseCode = ObOrIb(brk, hp, position, center, vMinX, vMaxX, hMinY, hMaxY);
                 else
@@ -98,13 +98,32 @@ namespace MCG_3DPanel.Services.Classify
             return (best != null && bd <= tol) ? best : null;
         }
 
-        /// <summary>OB nếu bracket ở phía LƯNG HP, IB nếu phía BỤNG (bulb).</summary>
+        /// <summary>
+        /// OB nếu bracket ở phía LƯNG HP, IB nếu phía BỤNG (bulb).
+        /// Dùng ĐỈNH bracket XA tâm HP nhất theo trục bụng (thành phần vuông góc rõ nhất) — bền hơn centroid
+        /// với bracket NGẮN (centroid gần trục HP làm dấu bị nhiễu, từng khiến 2 OB bị chấm nhầm IB).
+        /// </summary>
         private static string ObOrIb(PanelPart brk, PanelPart hp, PanelPosition position, Point3d center,
             double vMinX, double vMaxX, double hMinY, double hMaxY)
         {
             Vector3d belly = BellyDir(hp, position, center, vMinX, vMaxX, hMinY, hMaxY);
-            Vector3d d = brk.Centroid - hp.Centroid;
-            return (d.X * belly.X + d.Y * belly.Y) >= 0 ? "IB" : "OB";
+
+            double signed;
+            if (brk.Vertices != null && brk.Vertices.Length > 0)
+            {
+                signed = 0.0;
+                foreach (var v in brk.Vertices)
+                {
+                    double s = (v.X - hp.Centroid.X) * belly.X + (v.Y - hp.Centroid.Y) * belly.Y;
+                    if (Math.Abs(s) > Math.Abs(signed)) signed = s;   // đỉnh xa nhất theo trục bụng
+                }
+            }
+            else
+            {
+                Vector3d d = brk.Centroid - hp.Centroid;
+                signed = d.X * belly.X + d.Y * belly.Y;
+            }
+            return signed >= 0 ? "IB" : "OB";
         }
 
         /// <summary>

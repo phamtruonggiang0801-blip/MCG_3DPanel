@@ -15,6 +15,11 @@ namespace MCG_3DPanel.Services
     public class PanelPart
     {
         public ObjectId Id { get; set; }
+
+        // Chuỗi ObjectId từ Block Reference NGOÀI CÙNG (trong Model Space) → … block lồng … → polyline lá.
+        // Cần để highlight entity LỒNG trong block qua FullSubentityPath (Id trần không chọn được).
+        public ObjectId[] IdPath { get; set; }
+
         public PartType Type { get; set; }
 
         // Các part cùng 1 Web logic (chuỗi collinear) chia sẻ GroupId. -1 = độc lập.
@@ -47,6 +52,7 @@ namespace MCG_3DPanel.Services
 
         public Point3d Centroid { get; set; }          // tâm bbox (WCS)
         public Extents3d Bounds { get; set; }          // bbox (WCS)
+        public Point3d[] Vertices { get; set; }         // đỉnh polyline (WCS) — cần cho FacePlate loe (chiếu mép thật)
         public Matrix3d Transform { get; set; }        // transform tích luỹ về WCS (dùng cho Build)
     }
 
@@ -80,7 +86,7 @@ namespace MCG_3DPanel.Services
         /// <summary>Chuỗi tóm tắt số lượng từng loại, để hiện trên status bar.</summary>
         public string Summary()
         {
-            var order = new[] { PartType.TopPlate, PartType.Web, PartType.Flange, PartType.FacePlate, PartType.FlatBar, PartType.HP, PartType.Bracket };
+            var order = new[] { PartType.TopPlate, PartType.Web, PartType.Flange, PartType.FacePlate, PartType.FlatBar, PartType.HP, PartType.Bracket, PartType.GirderEnd, PartType.CutOut, PartType.ClosedPlate, PartType.BackingPlate };
             var counts = Counts();
             var sb = new StringBuilder();
             foreach (var t in order)
