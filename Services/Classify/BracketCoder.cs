@@ -40,8 +40,9 @@ namespace MCG_3DPanel.Services.Classify
             // ⚠️ KHÔNG lọc theo HP_MIN_LEN ở đây: các đoạn HP viền/vát góc chỉ dài ~300 nhưng LÀ HP thật
             // (bbox trông "dày" 20+ vì nằm CHÉO). Lọc ở đây từng làm chúng thiếu belly → rơi về hộp chữ nhật.
             // HP_MIN_LEN chỉ dùng cho biên ngoài cùng (vMinX…) và ghép bracket.
+            Point3d[] topVerts = result.TopPlate?.Vertices;
             foreach (var h in hpParts)
-                h.BellyDir = BellyDir(h, position, center, vMinX, vMaxX, hMinY, hMaxY);
+                h.BellyDir = BellyDir(h, position, center, vMinX, vMaxX, hMinY, hMaxY, topVerts);
 
             var webs = result.OfType(PartType.Web)
                              .Where(w => w.MemberLength > ClassifyUtil.WEB_MIN_LEN).ToList();
@@ -58,7 +59,7 @@ namespace MCG_3DPanel.Services.Classify
                         ClassifyUtil.DistToBox(free, fb.Bounds) <= ClassifyUtil.DistToBox(free, hp.Bounds)))
                     baseCode = "BF";                      // Bracket trên Flat Bar (trước đây ghi "FB")
                 else if (hp != null)
-                    baseCode = ObOrIb(brk, hp, position, center, vMinX, vMaxX, hMinY, hMaxY);
+                    baseCode = ObOrIb(brk, hp);
                 else
                     baseCode = "OB";
 
@@ -103,10 +104,11 @@ namespace MCG_3DPanel.Services.Classify
         /// Dùng ĐỈNH bracket XA tâm HP nhất theo trục bụng (thành phần vuông góc rõ nhất) — bền hơn centroid
         /// với bracket NGẮN (centroid gần trục HP làm dấu bị nhiễu, từng khiến 2 OB bị chấm nhầm IB).
         /// </summary>
-        private static string ObOrIb(PanelPart brk, PanelPart hp, PanelPosition position, Point3d center,
-            double vMinX, double vMaxX, double hMinY, double hMaxY)
+        private static string ObOrIb(PanelPart brk, PanelPart hp)
         {
-            Vector3d belly = BellyDir(hp, position, center, vMinX, vMaxX, hMinY, hMaxY);
+            // Dùng lại BellyDir ĐÃ đóng dấu ở Apply (cùng 1 giá trị cho mọi nơi cần bụng HP này) —
+            // tránh tính lại thiếu tham số (VD biên Top Plate thật) gây lệch so với hp.BellyDir gốc.
+            Vector3d belly = hp.BellyDir;
 
             double signed;
             if (brk.Vertices != null && brk.Vertices.Length > 0)
@@ -129,14 +131,24 @@ namespace MCG_3DPanel.Services.Classify
         /// <summary>
         /// Hướng BỤNG (bulb) của 1 HP — luôn **VUÔNG GÓC với trục thật** (`AxisDir`), nên đúng cả HP **CHÉO**.
         /// Chọn dấu của pháp tuyến:
-        ///  - HP **NGOÀI CÙNG** (hoặc HP **chéo** — thanh viền/vát góc) ⇒ bụng **RA NGOÀI** (xa tâm panel),
-        ///    override mọi panel type.
+        ///  - HP **NGOÀI CÙNG viền theo mép Top Plate** (kể cả CHÉO lẫn song song trục — xác nhận kỹ sư
+        ///    2026-08-26) ⇒ bụng **RA NGOÀI**, override mọi panel type.
         ///  - HP **bên trong** ⇒ theo **CHIỀU ĐỔ** `(+X, dozY)` chiếu lên pháp tuyến;
         ///    dozY: Center → về giữa · Port → −Y · Starboard → +Y.
-        /// Tương đương hoàn toàn quy tắc cũ với HP song song trục (đã kiểm chứng Center 25 OB/0 IB).
+        ///
+        /// ⚠️ "Ra ngoài" tính bằng PHÁP TUYẾN CỤC BỘ của biên thật Top Plate tại điểm gần nhất
+        /// (<see cref="ClassifyUtil.LocalOutwardNormal"/>), KHÔNG dùng "xa tâm panel" (centroid−center):
+        /// xấp xỉ tâm chỉ đúng khi biên LỒI đơn giản — tại góc LÕM/khấc (notch cắt vào tấm), "xa tâm panel"
+        /// vẫn trỏ ra ngoài panel nói chung nhưng có thể trỏ VÀO đúng vật liệu thật tại chỗ khấc bẻ ngược
+        /// biên cục bộ. `LocalOutwardNormal` không có giả định đó — luôn đúng bất kể biên lồi/lõm, áp dụng
+        /// cho CẢ HP chéo lẫn song song trục (trước đây chỉ HP song song trục mới xét biên thật; HP chéo
+        /// luôn coi "ngoài cùng" rồi lấy hướng theo tâm panel — vẫn sai tại khấc). "Ngoài cùng" xác định
+        /// bằng khoảng cách tới biên thật (<see cref="ClassifyUtil.DistToPolygonBoundary"/> ≤ `EDGE_POLY_TOL`)
+        /// khi có Top Plate; nếu không có, dùng fallback `vMinX/vMaxX/hMinY/hMaxY` (vị trí HP dài khác) như
+        /// cũ — chỉ còn là fallback hiếm khi xảy ra (panel luôn có Top Plate).
         /// </summary>
         public static Vector3d BellyDir(PanelPart hp, PanelPosition position, Point3d center,
-            double vMinX, double vMaxX, double hMinY, double hMaxY)
+            double vMinX, double vMaxX, double hMinY, double hMaxY, Point3d[] topPlateVerts = null)
         {
             Vector3d axis = hp.AxisDir;
             if (axis.Length < 1e-9) axis = hp.IsHorizontal ? Vector3d.XAxis : Vector3d.YAxis;
@@ -146,10 +158,18 @@ namespace MCG_3DPanel.Services.Classify
             if (perp.Length < 1e-9) return new Vector3d(1, 0, 0);
             perp = perp.GetNormal();
 
-            // HP chéo (không song song trục) = thanh viền/vát góc → xử như NGOÀI CÙNG.
             bool axisAligned = Math.Abs(axis.X) < 1e-3 || Math.Abs(axis.Y) < 1e-3;
+            bool haveTop = topPlateVerts != null && topPlateVerts.Length >= 3;
+
+            // ⚠️ HP CHÉO = thanh viền/vát góc → LUÔN coi ngoài cùng (quy tắc gốc, KHÔNG gate bằng khoảng
+            // cách biên thật) — bản sửa 2026-08-26 từng gate cả HP chéo qua EDGE_POLY_TOL, gây regression
+            // thật: `393A0` (chéo, cách biên thật 172.9mm — VỪA quá EDGE_POLY_TOL=150) bị loại khỏi nhánh
+            // "ngoài cùng", rơi về chiều-đổ (sai). Distance-to-boundary chỉ cần thiết để xác định "ngoài
+            // cùng" cho HP SONG SONG TRỤC (không có quy ước "chéo=viền" sẵn); HP chéo giữ quy tắc gốc.
             bool edge;
             if (!axisAligned) edge = true;
+            else if (haveTop)
+                edge = ClassifyUtil.DistToPolygonBoundary(hp.Centroid, topPlateVerts) <= ClassifyUtil.EDGE_POLY_TOL;
             else if (!hp.IsHorizontal)
                 edge = Math.Abs(hp.Centroid.X - vMinX) < ClassifyUtil.EDGE_TOL
                     || Math.Abs(hp.Centroid.X - vMaxX) < ClassifyUtil.EDGE_TOL;
@@ -159,7 +179,10 @@ namespace MCG_3DPanel.Services.Classify
 
             if (edge)
             {
-                Vector3d outward = hp.Centroid - center;          // bụng RA NGOÀI
+                Vector3d outward = haveTop
+                    ? ClassifyUtil.LocalOutwardNormal(hp.Centroid, topPlateVerts)
+                    : hp.Centroid - center;                        // fallback cũ (xa tâm panel)
+                if (outward.Length < 1e-9) outward = hp.Centroid - center;
                 return (outward.X * perp.X + outward.Y * perp.Y) >= 0 ? perp : perp.Negate();
             }
 

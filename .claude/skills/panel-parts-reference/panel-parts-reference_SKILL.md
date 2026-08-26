@@ -399,6 +399,39 @@ DÙNG CHUNG layer với hình học thật, ví dụ layer "0", nên không th�
 khi phát hiện case cụ thể, không có cách tổng quát an toàn hơn nếu bản vẽ không có quy ước layer riêng cho
 annotation.
 
+### ⚠️ Bug #10 — Bụng HP viền mép quay SAI tại góc LÕM (notch) — "xa tâm panel" không đúng cục bộ (ĐANG XÁC MINH, 2026-08-26)
+
+`BracketCoder.BellyDir` (mục xác định hướng bụng HP) dùng `outward = hp.Centroid − TopPlate.Centroid`
+("xa tâm panel") làm hướng RA NGOÀI cho HP ngoài cùng — xấp xỉ này **chỉ đúng khi biên LỒI đơn giản**.
+Panel 7D-17C có nhiều khấc/notch cắt vào biên (xem Bug #8/#9) — tại 1 điểm nằm SÁT khấc, "xa tâm panel
+nói chung" vẫn đúng hướng ra xa panel, nhưng có thể KHÔNG đúng hướng ra khỏi VẬT LIỆU THẬT tại chỗ khấc bẻ
+ngược biên cục bộ (góc lõm). Kiểm chứng thật: `38EF2`/`393C0`/`393A1` (panel 7D-17C, đều là HP viền mép
+theo xác nhận kỹ sư — *"Là những HP nằm ngoài cùng viền theo mép top plate, kể cả là HP chéo và song song
+với trục"*) đều quay bụng sai sau khi sửa Bug #8 (biên Top Plate đúng làm lộ ra góc khấc thật).
+
+Bước sửa 1 (dùng `DistToPolygonBoundary` để xác định "ngoài cùng") đã đúng nhưng CHƯA ĐỦ — chỉ sửa được
+việc XÁC ĐỊNH có phải HP ngoài cùng hay không, không sửa HƯỚNG ra ngoài (vẫn dùng "xa tâm panel"), và chỉ
+áp dụng cho HP song song trục (HP chéo vẫn luôn coi "ngoài cùng" rồi lấy hướng theo tâm panel — sai y hệt
+tại khấc). Sửa đúng: thêm `ClassifyUtil.LocalOutwardNormal(pt, poly)` — tìm CẠNH biên gần điểm nhất, lấy
+pháp tuyến CỦA CHÍNH CẠNH ĐÓ, xác định dấu bằng cách thử bước nhỏ (2mm) rồi kiểm `PointInPolygon` (nếu
+bước đó vẫn trong đa giác → đổi dấu). Cách này đúng CỤC BỘ bất kể biên lồi/lõm, và áp dụng thống nhất cho
+CẢ HP chéo lẫn song song trục (trước đây 2 nhánh code khác nhau, cùng sai tại khấc theo cùng 1 lý do).
+
+**Xác nhận thật**: `38EF2`/`393A1`/`393C0` đã quay đúng sau build. Nhưng lộ regression MỚI: `393A0`
+(HP chéo khác, cùng cụm góc/khấc) quay SAI — vì bản sửa đầu tiên lỡ **gate luôn cả HP chéo** qua
+`DistToPolygonBoundary ≤ EDGE_POLY_TOL(150)`, trong khi `393A0` cách biên thật **172.9mm** (VỪA quá 150)
+→ bị loại khỏi nhánh "ngoài cùng", rơi về chiều-đổ (sai). Root cause: nhầm lẫn 2 việc ĐỘC LẬP — "có phải
+HP ngoài cùng" (determination) và "hướng ra ngoài là gì" (direction). Quy tắc GỐC "HP chéo = thanh
+viền/vát góc → LUÔN coi ngoài cùng" (không cần gate khoảng cách, vì bản chất chéo ĐÃ LÀ tín hiệu viền/vát
+đủ mạnh) vẫn ĐÚNG và cần giữ nguyên — chỉ HƯỚNG (trước đây "xa tâm panel", giờ `LocalOutwardNormal`) mới
+cần sửa. Sửa lại: `!axisAligned → edge=true` KHÔNG ĐIỀU KIỆN (khôi phục, đặt TRƯỚC check khoảng cách);
+`DistToPolygonBoundary` giờ CHỈ dùng để xác định "ngoài cùng" cho HP SONG SONG TRỤC (vốn không có quy ước
+sẵn như HP chéo). `LocalOutwardNormal` vẫn áp dụng cho hướng của CẢ 2 loại khi đã xác định là edge.
+
+**Bài học**: khi sửa 1 bug bằng cách thêm điều kiện MỚI vào 1 nhánh code, kiểm tra kỹ điều kiện đó có vô
+tình SIẾT LẠI (thu hẹp) 1 quy tắc CŨ vốn đang đúng ở nhánh khác hay không — đặc biệt khi 2 quy tắc
+(determination vs direction) bị gộp chung 1 biến `edge`/1 nhánh `if` như ở đây.
+
 ## 5. Đầu ra
 
 - Solid đặt Layer **`Mechanical-AM_0`**, Color **ByLayer**.

@@ -24,7 +24,8 @@ namespace MCG_3DPanel.Services.Classify
         public const double GE_MIN_LEN = 600.0;         // GE: mảnh dài ≥ ngưỡng…
         public const double GE_MIN_THK = 10.0;          // …và dày ≥ ngưỡng, KHÔNG collinear web dài
         public const double HP_MIN_LEN = 500.0;         // HP đủ dài mới xét bụng/lưng
-        public const double EDGE_TOL = 50.0;            // dung sai xác định HP "ngoài cùng"
+        public const double EDGE_TOL = 50.0;            // dung sai xác định HP "ngoài cùng" (so member dài khác)
+        public const double EDGE_POLY_TOL = 150.0;      // dung sai xác định HP "ngoài cùng" so BIÊN THẬT Top Plate
         public const double ADJ_TOL = 12.0;             // dung sai kề nhau (bracket chạm HP/FB)
         public const double TOL_GAP = 20.0;             // khe hở dọc trục khi gom Web collinear
         public const double TOL_PERP = 8.0;             // lệch ngang khi gom Web collinear
@@ -91,6 +92,64 @@ namespace MCG_3DPanel.Services.Classify
             Extents3d i = inner.Bounds, o = outer.Bounds;
             return i.MinPoint.X > o.MinPoint.X + tol && i.MaxPoint.X < o.MaxPoint.X - tol &&
                    i.MinPoint.Y > o.MinPoint.Y + tol && i.MaxPoint.Y < o.MaxPoint.Y - tol;
+        }
+
+        /// <summary>Khoảng cách nhỏ nhất từ điểm tới BIÊN đa giác (mọi cạnh, đóng vòng ngầm định) —
+        /// dùng để xác định "gần mép ngoài cùng THẬT" của 1 tấm (VD Top Plate) khi biên có nhiều
+        /// khấc/bậc cục bộ (notch/step) — khác <see cref="StrictlyInside"/> (chỉ so bbox, không thấy
+        /// khấc) hay so sánh với vị trí các member DÀI khác (lệch hàng trăm mm tại chỗ có khấc).</summary>
+        public static double DistToPolygonBoundary(Point3d pt, Point3d[] poly)
+        {
+            if (poly == null || poly.Length < 2) return double.MaxValue;
+            double best = double.MaxValue;
+            int n = poly.Length;
+            for (int i = 0, j = n - 1; i < n; j = i++)
+            {
+                Point3d a = poly[j], b = poly[i];
+                double dx = b.X - a.X, dy = b.Y - a.Y;
+                double len2 = dx * dx + dy * dy;
+                double t = len2 > 1e-9 ? ((pt.X - a.X) * dx + (pt.Y - a.Y) * dy) / len2 : 0.0;
+                if (t < 0) t = 0; else if (t > 1) t = 1;
+                double cx = a.X + t * dx, cy = a.Y + t * dy;
+                double d = Math.Sqrt((pt.X - cx) * (pt.X - cx) + (pt.Y - cy) * (pt.Y - cy));
+                if (d < best) best = d;
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// Pháp tuyến NGOÀI THẬT tại cạnh biên đa giác gần <paramref name="pt"/> nhất — đúng cả tại góc
+        /// LÕM/khấc (notch), khác hẳn xấp xỉ "xa tâm panel" (<c>centroid − center</c>) vốn CHỈ đúng khi
+        /// biên LỒI đơn giản: tại 1 khấc cắt vào tấm, "xa tâm panel" vẫn trỏ ra ngoài panel nói chung
+        /// nhưng có thể trỏ VÀO vật liệu thật (khấc bẻ ngược biên cục bộ). Cách làm: tìm cạnh gần nhất,
+        /// lấy 1 trong 2 pháp tuyến của cạnh đó, thử bước nhỏ (2mm) từ điểm chân vuông góc trên cạnh —
+        /// nếu bước đó vẫn NẰM TRONG đa giác (<see cref="PointInPolygon"/>) thì đổi dấu (đó là hướng VÀO
+        /// vật liệu, không phải ra ngoài).
+        /// </summary>
+        public static Vector3d LocalOutwardNormal(Point3d pt, Point3d[] poly)
+        {
+            if (poly == null || poly.Length < 3) return new Vector3d(0, 0, 0);
+            double best = double.MaxValue;
+            double footX = 0, footY = 0, edgeDx = 0, edgeDy = 0;
+            int n = poly.Length;
+            for (int i = 0, j = n - 1; i < n; j = i++)
+            {
+                Point3d a = poly[j], b = poly[i];
+                double dx = b.X - a.X, dy = b.Y - a.Y;
+                double len2 = dx * dx + dy * dy;
+                double t = len2 > 1e-9 ? ((pt.X - a.X) * dx + (pt.Y - a.Y) * dy) / len2 : 0.0;
+                if (t < 0) t = 0; else if (t > 1) t = 1;
+                double cx = a.X + t * dx, cy = a.Y + t * dy;
+                double d = Math.Sqrt((pt.X - cx) * (pt.X - cx) + (pt.Y - cy) * (pt.Y - cy));
+                if (d < best) { best = d; footX = cx; footY = cy; edgeDx = dx; edgeDy = dy; }
+            }
+            double elen = Math.Sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
+            if (elen < 1e-9) return new Vector3d(0, 0, 0);
+            double nx = -edgeDy / elen, ny = edgeDx / elen;
+            const double PROBE = 2.0;
+            var probe = new Point3d(footX + nx * PROBE, footY + ny * PROBE, 0);
+            bool probeInside = PointInPolygon(probe, poly);
+            return probeInside ? new Vector3d(-nx, -ny, 0) : new Vector3d(nx, ny, 0);
         }
 
         /// <summary>Point-in-polygon (ray casting). <paramref name="poly"/> là đỉnh WCS, đóng vòng ngầm định.</summary>
