@@ -23,5 +23,27 @@ namespace MCG_3DPanel.Services
         public string BlockName { get; set; }
         public bool Kept { get; set; }
         public System.Collections.Generic.List<string> Report { get; } = new System.Collections.Generic.List<string>();
+
+        /// <summary>Từng part đã dựng hay bị bỏ qua — dùng để xuất report JSON đọc lại kết quả build.</summary>
+        public System.Collections.Generic.List<BuiltPartInfo> Parts { get; } = new System.Collections.Generic.List<BuiltPartInfo>();
+    }
+
+    /// <summary>1 dòng trạng thái build của 1 <see cref="Services.PanelPart"/> — dùng cho report JSON.</summary>
+    public class BuiltPartInfo
+    {
+        public string Handle { get; set; }
+        public string Type { get; set; }
+        public string Code { get; set; }
+        public bool Built { get; set; }
+
+        // Bbox + thể tích solid THẬT (null nếu không lấy được) — để chẩn đoán "built=true nhưng
+        // thực ra rỗng/lệch vị trí" (VD Top Plate bị CutOut khoét lố, part build sai chỗ…).
+        public double? MinX { get; set; }
+        public double? MinY { get; set; }
+        public double? MinZ { get; set; }
+        public double? MaxX { get; set; }
+        public double? MaxY { get; set; }
+        public double? MaxZ { get; set; }
+        public double? Volume { get; set; }
     }
 }

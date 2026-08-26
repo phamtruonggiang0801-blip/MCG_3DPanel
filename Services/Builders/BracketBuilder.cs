@@ -5,6 +5,7 @@ using System.Text;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using MCG_3DPanel.Models;
+using MCG_3DPanel.Services.Classify;
 
 namespace MCG_3DPanel.Services.Builders
 {
@@ -25,19 +26,19 @@ namespace MCG_3DPanel.Services.Builders
         public bool CanBuild(PanelPart part)
         {
             if (part.Type != PartType.Bracket || part.Code == null) return false;
-            return part.Code.StartsWith("OB") || part.Code.StartsWith("IB") || part.Code.StartsWith("FB");
+            return part.Code.StartsWith("OB") || part.Code.StartsWith("IB") || part.Code.StartsWith("BF");
         }
 
         /// <summary>
         /// Chiều cao mặt đầu span (Dtop) + ledge theo LOẠI bracket:
         ///  - OB/OB1: Dtop = HP height − 15, ledge 0.
         ///  - IB/IB1: Dtop = HP height − 30, ledge 15 (đoạn ngang đầu span trước R30, bọc bulb).
-        ///  - FB/FB1: Dtop = FlatBar height − 15, ledge 0.
+        ///  - BF/BF1: Dtop = FlatBar height − 15, ledge 0 (mã "FB" cũ, xem BracketCoder).
         /// </summary>
         public static void KneeDtop(string code, PanelInput input, out double dtop, out double ledge)
         {
             code = code ?? "";
-            if (code.StartsWith("FB")) { dtop = input.FlatBarHeight - 15.0; ledge = 0.0; }
+            if (code.StartsWith("BF")) { dtop = input.FlatBarHeight - 15.0; ledge = 0.0; }
             else if (code.StartsWith("IB")) { dtop = input.HpHeight - 30.0; ledge = 15.0; }
             else { dtop = input.HpHeight - 15.0; ledge = 0.0; }   // OB (mặc định)
         }
@@ -46,7 +47,7 @@ namespace MCG_3DPanel.Services.Builders
         public struct KneeParams
         {
             public double S, Huse, F, Thk, Dtop, Ledge, Overhang, FreeEdge;
-            public bool Under50, Flanged;
+            public bool Under50, Flanged, SquareCorner;
         }
 
         public static KneeParams Solve(PanelPart part, ClassificationResult cls, PanelInput input)
@@ -60,15 +61,20 @@ namespace MCG_3DPanel.Services.Builders
             k.Overhang = OverhangProj(part, cls);
             k.Under50 = k.Overhang < 50.0;
             // F = overhang − 15; KẸP ≤ S − R30 (FacePlate loe vượt qua toe-HP → chân đứng cách toe-HP R30).
-            k.F = k.Under50 ? 15.0 : Math.Min(k.Overhang - 15.0, k.S - 30.0);
+            // Vượt trần (Flange/FacePlate đỡ dài hơn cả bracket) → squareCorner: bỏ R30 dưới, dựng thẳng
+            // đứng góc vuông 90° (xem ProfileService.R30Only, giống squareCorner của GE — skill girder-end 6c).
+            double rawF = k.Overhang - 15.0;
+            k.SquareCorner = !k.Under50 && rawF > k.S - 30.0;
+            k.F = k.Under50 ? 15.0 : Math.Min(rawF, k.S - 30.0);
             k.Huse = k.Under50 ? input.WebHeight - 30.0 : input.WebHeight;
 
             KneeDtop(part.Code, input, out double dtop, out double ledge);
             k.Dtop = dtop; k.Ledge = ledge;
 
             // free-edge (toe-flange→toe-HP); flanged → có gấp lip (thk6 ≥350 / thk10 ≥600).
+            // squareCorner → free-edge chỉ còn đoạn thẳng đứng ngắn (không phải cạnh chéo dài) → không gấp lip.
             k.FreeEdge = Math.Sqrt((k.S - k.F) * (k.S - k.F) + (k.Huse - k.Dtop) * (k.Huse - k.Dtop));
-            k.Flanged = k.FreeEdge >= (k.Thk >= 8.0 ? 600.0 : 350.0);
+            k.Flanged = !k.SquareCorner && k.FreeEdge >= (k.Thk >= 8.0 ? 600.0 : 350.0);
             return k;
         }
 
@@ -80,7 +86,7 @@ namespace MCG_3DPanel.Services.Builders
                 if (k.S < 1e-6 || k.Huse < 1e-6 || k.Thk < 1e-6) return null;
 
                 var outline = ctx.Profile.BracketOutline(
-                    k.Under50, k.S, k.Huse, k.F, k.Thk, k.Dtop, k.Ledge, k.Flanged);
+                    k.Under50, k.S, k.Huse, k.F, k.Thk, k.Dtop, k.Ledge, k.Flanged, k.SquareCorner);
 
                 Region reg = GeometryUtil.RegionFrom(outline);
                 if (reg == null) return null;
@@ -100,7 +106,8 @@ namespace MCG_3DPanel.Services.Builders
                 ctx.Report.Add(
                     $"Bracket code={part.Code} S={k.S:0} thk={k.Thk:0} Dtop={k.Dtop:0} ledge={k.Ledge:0} " +
                     $"overhang={k.Overhang:0} under50={k.Under50} F={k.F:0} Huse={k.Huse:0} flanged={k.Flanged} " +
-                    $"center=({part.Centroid.X:0},{part.Centroid.Y:0}) | {bendStatus} lumps={GeometryUtil.CountLumps(sol)}");
+                    $"squareCorner={k.SquareCorner} center=({part.Centroid.X:0},{part.Centroid.Y:0}) | " +
+                    $"{bendStatus} lumps={GeometryUtil.CountLumps(sol)}");
                 ctx.Report.Add("   OUTLINE " + DescribeOutline(outline));
                 return sol;
             }
@@ -239,20 +246,14 @@ namespace MCG_3DPanel.Services.Builders
         /// </summary>
         public static void AnchorDir(PanelPart part, ClassificationResult cls, out Point3d anchor, out Vector3d memberDir, out string via)
         {
-            Extents3d b = part.Bounds;
-            double cx = (b.MinPoint.X + b.MaxPoint.X) / 2.0;
-            double cy = (b.MinPoint.Y + b.MaxPoint.Y) / 2.0;
-            Point3d e1, e2;
-            if (part.IsHorizontal)
-            {
-                e1 = new Point3d(b.MinPoint.X, cy, 0);
-                e2 = new Point3d(b.MaxPoint.X, cy, 0);
-            }
-            else
-            {
-                e1 = new Point3d(cx, b.MinPoint.Y, 0);
-                e2 = new Point3d(cx, b.MaxPoint.Y, 0);
-            }
+            // ⚠️ Lấy đầu mút từ ĐỈNH THẬT (Vertices — ClassifyUtil.Endpoints), KHÔNG dùng
+            // part.Bounds + part.IsHorizontal: IsHorizontal chỉ là nhị phân ngang/dọc suy từ bbox
+            // (dx≥dy?), ép MỌI bracket về đúng trục X hoặc Y dù hình học thật CHÉO (VD bracket vuông
+            // góc với 1 HP chéo — bbox rộng hơn cao (163×87) nên bị coi "ngang", trong khi trục thật
+            // lệch ~27° so với phương ngang). Ép về trục sai làm hướng đặt 3D (memberDir) sai theo,
+            // biểu hiện: bracket "xoay lại" theo Web/trục gần đó thay vì giữ đúng góc vuông-HP như bản
+            // vẽ 2D gốc. Kiểm chứng thật: `393B9` — kỹ sư xác nhận 2D vuông góc HP, 3D lại vuông góc Web.
+            (Point3d e1, Point3d e2) = ClassifyUtil.Endpoints(part);
 
             double w1 = GeometryUtil.MinDistToWeb(e1, cls), w2 = GeometryUtil.MinDistToWeb(e2, cls);
             Point3d free;
@@ -298,23 +299,28 @@ namespace MCG_3DPanel.Services.Builders
             AnchorDir(part, cls, out Point3d anchor, out Vector3d dir, out _);
 
             // Tấm đỡ gần nhất: xét cả Flange lẫn FacePlate.
-            PanelPart support = null; double best = double.MaxValue;
-            foreach (var f in cls.OfType(PartType.Flange))
-            { double d = GeometryUtil.DistToBox(part.Centroid, f.Bounds); if (d < best) { best = d; support = f; } }
-            foreach (var fp in cls.OfType(PartType.FacePlate))
-            { double d = GeometryUtil.DistToBox(part.Centroid, fp.Bounds); if (d < best) { best = d; support = fp; } }
+            // Gom TẤT CẢ Flange+FacePlate (không chỉ 1 tấm gần nhất): nhiều tấm kề nhau (chung mép,
+            // VD FacePlate trong ghép FacePlate ngoài) tạo thành 1 "sàn" liên tục — overhang phải đi
+            // HẾT sàn liên tục đó, không dừng giữa chừng ở đường nối giữa 2 tấm. Kiểm chứng thật: GE
+            // `38E42` neo trong `38EBD` (tấm trong), liền `393C2` (tấm ngoài) đúng tại ranh giới
+            // Y=37731.8 — nếu chỉ ray-cast 1 tấm gần nhất, dừng NGAY tại ranh giới đó (tụt vào tấm
+            // trong) thay vì đi tiếp ra mép ngoài thật của `393C2`.
+            var supports = new List<PanelPart>(cls.OfType(PartType.Flange));
+            supports.AddRange(cls.OfType(PartType.FacePlate));
 
-            if (support == null)
+            if (supports.Count == 0)
                 return (NearestFlangeWidth(part, cls) - part.FootprintThickness) / 2.0;
 
-            // FacePlate loe (có đỉnh thật) → ray-cast mép thật; ngược lại chiếu góc bbox.
-            if (support.Type == PartType.FacePlate && support.Vertices != null && support.Vertices.Length >= 3)
-            {
-                double t = RayMaxHit(anchor, dir, support.Vertices);
-                if (t > 0) return t;
-            }
+            double union = RayUnionHit(anchor, dir, supports);
+            if (union > 0) return union;
 
-            Extents3d b = support.Bounds;
+            // Fallback bbox tấm gần nhất — chỉ khi không tấm nào ray cắt được (hiếm, sai số biên).
+            PanelPart nearest = null; double best = double.MaxValue;
+            foreach (var s in supports)
+            { double d = GeometryUtil.DistToBox(part.Centroid, s.Bounds); if (d < best) { best = d; nearest = s; } }
+            if (nearest == null) return (NearestFlangeWidth(part, cls) - part.FootprintThickness) / 2.0;
+
+            Extents3d b = nearest.Bounds;
             double oh = double.MinValue;
             var corners = new[]
             {
@@ -330,27 +336,81 @@ namespace MCG_3DPanel.Services.Builders
         }
 
         /// <summary>
-        /// Ray từ <paramref name="o"/> theo <paramref name="dir"/> cắt biên polygon; trả t LỚN NHẤT (t&gt;0)
-        /// = khoảng cách tới mép polygon xa nhất theo hướng dir (tại đúng dải ngang của ray). 0 nếu không cắt.
+        /// Ray từ <paramref name="o"/> theo <paramref name="dir"/> đi qua HỢP (union) của MỌI tấm đỡ
+        /// trong <paramref name="supports"/> — gộp các khoảng [vào,ra] của từng tấm (kể cả tấm KHÔNG
+        /// LỒI, có thể vào/ra nhiều lần), nối các khoảng CHỒNG/KỀ NHAU (dung sai nhỏ), trả về mép NGOÀI
+        /// của khoảng liên tục chứa gốc tia (t≈0). 0 nếu gốc không nằm trong tấm đỡ nào.
         /// </summary>
-        private static double RayMaxHit(Point3d o, Vector3d dir, Point3d[] v)
+        private static double RayUnionHit(Point3d o, Vector3d dir, List<PanelPart> supports)
         {
-            double px = -dir.Y, py = dir.X;               // pháp tuyến ray (để giải giao)
-            double tMax = 0;
+            const double GAP_TOL = 5.0;   // 2 tấm cách nhau ≤ GAP_TOL coi như liền (sai số vẽ/đo).
+
+            // ⚠️ Ghép cặp chẵn/lẻ PHẢI làm RIÊNG từng tấm (mỗi đa giác kín tự có số giao điểm chẵn,
+            // và cặp (t[2i],t[2i+1]) CỦA CHÍNH NÓ mới đúng là khoảng vào/ra) — KHÔNG được trộn t của
+            // nhiều tấm khác nhau vào 1 danh sách rồi ghép cặp chung: nếu ray đi xuyên qua 1 tấm đỡ
+            // KHÔNG liên quan (xa, không chạm tấm neo) nằm xen giữa, các mốc t xen kẽ làm object ghép
+            // cặp sai tấm, tạo "khoảng liên tục" ẢO nối tới tấm ở rất xa. Lỗi này đã xảy ra thật: nhiều
+            // OB bracket (S=204, overhang đúng ~79mm khi chỉ xét 1 tấm) bị tính overhang tới 1198-1523mm
+            // sau khi đổi sang trộn-chung — vì ray xuyên qua nhiều Flange RỜI RẠC nằm dọc theo hướng dir.
+            var intervals = new List<(double lo, double hi)>();
+            foreach (var s in supports)
+            {
+                if (s.Vertices == null || s.Vertices.Length < 3) continue;
+                var ts = new List<double>();
+                CollectCrossings(o, dir, s.Vertices, ts);
+                if (ts.Count < 2) continue;
+                ts.Sort();
+                for (int i = 0; i + 1 < ts.Count; i += 2)
+                    intervals.Add((ts[i], ts[i + 1]));
+            }
+            if (intervals.Count == 0) return 0;
+            intervals.Sort((a, b) => a.lo.CompareTo(b.lo));
+
+            // ⚠️ Khi chuyển nhóm, CHỈ được return nếu nhóm SẮP BỎ thật sự CHỨA gốc (curLo≤GAP_TOL VÀ
+            // curHi≥−GAP_TOL) — thiếu vế `curHi≥−GAP_TOL` là bug thật đã xảy ra: 1 nhóm nằm HOÀN TOÀN
+            // phía sau gốc (cả lo VÀ hi đều âm rất xa, VD tấm đỡ khác ở tận phía ngược hướng `dir`) vẫn
+            // có `curLo≤GAP_TOL` (số âm luôn ≤ 5) nên bị return SỚM (0, vì hi<0) — bỏ qua mọi nhóm phía
+            // sau còn lại, kể cả nhóm ĐÚNG chứa gốc. Kiểm chứng thật: bracket `3939C` (S=204) — tấm đỡ
+            // thật `38ED1` (Flange chéo) cho khoảng (−89.4, 79.4) CHỨA gốc, nhưng 4 Flange thẳng khác ở
+            // xa hơn theo chiều ngược `dir` (`99129/100764/102399/104035`, mọi khoảng đều âm) đứng
+            // TRƯỚC nó trong danh sách sort — nhóm xa nhất bị return 0 oan, `OverhangProj` rơi về
+            // fallback bbox (lấy góc bbox AXIS-ALIGNED của `38ED1`, tấm CHÉO) → overhang ảo **1163mm**
+            // thay vì đúng 79.4mm. Sửa: nhóm không chứa gốc (dù lo≤GAP_TOL hay không) chỉ đơn thuần bị
+            // BỎ QUA, tiếp tục xét nhóm sau — không return.
+            double curLo = double.NaN, curHi = double.NaN;
+            foreach (var iv in intervals)
+            {
+                if (double.IsNaN(curLo)) { curLo = iv.lo; curHi = iv.hi; continue; }
+                if (iv.lo <= curHi + GAP_TOL) { curHi = Math.Max(curHi, iv.hi); }
+                else
+                {
+                    if (curLo <= GAP_TOL && curHi >= -GAP_TOL) return curHi > 0 ? curHi : 0;
+                    curLo = iv.lo; curHi = iv.hi;
+                }
+            }
+            if (!double.IsNaN(curLo) && curLo <= GAP_TOL && curHi >= -GAP_TOL) return curHi > 0 ? curHi : 0;
+            return 0;
+        }
+
+        /// <summary>Thêm mọi t (dọc theo <paramref name="dir"/> từ <paramref name="o"/>) nơi ray cắt
+        /// biên polygon <paramref name="v"/> vào <paramref name="ts"/> (không lọc dấu — âm/dương đều
+        /// giữ, để <see cref="RayUnionHit"/> tự xác định khoảng chứa gốc t≈0).</summary>
+        private static void CollectCrossings(Point3d o, Vector3d dir, Point3d[] v, List<double> ts)
+        {
+            double px = -dir.Y, py = dir.X;
             int n = v.Length;
             for (int i = 0; i < n; i++)
             {
                 Point3d a = v[i], b = v[(i + 1) % n];
                 double ex = b.X - a.X, ey = b.Y - a.Y;
                 double denom = ex * px + ey * py;
-                if (Math.Abs(denom) < 1e-9) continue;      // cạnh song song ray
-                double s = ((o.X - a.X) * px + (o.Y - a.Y) * py) / denom;   // vị trí trên cạnh [0,1]
+                if (Math.Abs(denom) < 1e-9) continue;
+                double s = ((o.X - a.X) * px + (o.Y - a.Y) * py) / denom;
                 if (s < -1e-6 || s > 1 + 1e-6) continue;
                 double hx = a.X + s * ex, hy = a.Y + s * ey;
-                double t = (hx - o.X) * dir.X + (hy - o.Y) * dir.Y;         // khoảng dọc ray
-                if (t > tMax) tMax = t;
+                double t = (hx - o.X) * dir.X + (hy - o.Y) * dir.Y;
+                ts.Add(t);
             }
-            return tMax;
         }
 
         // ─── Chẩn đoán ────────────────────────────────────────────────────

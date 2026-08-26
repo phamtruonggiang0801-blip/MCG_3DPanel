@@ -32,12 +32,20 @@ namespace MCG_3DPanel.Services.Classify
 
                 if (ent is BlockReference nested)
                 {
+                    // Block chú thích (VD "COG" — mốc trọng tâm: Hatch + 2 Line + Circle r250 TRÊN LAYER
+                    // "0", cùng layer Top Plate) KHÔNG phải hình học tấm/lỗ thật — bỏ qua hẳn, không đệ
+                    // quy vào. Nếu không loại, Circle bên trong (đã nhận từ khi thêm hỗ trợ Circle) lọt
+                    // vào topCands/CutOut vì cùng owner block với biên Top Plate → tạo lỗ khoét ẢO tại vị
+                    // trí mốc COG. Xác nhận kỹ sư 2026-08-25: "Block COG không được đưa vào đây, bỏ qua".
+                    if (string.Equals(GetName(tr, nested), "COG", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
                     var childPrefix = new List<ObjectId>(pathPrefix) { nested.ObjectId };
                     Collect(tr, nested, accum * nested.BlockTransform, outParts, childPrefix);
                     continue;
                 }
 
-                if (ent is Polyline pl && pl.Closed)
+                if (ent is Polyline pl && (pl.Closed || IsVisuallyClosed(pl)))
                 {
                     var part = BuildPart(pl, accum);
                     if (part != null)
@@ -48,8 +56,42 @@ namespace MCG_3DPanel.Services.Classify
                         part.IdPath = full;
                         outParts.Add(part);
                     }
+                    continue;
+                }
+
+                // Lỗ khoét tròn (VD Ø80 trong block Top Plate) vẽ bằng Circle, không phải Polyline —
+                // trước đây bị bỏ sót HOÀN TOÀN (không lỗi, không cảnh báo). Xem skill panel-parts-reference.
+                if (ent is Circle cir)
+                {
+                    var part = BuildPartFromCircle(cir, accum);
+                    if (part != null)
+                    {
+                        var full = new ObjectId[pathPrefix.Count + 1];
+                        pathPrefix.CopyTo(full);
+                        full[pathPrefix.Count] = cir.ObjectId;
+                        part.IdPath = full;
+                        outParts.Add(part);
+                    }
                 }
             }
+        }
+
+        /// <summary>
+        /// Polyline có `Closed=false` nhưng đỉnh ĐẦU trùng đỉnh CUỐI (người vẽ tự khép vòng bằng cách
+        /// snap lại điểm đầu, thay vì bật flag Closed) — vẫn là 1 biên KÍN thật, phải nhận như Closed.
+        /// Bug thật đã xảy ra: biên **Top Plate** panel 7D-17C (`38DDC`, layer "0", 65 đỉnh) bị bỏ sót
+        /// HOÀN TOÀN vì `Closed=false` — đỉnh đầu (15.3534,−197.4544) và đỉnh cuối (15.3531,−197.4544)
+        /// lệch **0.0003mm** (làm tròn nổi) — khiến `topCands` chỉ còn 2 mảnh nhỏ không liên quan (lỗ/
+        /// gia cường cạnh đó), TopPlate dựng ra bé tí thay vì cả tấm. Xem skill panel-parts-reference.
+        /// </summary>
+        private static bool IsVisuallyClosed(Polyline pl)
+        {
+            const double TOL = 1e-3;
+            int n = pl.NumberOfVertices;
+            if (n < 3) return false;
+            Point2d a = pl.GetPoint2dAt(0);
+            Point2d b = pl.GetPoint2dAt(n - 1);
+            return a.GetDistanceTo(b) <= TOL;
         }
 
         /// <summary>Tên block (ưu tiên dynamic block gốc). "&lt;unknown&gt;" nếu lỗi.</summary>
@@ -110,6 +152,42 @@ namespace MCG_3DPanel.Services.Classify
         private static double SafeArea(Polyline pl)
         {
             try { return pl.Area; } catch { return 0; }
+        }
+
+        /// <summary>Circle → PanelPart đơn giản (không Vertices — StrictlyInside/CutOut chỉ cần Bounds;
+        /// PlateBuilder.Extrude dựng Region thẳng từ chính entity Circle gốc, không cần Vertices).</summary>
+        private static PanelPart BuildPartFromCircle(Circle cir, Matrix3d accum)
+        {
+            try
+            {
+                Extents3d bounds = cir.GeometricExtents;
+                bounds.TransformBy(accum);
+                var c = new Point3d(
+                    (bounds.MinPoint.X + bounds.MaxPoint.X) / 2.0,
+                    (bounds.MinPoint.Y + bounds.MaxPoint.Y) / 2.0,
+                    (bounds.MinPoint.Z + bounds.MaxPoint.Z) / 2.0);
+                double d = cir.Radius * 2.0;
+
+                return new PanelPart
+                {
+                    AxisDir = Vector3d.XAxis,
+                    Id = cir.ObjectId,
+                    Type = PartType.Unknown,
+                    Layer = cir.Layer,
+                    ColorIndex = cir.Color.ColorIndex,
+                    VertexCount = 0,
+                    Area = Math.PI * cir.Radius * cir.Radius,
+                    FootprintThickness = d,
+                    MemberLength = d,
+                    Centroid = c,
+                    Bounds = bounds,
+                    Vertices = null,
+                    Transform = accum,
+                    IsHorizontal = true,
+                    PerpCenter = c.Y,
+                };
+            }
+            catch { return null; }
         }
 
         /// <summary>

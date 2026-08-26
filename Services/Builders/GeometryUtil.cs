@@ -4,6 +4,7 @@ using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using Brep = Autodesk.AutoCAD.BoundaryRepresentation.Brep;
 using MCG_3DPanel.Models;
+using MCG_3DPanel.Services.Classify;
 
 namespace MCG_3DPanel.Services.Builders
 {
@@ -13,8 +14,6 @@ namespace MCG_3DPanel.Services.Builders
     /// </summary>
     internal static class GeometryUtil
     {
-        public const double WebMainMinLen = 1000.0;   // web "chính" (bỏ web-tier ngắn)
-
         /// <summary>Khoảng cách 2D từ điểm tới bbox (0 nếu nằm trong).</summary>
         public static double DistToBox(Point3d p, Extents3d b)
         {
@@ -29,14 +28,27 @@ namespace MCG_3DPanel.Services.Builders
             return Math.Sqrt(dx * dx + dy * dy);
         }
 
-        /// <summary>Khoảng cách nhỏ nhất từ điểm tới bbox các Web DÀI; MaxValue nếu không có.</summary>
+        /// <summary>Khoảng cách nhỏ nhất từ điểm tới ĐOẠN TÂM THẬT (không phải bbox) của MỌI
+        /// <see cref="PartType.Web"/> — kể cả Web-tier ngắn; MaxValue nếu không có Web nào.
+        ///
+        /// ⚠️ PHẢI dùng đoạn tâm thật (<see cref="ClassifyUtil.DistToSegment"/>), KHÔNG phải bbox
+        /// (<see cref="DistToBox"/>): Web CHÉO có bbox trục thẳng "phồng" rất lớn so với tiết diện thật
+        /// (VD panel 7D-17C: Web chéo bbox 4115×8067 dù dày thật chỉ 6mm) — dùng bbox khiến CẢ HAI đầu
+        /// của 1 bracket ngắn gần đó đều "gần Web" như nhau, làm <see cref="BracketBuilder.AnchorDir"/>
+        /// chọn nhầm đầu neo (bracket dựng LẬT NGƯỢC) hoặc neo sai điểm (lưng không khớp mép Web thật).
+        /// Kiểm chứng thật: TOÀN BỘ 13 bracket dựng lật/lệch trên panel 7D-17C đều neo vào 1 Web CHÉO.
+        ///
+        /// ⚠️ KHÔNG lọc theo độ dài Web (bản cũ có ngưỡng "web chính" ≥1000mm, bỏ web-tier ngắn) — 1
+        /// Web-tier NGẮN (VD `38DF2`, dài 486.7mm, xem [[panel-parts-reference]] mục 4d) vẫn là chỗ hàn
+        /// THẬT cho bracket. Lọc theo độ dài khiến `AnchorDir` không thấy Web-tier gần nhất, rơi về
+        /// fallback "via=center" (đối xứng qua tâm TopPlate) — neo sai điểm dù chọn đúng đầu, gây
+        /// "lưng bracket không nằm sát Web" (kiểm chứng thật: case `393B9`, neo đúng vào `38DF2`).</summary>
         public static double MinDistToWeb(Point3d p, ClassificationResult cls)
         {
             double best = double.MaxValue;
             foreach (var w in cls.OfType(PartType.Web))
             {
-                if (w.MemberLength < WebMainMinLen) continue;
-                double d = DistToBox(p, w.Bounds);
+                double d = ClassifyUtil.DistToSegment(p, w);
                 if (d < best) best = d;
             }
             return best;

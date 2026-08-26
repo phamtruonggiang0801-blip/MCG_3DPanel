@@ -33,17 +33,32 @@ namespace MCG_3DPanel.Commands
             catch (System.Exception ex) { Debug.WriteLine($"{LOG_PREFIX} Không mở được file: {ex.Message}"); }
         }
 
-        /// <summary>
-        /// Ghi report CHẨN ĐOÁN của lần dựng (mỗi builder tự thêm dòng vào <c>BuildResult.Report</c>)
-        /// ra .txt trên Desktop rồi mở. Mặc định KHÔNG gọi — bật khi cần debug hình học.
-        /// </summary>
-        public static void WriteBuildReport(BuildResult build, Autodesk.AutoCAD.EditorInput.Editor ed)
+        /// <summary>Ghi report KẾT QUẢ DỰNG 3D ra JSON: tổng quan (số solid, block, kept), từng part đã
+        /// dựng/bị bỏ qua (handle/type/code/built), và các dòng chẩn đoán builder tự thêm vào
+        /// <c>BuildResult.Report</c> (fallback, lỗi CutOut…). Gọi TỰ ĐỘNG sau mỗi lần Build.</summary>
+        public static void WriteBuildReport(ClassificationResult cls, BuildResult build, string path)
         {
-            if (build == null || build.Report.Count == 0) return;
-            string rp = BuildOutputPath("BuildReport").Replace(".json", ".txt");
-            File.WriteAllText(rp, string.Join("\n", build.Report), System.Text.Encoding.UTF8);
-            ed?.WriteMessage($"\n{LOG_PREFIX} Build report: {rp}\n");
-            OpenFile(rp);
+            var parts = build.Parts.Select(p => (object)new JsonObject
+            {
+                { "handle", p.Handle }, { "type", p.Type }, { "code", p.Code ?? "" }, { "built", p.Built },
+                { "minX", Round(p.MinX) }, { "minY", Round(p.MinY) }, { "minZ", Round(p.MinZ) },
+                { "maxX", Round(p.MaxX) }, { "maxY", Round(p.MaxY) }, { "maxZ", Round(p.MaxZ) },
+                { "volume", Round(p.Volume) },
+            }).ToList();
+
+            var root = new JsonObject
+            {
+                { "panelBlockName", cls?.PanelBlockName ?? "" },
+                { "blockName", build.BlockName ?? "" },
+                { "solidCount", build.SolidCount },
+                { "partCount", build.Parts.Count },
+                { "builtCount", build.Parts.Count(p => p.Built) },
+                { "skippedCount", build.Parts.Count(p => !p.Built) },
+                { "kept", build.Kept },
+                { "parts", parts },
+                { "report", build.Report.Select(r => (object)r).ToList() },
+            };
+            File.WriteAllText(path, JsonWriter.Serialize(root), System.Text.Encoding.UTF8);
         }
 
         /// <summary>Ghi report phân loại chi tiết ra JSON (breakdown theo từng loại/instance).</summary>
@@ -102,6 +117,23 @@ namespace MCG_3DPanel.Commands
                     { "handle", p.Id.Handle.ToString() },
                 }).ToList();
 
+            // Danh sách TẤT CẢ part kèm hình học WCS + handle — để chẩn đoán chính xác (belly, kề nhau…).
+            // "verts": toạ độ đỉnh polygon THẬT (không phải bbox) — cần để tính overlap chính xác với
+            // FacePlate loe (bbox của FacePlate rộng hơn nhiều hình dạng thật, xem skill panel-parts-reference).
+            var parts = result.Parts.Select(p => (object)new JsonObject
+            {
+                { "handle", p.Id.IsNull ? "" : p.Id.Handle.ToString() },
+                { "type", p.Type.ToString() },
+                { "code", p.Code ?? "" },
+                { "layer", p.Layer }, { "color", p.ColorIndex }, { "nv", p.VertexCount },
+                { "thk", Math.Round(p.FootprintThickness, 1) }, { "len", Math.Round(p.MemberLength, 1) },
+                { "cx", Math.Round(p.Centroid.X, 1) }, { "cy", Math.Round(p.Centroid.Y, 1) },
+                { "w", Math.Round(p.Bounds.MaxPoint.X - p.Bounds.MinPoint.X, 1) },
+                { "h", Math.Round(p.Bounds.MaxPoint.Y - p.Bounds.MinPoint.Y, 1) },
+                { "bx", Math.Round(p.BellyDir.X, 3) }, { "by", Math.Round(p.BellyDir.Y, 3) },
+                { "verts", VertsArray(p) },
+            }).ToList();
+
             var root = new JsonObject
             {
                 { "panelBlockName", result.PanelBlockName },
@@ -114,15 +146,25 @@ namespace MCG_3DPanel.Commands
                 { "brackets", brackets },
                 { "flatBarCount", result.OfType(PartType.FlatBar).Count() },
                 { "hpCount", result.OfType(PartType.HP).Count() },
+                { "parts", parts },
             };
             File.WriteAllText(path, JsonWriter.Serialize(root), System.Text.Encoding.UTF8);
         }
+
+        private static object Round(double? v) => v.HasValue ? (object)Math.Round(v.Value, 1) : null;
 
         private static double RunLength(List<PanelPart> run)
         {
             var ext = run[0].Bounds;
             for (int i = 1; i < run.Count; i++) ext.AddExtents(run[i].Bounds);
             return Math.Max(ext.MaxPoint.X - ext.MinPoint.X, ext.MaxPoint.Y - ext.MinPoint.Y);
+        }
+
+        private static List<object> VertsArray(PanelPart p)
+        {
+            var v = p.Vertices;
+            if (v == null) return new List<object>();
+            return v.Select(pt => (object)new List<object> { Math.Round(pt.X, 1), Math.Round(pt.Y, 1) }).ToList();
         }
 
         private static string BBoxStr(PanelPart p)

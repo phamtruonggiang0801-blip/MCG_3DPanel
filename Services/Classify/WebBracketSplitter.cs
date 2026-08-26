@@ -7,17 +7,26 @@ using MCG_3DPanel.Models;
 namespace MCG_3DPanel.Services.Classify
 {
     /// <summary>
-    /// BƯỚC 2 — Tách layer Web (AM_0) thành **Web chính** vs **Bracket** vs **web-tier**:
-    ///  - dài (&gt; WEB_MIN_LEN) → Web chính;
-    ///  - ngắn **và CHẠM HP/Flat Bar** → Bracket (mọi bậc dày: OB/OB1/FB…);
-    ///  - ngắn **không chạm** (đoạn web inline đổi dày) → web-tier, vẫn là Web.
+    /// BƯỚC 2 — Tách layer Web (AM_0) thành **Web chính** vs **Bracket** vs **web-tier**, theo ĐÚNG
+    /// định nghĩa vật lý của mã bracket (OB/IB/OB1.../FB): **1 đầu mút gắn vào Web (hay member AM_0
+    /// khác — tier/Plate/Bracket…), đầu KIA gắn vào HP hoặc Flat Bar**. Nếu CẢ HAI đầu đều gắn vào
+    /// AM_0 khác (không đầu nào chạm HP/FB) ⇒ chỉ là đoạn NỐI TIẾP của Web, không phải Bracket —
+    /// bất kể dài/ngắn, collinear hay chênh dày ra sao (xem <see cref="ClassifyUtil.IsBracketPattern"/>).
     ///
-    /// ⚠️ KHÔNG dùng chiều dày để phân loại (OB1 dày 10 vẫn là bracket) và KHÔNG dùng collinear
-    /// (nhiều OB collinear với web). Xem skill bracket-identification mục 1.
+    /// ⚠️ Dùng ĐOẠN TÂM thật (Vertices) cho từng đầu mút — không phải bbox — nên xử lý đúng cả member
+    /// CHÉO (VD đoạn vát ở khúc cua panel) mà cách cũ (collinear theo trục X/Y) không nhận ra được.
+    /// Kiểm chứng 7D-17C: khớp tuyệt đối 108/108 part AM_0. Xem skill panel-parts-reference mục 4d/6.
     /// </summary>
     internal static class WebBracketSplitter
     {
-        public static void Split(List<PanelPart> webCands, List<PanelPart> hpParts,
+        /// <param name="webCands">Phần AM_0 CHƯA quyết định — sẽ tách thành Web/Bracket ở đây.</param>
+        /// <param name="allAm0">TOÀN BỘ AM_0 của panel (kể cả phần đã quyết định BackingPlate/ClosedPlate/
+        /// CutOut trước đó) — làm "mốc" cho <see cref="ClassifyUtil.IsBracketPattern"/> khi xét đầu mút p
+        /// có chạm member AM_0 khác không. ⚠️ PHẢI dùng allAm0 (không phải webCands) cho việc này: 1 đầu
+        /// bracket có thể chạm đúng 1 ClosedPlate/BackingPlate (đã bị loại khỏi webCands ở bước trước) —
+        /// dùng webCands sẽ "mất dấu" match đó và gán nhầm Bracket thành Web (đã xảy ra thật: 38EF9 chạm
+        /// ClosedPlate 38E4B ở 1 đầu, bị gán nhầm Web khi otherAm0 chỉ truyền webCands).</param>
+        public static void Split(List<PanelPart> webCands, List<PanelPart> allAm0, List<PanelPart> hpParts,
             List<PanelPart> fbParts, ClassificationResult result)
         {
             var webPieces = new List<PanelPart>();
@@ -25,9 +34,10 @@ namespace MCG_3DPanel.Services.Classify
             foreach (var p in webCands)
             {
                 bool isShort = p.MemberLength < ClassifyUtil.WEB_MIN_LEN;
-                bool touches = hpParts.Any(h => ClassifyUtil.Adjacent(p, h, ClassifyUtil.ADJ_TOL))
-                            || fbParts.Any(f => ClassifyUtil.Adjacent(p, f, ClassifyUtil.ADJ_TOL));
-                if (isShort && touches) { p.Type = PartType.Bracket; brkPieces.Add(p); }
+                bool isBracket = isShort
+                    && ClassifyUtil.IsBracketPattern(p, allAm0, hpParts, fbParts, ClassifyUtil.ADJ_TOL);
+
+                if (isBracket) { p.Type = PartType.Bracket; brkPieces.Add(p); }
                 else { p.Type = PartType.Web; webPieces.Add(p); }
             }
             GroupWebRuns(webPieces);

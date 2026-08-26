@@ -16,8 +16,10 @@ namespace MCG_3DPanel.Services
     /// </summary>
     public interface IGeProfileService
     {
-        /// <summary>Outline web GE (điểm 2D local + bulge), kín. flanged → toe đáy sắc (không R30).</summary>
-        List<VertexBulge> GeOutline(bool flanged, double L, double H, double Lb, double dend);
+        /// <summary>Outline web GE (điểm 2D local + bulge), kín. flanged → toe đáy sắc (không R30).
+        /// squareCorner → Flange/FacePlate đỡ vươn xa hơn cả member (overhang bị kẹp trần L−30): bỏ hẳn
+        /// R30, hạ thẳng đứng từ tiếp điểm R50 xuống đáy, gặp đáy tại góc vuông 90° (không "vươn" theo Lb).</summary>
+        List<VertexBulge> GeOutline(bool flanged, double L, double H, double Lb, double dend, bool squareCorner);
 
         /// <summary>Đoạn free-edge (mép dưới, để dựng flange 50×10): tiếp điểm trên (gần HP) → toe đáy.</summary>
         void FreeEdge(bool flanged, double L, double H, double Lb, double dend, out Point2d top, out Point2d bot);
@@ -41,11 +43,11 @@ namespace MCG_3DPanel.Services
             public bool Flanged;
         }
 
-        private static Geo Solve(bool flanged, double L, double H, double Lb, double dend)
+        private static Geo Solve(bool flanged, double L, double H, double Lb, double dend, bool squareCorner)
         {
             var g = new Geo { Flanged = flanged };
             g.P = new Point2d(L - Doan, -dend);
-            g.FlangeToe = new Point2d(Lb, -H);
+            g.FlangeToe = new Point2d(Lb, -H);   // squareCorner ghi đè bằng TanFree.X bên dưới
 
             // Hướng free-edge từ P xuống dưới (u) + điểm kết dưới.
             Vector2d u;
@@ -53,6 +55,16 @@ namespace MCG_3DPanel.Services
             {
                 u = (g.FlangeToe - g.P).GetNormal();     // free-edge tới toe sắc
                 g.BotTangent = g.FlangeToe;
+            }
+            else if (squareCorner)
+            {
+                // Flange/FacePlate đỡ vươn xa hơn cả member (overhang > L−30, "Flange dài hơn"): không
+                // còn ý nghĩa "ôm" theo Lb nữa → bỏ hẳn R30, hạ THẲNG ĐỨNG từ tiếp điểm R50 xuống đáy,
+                // gặp đáy tại góc vuông 90°. Tránh vòng lặp R30/TangentDir vốn giả định Cb=(Lb+R30,−H)
+                // luôn cách xa đáy — khi Lb bị kẹp sát L, Cb dịch sát mép ngoài member, khiến vòng tròn
+                // R30 lấn XUỐNG DƯỚI đáy H thật (kiểm chứng: GE 38E42, Lb kẹp 793.5, BotTangent.y tính
+                // ra ≈−376.2, vượt quá −H=−374 ~2.2mm → outline tự cắt ngược lên FlangeToe).
+                u = new Vector2d(0, -1);
             }
             else
             {
@@ -74,14 +86,20 @@ namespace MCG_3DPanel.Services
             Vector2d bis = (d1 + u).GetNormal();
             g.R50c = g.P + bis * (R50 / Math.Sin(half));
             g.BR50 = ArcBulge(g.R50c, g.TanLedge, g.TanFree);
+
+            if (squareCorner)
+            {
+                g.BotTangent = new Point2d(g.TanFree.X, -H);   // hạ thẳng đứng từ R50 xuống đáy
+                g.FlangeToe = g.BotTangent;                     // đóng góc vuông ngay đây, không R30
+            }
             return g;
         }
 
-        public List<VertexBulge> GeOutline(bool flanged, double L, double H, double Lb, double dend)
+        public List<VertexBulge> GeOutline(bool flanged, double L, double H, double Lb, double dend, bool squareCorner)
         {
             if (L <= Doan + 1 || H <= dend + 1 || Lb < 0)
                 return Rect(L, H);
-            Geo g = Solve(flanged, L, H, Lb, dend);
+            Geo g = Solve(flanged, L, H, Lb, dend, squareCorner);
 
             var o = new List<VertexBulge>(9)
             {
@@ -91,8 +109,8 @@ namespace MCG_3DPanel.Services
                 new VertexBulge(g.TanLedge.X, g.TanLedge.Y, g.BR50),       // ledge → R50
                 new VertexBulge(g.TanFree.X, g.TanFree.Y, 0),             // R50 → free-edge
             };
-            if (flanged)
-                o.Add(new VertexBulge(g.FlangeToe.X, g.FlangeToe.Y, 0));   // free-edge → toe SẮC
+            if (flanged || squareCorner)
+                o.Add(new VertexBulge(g.FlangeToe.X, g.FlangeToe.Y, 0));   // free-edge → toe SẮC/vuông 90°
             else
             {
                 o.Add(new VertexBulge(g.BotTangent.X, g.BotTangent.Y, g.BR30));  // free-edge → R30
@@ -104,7 +122,7 @@ namespace MCG_3DPanel.Services
 
         public void FreeEdge(bool flanged, double L, double H, double Lb, double dend, out Point2d top, out Point2d bot)
         {
-            Geo g = Solve(flanged, L, H, Lb, dend);
+            Geo g = Solve(flanged, L, H, Lb, dend, false);   // chỉ gọi khi flanged=true → squareCorner luôn false
             top = g.TanFree; bot = g.BotTangent;
         }
 

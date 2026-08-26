@@ -21,9 +21,11 @@ namespace MCG_3DPanel.Services
         /// F=leg-on-Flange; thk=chiều dày (→ Rb=2·thk, đoạn-dày=thk); under50=overhang&lt;50 (H=Huse, F=15);
         /// dtop=chiều cao mặt đầu span (OB=HP−15 · IB=HP−30 · FB=FlatBar−15);
         /// hpLedge=đoạn ngang đầu span trước R30 (IB=15, OB/FB=0); flanged=có gấp lip → toe thêm 18mm+Rb+dày.
+        /// squareCorner=Flange đỡ vươn xa hơn cả bracket (F bị kẹp trần S−R30): bỏ R30 dưới, hạ thẳng
+        /// đứng góc vuông 90° thay vì "ôm" theo F — toe trên (Dtop/R30 gần HP) giữ nguyên không đổi.
         /// </summary>
         List<VertexBulge> BracketOutline(bool under50, double spanS, double heightH, double flangeF, double thk,
-            double dtop, double hpLedge, bool flanged);
+            double dtop, double hpLedge, bool flanged, bool squareCorner);
     }
 
     public struct VertexBulge
@@ -39,9 +41,9 @@ namespace MCG_3DPanel.Services
         private const double FlangeSeg = 18.0; // đoạn thẳng R30→Rb (∥ free-edge)
 
         public List<VertexBulge> BracketOutline(bool under50, double S, double H, double F, double thk,
-            double dtop, double hpLedge, bool flanged)
+            double dtop, double hpLedge, bool flanged, bool squareCorner)
         {
-            if (!flanged) return R30Only(S, H, F, dtop, hpLedge);
+            if (!flanged) return R30Only(S, H, F, dtop, hpLedge, squareCorner);
             if (under50) return TemplateUnder50(S, H, F);        // stub nâng (hiếm) — template thk6, Dtop=105
             return FlangedToe(S, H, F, thk, dtop, hpLedge);      // over-50: parametric, scale dày + Dtop/ledge
         }
@@ -65,7 +67,7 @@ namespace MCG_3DPanel.Services
 
             Vector2d ctr = cR30B - cR30T;
             if (ctr.Length < 2.0 * R + 2.0 * Rb + seg + thk)   // quá ngắn cho chuỗi toe → R30 đơn
-                return R30Only(S, H, F, dtop, ledge);
+                return R30Only(S, H, F, dtop, ledge, false);
 
             Vector2d u = ctr.GetNormal();                       // dọc free-edge (top→bot)
             var n = new Vector2d(u.Y, -u.X);
@@ -102,10 +104,29 @@ namespace MCG_3DPanel.Services
         }
 
         // ─── KHÔNG flanged: chỉ R30 (2 cung tiếp tuyến chung free-edge thẳng) ───
-        private static List<VertexBulge> R30Only(double S, double H, double F, double dtop, double ledge)
+        private static List<VertexBulge> R30Only(double S, double H, double F, double dtop, double ledge, bool squareCorner)
         {
             double R = ToeR;
             var cTop = new Point2d(S - ledge, -dtop - R);
+            var tLegTop = new Point2d(S - ledge, -dtop);
+
+            if (squareCorner)
+            {
+                // Flange đỡ vươn xa hơn cả bracket (F bị kẹp sát S−R30, "Flange dài hơn"): bỏ hẳn R30
+                // dưới — hạ THẲNG ĐỨNG từ tiếp tuyến R30 trên xuống đáy, gặp đáy tại góc vuông 90°. Top
+                // (R30 gần HP/span) giữ nguyên không đổi. Tương tự squareCorner của GE (xem GeProfileService
+                // + skill girder-end mục 6c) — tránh vòng tròn R30 dưới bị đẩy sát mép, lấn qua đáy.
+                var tFreeSq = new Point2d(cTop.X - R, cTop.Y);   // tiếp tuyến khi free-edge thẳng đứng u=(0,−1)
+                double bTopSq = ArcBulge(cTop, tLegTop, tFreeSq);
+                var osq = new List<VertexBulge>(7);
+                TopSpan(osq, S, dtop, ledge);
+                osq.Add(new VertexBulge(tLegTop.X, tLegTop.Y, bTopSq));
+                osq.Add(new VertexBulge(tFreeSq.X, tFreeSq.Y, 0));
+                osq.Add(new VertexBulge(tFreeSq.X, -H, 0));
+                osq.Add(new VertexBulge(0, -H, 0));
+                return osq;
+            }
+
             var cBot = new Point2d(F + R, -H);
 
             Vector2d ctr = cBot - cTop;
@@ -118,7 +139,6 @@ namespace MCG_3DPanel.Services
                 n = n.Negate();
 
             Point2d tFreeTop = cTop + n * R, tFreeBot = cBot + n * R;
-            var tLegTop = new Point2d(S - ledge, -dtop);
             var tLegBot = new Point2d(F, -H);
             double bTop = ArcBulge(cTop, tLegTop, tFreeTop);
             double bBot = ArcBulge(cBot, tFreeBot, tLegBot);

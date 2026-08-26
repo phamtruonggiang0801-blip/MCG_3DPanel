@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using MCG_3DPanel.Models;
@@ -56,9 +57,22 @@ namespace MCG_3DPanel.Services
                 };
 
                 int made = 0;
+                Solid3d topPlateSolid = null;
+                BuiltPartInfo topPlateInfo = null;
                 foreach (var part in cls.Parts)
                 {
+                    string handle = part.Id.Handle.ToString();
+
+                    if (part.Type == PartType.CutOut)
+                    {
+                        // Xử lý riêng bên dưới — trừ vào Top Plate, không tự thành solid ở vòng này.
+                        result.Parts.Add(new BuiltPartInfo { Handle = handle, Type = part.Type.ToString(), Code = part.Code ?? "", Built = false });
+                        continue;
+                    }
+
                     Solid3d sol = Dispatch(ctx, part);
+                    var info = new BuiltPartInfo { Handle = handle, Type = part.Type.ToString(), Code = part.Code ?? "", Built = sol != null };
+                    result.Parts.Add(info);
                     if (sol == null) continue;
 
                     // Giữ nguyên Layer + Color gốc của đối tượng 2D (view tổng quát rõ hơn).
@@ -67,7 +81,21 @@ namespace MCG_3DPanel.Services
                     btr.AppendEntity(sol);
                     tr.AddNewlyCreatedDBObject(sol, true);
                     made++;
+                    FillGeometry(info, sol);
+
+                    if (part.Type == PartType.TopPlate) { topPlateSolid = sol; topPlateInfo = info; }
                 }
+
+                // CutOut = lỗ khoét — trừ (boolean) thẳng vào solid Top Plate đã dựng, không phải part riêng.
+                if (topPlateSolid != null)
+                {
+                    var cutOk = CutOutBuilder.ApplyCutOuts(ctx, topPlateSolid, input.TopPlateThickness);
+                    foreach (var info in result.Parts)
+                        if (cutOk.Contains(info.Handle)) info.Built = true;
+                    if (topPlateInfo != null) FillGeometry(topPlateInfo, topPlateSolid); // cập nhật bbox/thể tích SAU khi khoét
+                }
+                else if (cls.OfType(PartType.CutOut).Any())
+                    ctx.Report.Add("[CutOut] Không có solid Top Plate để khoét — bỏ qua toàn bộ CutOut.");
 
                 var ms = (BlockTableRecord)tr.GetObject(
                     SymbolUtilityServices.GetBlockModelSpaceId(db), OpenMode.ForWrite);
@@ -85,6 +113,23 @@ namespace MCG_3DPanel.Services
             }
             Debug.WriteLine($"{LOG_PREFIX} Dựng {result.SolidCount} solid -> block {result.BlockName}.");
             return result;
+        }
+
+        /// <summary>Đọc bbox WCS + thể tích thật của solid vào <paramref name="info"/> — im lặng bỏ qua
+        /// nếu AutoCAD không tính được (không làm hỏng build). Dùng để chẩn đoán "built=true nhưng thực
+        /// ra rỗng/lệch chỗ" (VD Top Plate bị CutOut khoét lố mất gần hết).</summary>
+        private static void FillGeometry(BuiltPartInfo info, Solid3d sol)
+        {
+            try
+            {
+                Extents3d ext = sol.GeometricExtents;
+                info.MinX = ext.MinPoint.X; info.MinY = ext.MinPoint.Y; info.MinZ = ext.MinPoint.Z;
+                info.MaxX = ext.MaxPoint.X; info.MaxY = ext.MaxPoint.Y; info.MaxZ = ext.MaxPoint.Z;
+            }
+            catch { /* để null nếu không lấy được bounds */ }
+
+            try { info.Volume = sol.MassProperties.Volume; }
+            catch { /* để null nếu AutoCAD không tính được (hình phức tạp) */ }
         }
 
         /// <summary>Chọn builder đầu tiên nhận part; nếu builder trả null thì thử builder kế (fallback).</summary>

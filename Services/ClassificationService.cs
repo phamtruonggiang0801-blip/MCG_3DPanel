@@ -81,6 +81,7 @@ namespace MCG_3DPanel.Services
                 }
                 ObjectId topKey = top != null ? OwnerBlock(top) : ObjectId.Null;
                 var faceplates = result.OfType(PartType.FacePlate).ToList();
+                var longWebs = am0.Where(p => p.MemberLength > ClassifyUtil.WEB_MIN_LEN).ToList();
 
                 // CutOut layer-0: polyline layer 0 khác Top Plate, cùng block Top Plate, nằm HẲN trong biên.
                 if (top != null)
@@ -92,25 +93,44 @@ namespace MCG_3DPanel.Services
                     }
 
                 // AM_0: tách CutOut / BackingPlate / ClosedPlate; phần còn lại mới đưa vào Web/Bracket.
+                // ⚠️ CutOut xét ĐẦU TIÊN khi "cùng owner block với biên Top Plate" (xác nhận kỹ sư
+                // 2026-08-25: "Lỗ khoét của Top Plate sẽ được để cùng Polyline của Block Top Plate") —
+                // đây là tín hiệu TỔ CHỨC BẢN VẼ (part nằm trong block CHUYÊN DÙNG cho Top Plate, không
+                // phải block Structure chứa Web/Bracket thật), đáng tin hơn hẳn heuristic hình học
+                // (IsClosedPlate/IsBackingPlate chỉ xét overlap/kề — 1 lỗ khoét tình cờ nằm ĐÈ lên 1 Web/
+                // FacePlate bên dưới trong plan view vẫn có thể khớp nhầm). Bug thật đã xảy ra: panel
+                // 7D-17C có 6 lỗ khoét khác (`38DDD`,`38DE0`..`38DE4`, cùng block "7D-17C_Top Plate" với
+                // biên `38DDC`) bị rơi vào ClosedPlate/Web (đứng thẳng, extrude −WebHeight xuống đáy)
+                // thay vì bị trừ (subtract) như lỗ, vì check block-owner trước đó đặt SAU CÙNG.
+                // (Trước đây, lúc `top` còn bị nhận nhầm — xem Bug #8 — đặt check này lên đầu từng "cướp
+                // nhầm" 1 ClosedPlate/Bracket thật, vì `topKey` khi đó trỏ SAI sang block Structure. Giờ
+                // `top` đã đúng block Top Plate riêng biệt (chỉ chứa biên+lỗ+mốc COG, không có Web/Bracket
+                // thật) nên rủi ro đó không còn.)
                 foreach (var p in am0)
                 {
-                    if (top != null && OwnerBlock(p) == topKey
-                        && ClassifyUtil.StrictlyInside(p, top, ClassifyUtil.EDGE_TOL))
+                    if (top != null && OwnerBlock(p) == topKey && ClassifyUtil.StrictlyInside(p, top, ClassifyUtil.EDGE_TOL))
                     { p.Type = PartType.CutOut; result.Parts.Add(p); continue; }
 
-                    if (PlateDetector.IsBackingPlate(p))
+                    if (PlateDetector.IsBackingPlate(p, faceplates, longWebs))
                     { p.Type = PartType.BackingPlate; result.Parts.Add(p); continue; }
 
                     bool touches = hpParts.Any(h => ClassifyUtil.Adjacent(p, h, ClassifyUtil.ADJ_TOL))
                                 || fbParts.Any(f => ClassifyUtil.Adjacent(p, f, ClassifyUtil.ADJ_TOL));
-                    if (!touches && PlateDetector.IsClosedPlate(p, faceplates))
+                    if (!touches && PlateDetector.IsClosedPlate(p, faceplates, longWebs))
+                    { p.Type = PartType.ClosedPlate; result.Parts.Add(p); continue; }
+
+                    // "Chạm" nhưng KHÔNG đáng tin (bbox chéo của HP bị phồng, hoặc member khớp lại
+                    // NGẮN HƠN p — phi lý làm chỗ hàn) ⇒ vẫn xét ClosedPlate, đòi hỏi bằng chứng MẠNH
+                    // hơn hẳn (đa giác FacePlate thật ≥90%, không phải bbox 25%). Xem ClassifyUtil.HasOnlyWeakTouch.
+                    if (touches && ClassifyUtil.HasOnlyWeakTouch(p, hpParts, fbParts, ClassifyUtil.ADJ_TOL)
+                        && PlateDetector.IsClosedPlateStrict(p, faceplates))
                     { p.Type = PartType.ClosedPlate; result.Parts.Add(p); continue; }
 
                     webCands.Add(p);
                 }
 
                 // 2. Web vs Bracket
-                WebBracketSplitter.Split(webCands, hpParts, fbParts, result);
+                WebBracketSplitter.Split(webCands, am0, hpParts, fbParts, result);
 
                 // 2b. Tách Girder End (GE) khỏi Bracket (collinear + liên tục với Web chính)
                 GirderEndDetector.Apply(result, hpParts, fbParts);

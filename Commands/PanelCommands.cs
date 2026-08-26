@@ -90,13 +90,11 @@ namespace MCG_3DPanel.Commands
                 ed.WriteMessage($"\n{LOG_PREFIX} Đã dựng {build.SolidCount} solid ({cls.Summary()}). Block: {build.BlockName}\n");
                 ed.Regen();
 
-                // Report chẩn đoán: TẮT. Bật khi cần debug:
-                // ReportOutput.WriteBuildReport(build, ed);
-
                 if (build.SolidCount == 0)
                 {
                     ed.WriteMessage($"\n{LOG_PREFIX} Không dựng được solid nào — bỏ.\n");
                     EraseBuild(db, build);
+                    ExportBuildReport(cls, build, ed);
                     return build;
                 }
 
@@ -118,8 +116,18 @@ namespace MCG_3DPanel.Commands
                 }
                 ed.Regen();
                 ed.WriteMessage(keep ? "\nĐã giữ 3D, xoá block 2D.\n" : "\nĐã bỏ mô hình 3D.\n");
+                ExportBuildReport(cls, build, ed);
                 return build;
             }
+        }
+
+        /// <summary>Xuất report kết quả dựng 3D ra JSON (tự động sau mỗi Build) rồi mở.</summary>
+        private static void ExportBuildReport(ClassificationResult cls, BuildResult build, Editor ed)
+        {
+            string outPath = ReportOutput.BuildOutputPath("Build");
+            ReportOutput.WriteBuildReport(cls, build, outPath);
+            ed.WriteMessage($"\n{LOG_PREFIX} Build report: {outPath}\n");
+            ReportOutput.OpenFile(outPath);
         }
 
         // ─── Tiện ích tương tác ───────────────────────────────────────────

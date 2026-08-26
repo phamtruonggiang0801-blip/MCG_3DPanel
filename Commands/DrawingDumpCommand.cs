@@ -126,7 +126,7 @@ namespace MCG_3DPanel.Commands
                 }
                 return new JsonObject
                 {
-                    { "type", "Polyline" }, { "layer", L }, { "color", c },
+                    { "type", "Polyline" }, { "handle", ent.Handle.ToString() }, { "layer", L }, { "color", c },
                     { "closed", pl.Closed }, { "nv", pl.NumberOfVertices }, { "vertices", verts },
                 };
             }

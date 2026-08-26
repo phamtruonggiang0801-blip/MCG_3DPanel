@@ -60,6 +60,13 @@ Bracket OB = tấm knee đứng hình thang, 3 cạnh:
 - Đầu kia chạm **HP** (AM_3, màu30) → **OB / IB**.
 - Adjacency bbox (tol ~12mm).
 
+⚠️ **Mã CODE THẬT trên `PanelPart.Code` là `"BF"`, KHÔNG PHẢI `"FB"`** (`BracketCoder.cs` đổi tên
+2026-08-25, "FB" chỉ còn là tên gọi/label trong tài liệu này + tên block `BF_type1/2`). Bug đã xảy ra
+thật: `BracketBuilder.CanBuild`/`KneeDtop` còn kiểm `StartsWith("FB")` theo tài liệu cũ → mọi bracket
+FlatBar bị `CanBuild=false`, rơi về hộp chữ nhật (`PlateBuilder` fallback) thay vì hình knee thật — sửa
+bằng cách đổi 2 chỗ đó sang `StartsWith("BF")` (2026-08-25). **Nếu sửa/thêm code liên quan tới bracket
+FlatBar, LUÔN kiểm tra đúng chuỗi `"BF"` trong `BracketCoder.cs`, không tin theo label "FB" trong skill.**
+
 ## 4. CHIỀU ĐỔ kết cấu theo loại Panel (dùng cho HƯỚNG GẤP lip + OB/IB)
 
 **Trục X: LUÔN trái → phải (+X) cho MỌI loại panel.** Trục Y khác nhau:

@@ -13,6 +13,8 @@ namespace MCG_3DPanel.Services.Builders
     ///
     /// L = chiều dài mảnh (web→lưng HP/FB); H = Web height; Lb = overhang−15 (kẹp ≤ L−R30);
     /// Dend = member − 15 (lưng) / − 30 (bụng); D = √((L−Lb)²+(H−Dend)²) ⇒ flange nếu ≥ 350(thk6)/600(thk10).
+    /// Overhang &gt; L−R30 ("Flange đỡ dài hơn member") ⇒ squareCorner: bỏ R30, hạ thẳng đứng góc vuông
+    /// 90° từ R50 xuống đáy thay vì "ôm" theo Lb (xem <see cref="GeProfileService.Solve"/>).
     /// Xem skill girder-end (đã chốt số bằng DIM + Attribute GE.dwg).
     ///
     /// ⚠️ v1 flange: bar 50×10 dọc free-edge (chưa snip 15@30). Dend bụng (GE3/4) chờ mẫu.
@@ -39,16 +41,31 @@ namespace MCG_3DPanel.Services.Builders
                 double member = touchHp ? ctx.Input.HpHeight : ctx.Input.FlatBarHeight;
                 double dend = member - 15.0;                          // lưng −15 (bụng −30: GE3/4, chờ)
 
-                double lb = BracketBuilder.OverhangProj(part, ctx.Cls) - 15.0;
-                lb = Math.Min(lb, L - 30.0);
+                double rawLb = BracketBuilder.OverhangProj(part, ctx.Cls) - 15.0;
+                // Flange/FacePlate đỡ vươn xa hơn cả member (overhang chạm/vượt trần L−30, "Flange dài
+                // hơn"): không còn ý nghĩa "ôm" R30 theo Lb nữa — dựng góc vuông 90° thẳng đứng thay vì
+                // R30 (xem GeProfileService.Solve, nhánh squareCorner). Bỏ luôn khả năng flanged (bar
+                // 50×10) vì free-edge lúc này chỉ còn đoạn thẳng đứng ngắn, không phải cạnh chéo dài.
+                bool squareCorner = rawLb > L - 30.0;
+                double lb = Math.Min(rawLb, L - 30.0);
                 if (lb < 15.0) lb = 15.0;
 
-                double d = Math.Sqrt((L - lb) * (L - lb) + (H - dend) * (H - dend));
-                bool flanged = d >= (thk >= 8.0 ? 600.0 : 350.0);
+                double d = squareCorner ? 0.0 : Math.Sqrt((L - lb) * (L - lb) + (H - dend) * (H - dend));
+                bool flanged = !squareCorner && d >= (thk >= 8.0 ? 600.0 : 350.0);
 
-                var outline = ctx.GeProfile.GeOutline(flanged, L, H, lb, dend);
+                var outline = ctx.GeProfile.GeOutline(flanged, L, H, lb, dend, squareCorner);
                 Region reg = GeometryUtil.RegionFrom(outline);
-                if (reg == null) return null;
+                if (reg == null)
+                {
+                    // Ghi tham số TRƯỚC KHI bỏ — nếu không, thất bại sớm này hoàn toàn không để lại
+                    // dấu vết trong report (khác exception, có buildError riêng ở catch bên dưới).
+                    ctx.Report.Add(
+                        $"GE code={part.Code} {(touchHp ? "HP" : "FB")} L={L:0} H={H:0} thk={thk:0} " +
+                        $"Dend={dend:0} Lb={lb:0} D={d:0} flanged={flanged} squareCorner={squareCorner} " +
+                        $"center=({part.Centroid.X:0},{part.Centroid.Y:0}) buildError: RegionFrom(outline)=null " +
+                        $"(outline={outline.Count} đỉnh, có thể tự cắt/suy biến với tham số này)");
+                    return null;
+                }
 
                 var sol = new Solid3d();
                 var sob = new SweepOptionsBuilder();
@@ -67,7 +84,7 @@ namespace MCG_3DPanel.Services.Builders
 
                 ctx.Report.Add(
                     $"GE code={part.Code} {(touchHp ? "HP" : "FB")} L={L:0} H={H:0} thk={thk:0} " +
-                    $"Dend={dend:0} Lb={lb:0} D={d:0} flanged={flanged} flange={flangeInfo} " +
+                    $"Dend={dend:0} Lb={lb:0} D={d:0} flanged={flanged} squareCorner={squareCorner} flange={flangeInfo} " +
                     $"center=({part.Centroid.X:0},{part.Centroid.Y:0}) lumps={GeometryUtil.CountLumps(sol)}");
                 return sol;
             }

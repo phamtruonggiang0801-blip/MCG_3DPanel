@@ -110,6 +110,15 @@ Bracket knee cần **3 tham số độc lập**, hệ toạ độ local: (0,0)=W
   - under-50 flanged (hiếm): giữ **template** `OB_type2` (thk6) — `TemplateUnder50`.
 - **KHÔNG flanged**: **chỉ R30** (không Rb/đoạn). Cài `R30Only`.
 - Build3DService tính `flanged = freeEdge ≥ bendMin` + truyền `thk` → `BracketOutline(...,thk,flanged)`.
+- ⚠️ **squareCorner** (xác nhận kỹ sư, 2026-08-25): khi **Flange/FacePlate đỡ vươn dài hơn cả bracket**
+  (`overhang−15 > S−R30`, tức `F` bị kẹp trần `S−30`) → **bỏ R30 dưới**, hạ **THẲNG ĐỨNG** từ tiếp điểm
+  R30 trên xuống đáy, gặp đáy tại **góc vuông 90°** (không "ôm" theo `F` nữa). Toe trên (R30 gần
+  HP/span, `Dtop`) **giữ nguyên không đổi** — chỉ Toe-end Flange (dưới) đổi. Quy tắc **chỉ áp dụng
+  GE + Bracket** (2 loại có khái niệm toe/overhang) — **KHÔNG áp dụng ClosedPlate/BackingPlate/Plate**
+  (các loại này extrude thẳng, không có toe). Cùng nguyên lý với GE (xem [[girder-end]] mục 6c) —
+  `ProfileService.R30Only` nhánh `squareCorner`: `u=(0,−1)`, tiếp điểm = `cTop + (−R,0)`, rồi thẳng
+  đứng xuống `y=−H`. Kiểm tay (S=594,Dtop=105,F kẹp 564): tiếp điểm `(564,−135)` → thẳng xuống
+  `(564,−374)` → `(0,−374)`, bulge góc trên `0.414` (cung 90° chuẩn) — không tự cắt, không vượt đáy.
 
 **NGUYÊN LÝ TOE-END R30 (dùng cho cả 2 chế độ — kiểm chứng block explode, khớp 1:1):**
 - **Mỗi toe-end = 1 cung R30 CỐ ĐỊNH** (mọi chiều dày OB/OB1 — R30 KHÔNG theo dày, khác Rb).
