@@ -63,12 +63,19 @@ namespace MCG_3DPanel.Services
                             am0.Add(p);
                             break;
                         case ClassifyUtil.LAYER_FBHP:
-                            if (p.ColorIndex == ClassifyUtil.COLOR_HP) { p.Type = PartType.HP; hpParts.Add(p); }
-                            else { p.Type = PartType.FlatBar; fbParts.Add(p); }
-                            result.Parts.Add(p);
+                            if (p.ColorIndex == ClassifyUtil.COLOR_HP) { p.Type = PartType.HP; hpParts.Add(p); result.Parts.Add(p); }
+                            else { p.Type = PartType.FlatBar; fbParts.Add(p); }   // FB: KHÔNG add ngay — chờ tách tại chỗ giao HP (bên dưới).
                             break;
                     }
                 }
+
+                // FlatBar: người vẽ 2D thường kéo 1 polyline liên tục xuyên qua HP cho nhanh, nhưng
+                // THỰC TẾ FB không liên tục — nó kết thúc tại đúng vị trí giao với HP (xác nhận kỹ sư,
+                // xem skill sniped-end). Tách trước khi add vào result.Parts, để mỗi đoạn có 2 đầu mút
+                // THẬT — cần cho FlatBarBuilder xác định đầu nào tự do (cần vát) / đầu nào chạm HP.
+                // Không có HP nào cắt ngang thật → trả nguyên polyline gốc (không đổi hành vi cũ).
+                fbParts = FlatBarSplitter.Split(fbParts, hpParts);
+                result.Parts.AddRange(fbParts);
 
                 // Top Plate = AREA lớn nhất trên layer 0.
                 PanelPart top = null;

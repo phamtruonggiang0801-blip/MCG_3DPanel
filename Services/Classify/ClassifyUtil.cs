@@ -29,6 +29,8 @@ namespace MCG_3DPanel.Services.Classify
         public const double ADJ_TOL = 12.0;             // dung sai kề nhau (bracket chạm HP/FB)
         public const double TOL_GAP = 20.0;             // khe hở dọc trục khi gom Web collinear
         public const double TOL_PERP = 8.0;             // lệch ngang khi gom Web collinear
+        public const double FB_SPLIT_MARGIN = 20.0;     // FlatBarSplitter: điểm cắt HP phải cách 2 đầu mút FB ít nhất chừng này (mới coi là "cắt ngang giữa thân", không phải chạm đầu)
+        public const double FB_FREE_END_TOL = 30.0;     // FlatBarBuilder: đầu FB cách member khác (Web/HP/FB) ≤ 30mm mới coi là "không tự do" (không vát) — xác nhận kỹ sư, xem skill sniped-end
 
         /// <summary>Khoảng cách 2D từ điểm tới bbox (0 nếu nằm trong).</summary>
         public static double DistToBox(Point3d p, Extents3d b)
@@ -273,6 +275,47 @@ namespace MCG_3DPanel.Services.Classify
             bool NearHpFb(Point3d e) => hpParts.Any(h => DistToSegment(e, h) <= tol)
                                       || fbParts.Any(f => DistToSegment(e, f) <= tol);
             return (NearAm0(e1) && NearHpFb(e2)) || (NearHpFb(e1) && NearAm0(e2));
+        }
+
+        /// <summary>
+        /// <paramref name="h"/> (HP) CẮT NGANG THẬT qua thân <paramref name="p"/> (FlatBar) — không phải
+        /// chỉ chạm ở 1 đầu mút. Dùng cho <see cref="FlatBarSplitter"/>: người vẽ 2D thường kéo 1 polyline
+        /// FB LIÊN TỤC xuyên qua HP cho nhanh, nhưng THỰC TẾ FB không liên tục — nó kết thúc tại đúng vị
+        /// trí giao với HP ở cả 2 phía (xác nhận kỹ sư, xem skill sniped-end). Phải tách polyline FB tại
+        /// những chỗ này trước khi tìm "đầu tự do" — nếu không, code sẽ không nhận ra 2 đầu mới sinh ra ở
+        /// đó (chúng vẫn nằm giữa 1 polyline duy nhất, không phải Vertices/Endpoints thật).
+        ///
+        /// Điều kiện: bbox <paramref name="p"/>/<paramref name="h"/> có chồng lấn THẬT (không chỉ kề —
+        /// <see cref="Adjacent"/> nới rộng tol nên không đủ chặt ở đây), và điểm chồng lấn đó chiếu lên
+        /// trục dài của <paramref name="p"/> rơi NGHIÊM NGẶT vào khoảng giữa thân (cách 2 đầu mút ít nhất
+        /// <see cref="FB_SPLIT_MARGIN"/>) — nếu rơi sát 1 đầu mút, đó là chạm-đầu bình thường (đã có sẵn
+        /// cơ chế IsFreeEnd xử lý), không cần tách.
+        /// </summary>
+        public static bool CrossesThrough(PanelPart p, PanelPart h)
+        {
+            var (e1, e2) = Endpoints(p);
+            double L = e1.DistanceTo(e2);
+            if (L < 1e-6) return false;
+            Vector3d dir = (e2 - e1) / L;
+
+            if (OverlapArea(p, h) <= 0.0) return false;
+
+            Extents3d hb = h.Bounds;
+            double tmin = double.MaxValue, tmax = double.MinValue;
+            var corners = new[]
+            {
+                new Point3d(hb.MinPoint.X, hb.MinPoint.Y, 0), new Point3d(hb.MaxPoint.X, hb.MinPoint.Y, 0),
+                new Point3d(hb.MinPoint.X, hb.MaxPoint.Y, 0), new Point3d(hb.MaxPoint.X, hb.MaxPoint.Y, 0),
+            };
+            foreach (var c in corners)
+            {
+                double t = (c.X - e1.X) * dir.X + (c.Y - e1.Y) * dir.Y;
+                if (t < tmin) tmin = t;
+                if (t > tmax) tmax = t;
+            }
+            // Toàn bộ vùng chồng lấn của h nằm gọn ở 1 đầu mút p → chạm đầu, KHÔNG PHẢI cắt ngang giữa thân.
+            if (tmax <= FB_SPLIT_MARGIN || tmin >= L - FB_SPLIT_MARGIN) return false;
+            return true;
         }
     }
 }

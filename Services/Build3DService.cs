@@ -26,6 +26,7 @@ namespace MCG_3DPanel.Services
             new GirderEndBuilder(), // GE — đầu Web tại HP/FB
             new BracketBuilder(),   // Bracket có mã knee (OB/IB/FB)
             new HpBuilder(),        // HP tiết diện bulb thật
+            new FlatBarBuilder(),   // FlatBar — tự dựng TOÀN BỘ (vát Sniped End ở đầu tự do, hộp phẳng nếu không)
             new PlateBuilder(),     // TopPlate/Web/Flange/FacePlate/FlatBar + fallback
         };
 

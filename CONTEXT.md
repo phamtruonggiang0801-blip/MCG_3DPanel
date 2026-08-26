@@ -33,5 +33,8 @@ Quy tắc nhận diện / thông số / định vị: xem skill **`.claude/skill
 - **Phase 3 — Assemble & Replace**: gom Block 3D, thay block 2D, layer `Mechanical-AM_0` ByLayer.
 - **Phase 4 — Hoàn thiện**: xử lý lỗi, edge cases.
 
-Backlog (park): HP bulb profile, Bracket (OB/IB/FB + mã dày), Girder End, web nhiều chiều cao,
+Backlog (park): HP bulb profile, Bracket (OB/IB/FB + mã dày), web nhiều chiều cao,
 FB nhiều quy cách — chi tiết trong skill `panel-parts-reference`.
+
+Girder End (skill `girder-end`) và Sniped End FlatBar (skill `sniped-end`) đã cài đặt (2026-08-26) —
+chưa test trực quan trong AutoCAD, xem TODO trong từng skill.

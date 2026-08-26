@@ -48,7 +48,13 @@ namespace MCG_3DPanel.Services
 
         public double Area { get; set; }              // diện tích footprint (mm²)
         public double FootprintThickness { get; set; } // cạnh NGẮN của rectangle (mm)
-        public double MemberLength { get; set; }       // cạnh DÀI của rectangle (mm)
+        public double MemberLength { get; set; }       // cạnh DÀI của rectangle (mm) — của RIÊNG part này (sau khi tách, nếu có)
+
+        // Chỉ set cho PartType.FlatBar (FlatBarSplitter) — TỔNG chiều dài đường vẽ LIÊN TỤC gốc trong
+        // Plan View (TRƯỚC khi tách tại chỗ giao HP) — xác nhận kỹ sư: người vẽ 2D kéo 1 polyline liên
+        // tục xuyên qua HP, "chiều dài tổng" để so ngưỡng khoảng HP (Sniped End) là chiều dài đường vẽ
+        // đó, KHÔNG PHẢI MemberLength của riêng từng đoạn sau khi tách. Xem skill sniped-end.
+        public double FbTotalPlanLength { get; set; }
 
         public Point3d Centroid { get; set; }          // tâm bbox (WCS)
         public Extents3d Bounds { get; set; }          // bbox (WCS)

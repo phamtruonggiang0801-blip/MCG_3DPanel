@@ -200,7 +200,79 @@ namespace MCG_3DPanel.Services.Builders
             try { plate.BooleanOperation(BooleanOperationType.BoolUnite, lip); }
             catch { threw = true; }
             finally { lip.Dispose(); }
+
+            // Sniped End ở 2 đầu lip theo chiều dài (dọc free-edge) — xác nhận kỹ sư 2026-08-26 (thay
+            // cho chamfer 15×15 đơn giản ban đầu): tái dùng ĐÚNG công thức Sniped End của FlatBar (xem
+            // FlatBarBuilder/skill sniped-end), coi lipW như "chiều cao" (h_fb) và mép NGOÀI lip (xa tấm
+            // nhất) như "cạnh tự do". CHỈ có ý nghĩa nếu union lip vào tấm thành công.
+            if (!threw) SnipLipEnds(plate, A, dDir, nDir, diagLen, thk, Rb, lipW, sh, foldSign);
+
             return $"bend(fe={freeEdgeLen:0} lipW={lipW:0} Rb={Rb:0} diag={diagLen:0} unionThrew={threw})";
+        }
+
+        // Sniped End — CÙNG hằng số với FlatBarBuilder (FLAT_TOP=15mm cố định, góc 30°/60° cố định).
+        // Không dùng chung 1 nơi vì mỗi builder tự chứa (xem skill module-per-object) — đổi 1 trong 2
+        // chỗ nhớ đổi luôn chỗ kia nếu công thức Sniped End đổi.
+        private const double LIP_SNIP_FLAT = 15.0;
+        private static readonly double LIP_SNIP_RUN_FACTOR = Math.Tan(60.0 * Math.PI / 180.0);
+
+        /// <summary>
+        /// Sniped End ở 2 đầu dải lip (theo chiều dài, dọc free-edge — tại length=0 gần <paramref name="a"/>
+        /// và length=<paramref name="diagLen"/> ở đầu kia): mép NGOÀI lip (xa tấm nhất, "cạnh tự do" —
+        /// y=thk+Rb+lipW trong tiết diện <see cref="TryAddBendLip"/>, mirror nếu <paramref name="foldSign"/>&lt;0)
+        /// bị vát dần về gốc lip (chỗ nối bend, "cạnh hàn" — giữ nguyên) khi tới gần mỗi đầu, chỉ còn lại
+        /// đúng <see cref="LIP_SNIP_FLAT"/>=15mm ngay sát mặt đầu — CÙNG công thức/góc với Sniped End của
+        /// FlatBar (rise=lipW−15, run=rise×tan60°), coi <paramref name="lipW"/> như "chiều cao" (h_fb).
+        /// Trừ (BoolSubtract) 2 nêm tam giác (quét hết bề rộng tiết diện lip theo <paramref name="nDir"/>,
+        /// margin nhỏ để cắt xuyên sạch, không trùng mặt) khỏi <paramref name="plate"/>.
+        /// ⚠️ CHƯA test trực quan trong AutoCAD.
+        /// </summary>
+        private static void SnipLipEnds(Solid3d plate, Point3d a, Vector3d dDir, Vector3d nDir,
+            double diagLen, double thk, double Rb, double lipW, double sh, int foldSign)
+        {
+            const double MARGIN = 1.0;
+            double rise = Math.Max(0.0, lipW - LIP_SNIP_FLAT);
+            double run = rise * LIP_SNIP_RUN_FACTOR;
+            if (2.0 * run > diagLen) run = diagLen / 2.0;   // lip quá ngắn — kẹp an toàn (giống FlatBarBuilder)
+
+            double vBase = foldSign > 0 ? (thk + Rb) : -Rb;                  // gốc lip (nối bend) — KHÔNG đổi
+            double vTip = foldSign > 0 ? (thk + Rb + lipW) : -(Rb + lipW);   // mép ngoài lip đầy đủ (xem csPts)
+            double vFlat = vBase + foldSign * LIP_SNIP_FLAT;                 // mép ngoài CÒN LẠI ngay sát đầu (15mm)
+            double uLo = -Rb + sh - MARGIN, uHi = thk + sh + MARGIN;         // quét hết bề rộng tiết diện + margin
+
+            void CutAt(Point3d anchor, double dirSign)
+            {
+                if (run < 1e-6) return;
+                var tri = new Polyline();
+                tri.AddVertexAt(0, new Point2d(-dirSign * MARGIN, vTip + foldSign * MARGIN), 0, 0, 0);
+                tri.AddVertexAt(1, new Point2d(dirSign * run, vTip + foldSign * MARGIN), 0, 0, 0);
+                tri.AddVertexAt(2, new Point2d(-dirSign * MARGIN, vFlat), 0, 0, 0);
+                tri.Closed = true;
+
+                DBObjectCollection regs;
+                try { regs = Region.CreateFromCurves(new DBObjectCollection { tri }); }
+                catch { tri.Dispose(); return; }
+                tri.Dispose();
+                if (regs.Count == 0) return;
+                var reg = (Region)regs[0];
+                for (int i = 1; i < regs.Count; i++) ((Region)regs[i]).Dispose();
+
+                reg.TransformBy(Matrix3d.AlignCoordinateSystem(
+                    Point3d.Origin, Vector3d.XAxis, Vector3d.YAxis, Vector3d.ZAxis,
+                    anchor + nDir * uLo, dDir, Vector3d.ZAxis, nDir));
+
+                var cutter = new Solid3d();
+                var sob = new SweepOptionsBuilder();
+                try { cutter.CreateExtrudedSolid(reg, nDir * (uHi - uLo), sob.ToSweepOptions()); }
+                catch { reg.Dispose(); return; }
+                reg.Dispose();
+
+                try { plate.BooleanOperation(BooleanOperationType.BoolSubtract, cutter); }
+                catch { cutter.Dispose(); }
+            }
+
+            CutAt(a, 1.0);                      // đầu A (length=0), vát về phía +dDir (vào trong lip)
+            CutAt(a + dDir * diagLen, -1.0);     // đầu B (length=diagLen), vát về phía −dDir
         }
 
         /// <summary>

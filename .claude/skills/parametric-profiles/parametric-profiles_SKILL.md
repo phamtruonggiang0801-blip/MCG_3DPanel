@@ -174,6 +174,27 @@ Kiểm (S=594,H=374,F=148.9): tâm (594,−135)/(179,−374); tiếp điểm (57
   Port → **−Y** (trên→dưới); Starboard → **+Y** (dưới→lên). Cài `BendFoldSign`: so `normal_tấm · chiềuĐổ(dozX=+1,dozY)` chọn local Z ±.
 - Ngưỡng & lipW theo dày: dày6→(bend≥350, lip70, Rb12); dày10→(bend≥600, lip100, Rb20).
 - Dựng: lấy cạnh NGHIÊNG nhất outline → dải chữ nhật dọc cạnh (dày tấm) → extrude ±Z (theo foldSign) = lipW → union tấm.
+- **Sniped End ở 2 đầu lip** (xác nhận kỹ sư 2026-08-26, sửa lần 2 — ban đầu làm chamfer 15×15 đơn
+  giản, sau đó kỹ sư yêu cầu đổi sang ĐÚNG công thức Sniped End của FlatBar thay vì chamfer phẳng):
+  coi `lipW` (bề rộng lip) như "chiều cao" `h_fb` của FlatBar, mép NGOÀI lip (xa tấm nhất) như "cạnh tự
+  do" — vát dần về gốc lip (chỗ nối bend, giữ nguyên như "cạnh hàn") khi tới gần mỗi đầu dải lip theo
+  chiều dài, chỉ còn lại đúng **15mm** (hằng số, cùng `FLAT_TOP` của FlatBar) ngay sát mặt đầu; `rise =
+  lipW−15`, `run = rise×tan60°` — CÙNG công thức/góc 30°/60° cố định với [[sniped-end]]. Sau khi union
+  lip vào tấm thành công, trừ (BoolSubtract) 2 nêm tam giác tại `length=0` và `length=diagLen` (quét hết
+  bề rộng tiết diện lip theo `nDir`, margin nhỏ để cắt xuyên sạch, không trùng mặt). Cài
+  `BracketBuilder.SnipLipEnds` (hằng số `LIP_SNIP_FLAT`/`LIP_SNIP_RUN_FACTOR` — trùng giá trị với
+  `FlatBarBuilder` nhưng khai báo riêng, mỗi builder tự chứa theo skill module-per-object).
+
+**Bracket "under-50" (chân thụt 30mm trên Flange) — bỏ R30 chân, giữ nguyên vị trí (xác nhận kỹ sư
+2026-08-26):** khi `Under50=true` (và KHÔNG flanged, tức nhánh `R30Only`), cung R30 ở chân (gần
+Flange) bị bỏ hẳn — chân vẫn ở ĐÚNG vị trí cũ `(F,−H)` (F=15), chỉ đổi cung R30 thành **góc SẮC**: nối
+thẳng từ tiếp tuyến free-edge (tiếp tuyến từ đường tròn R30 TRÊN tới ĐIỂM `(F,−H)`, không còn đường
+tròn dưới để tiếp tuyến chung) xuống thẳng góc đó. Khác `squareCorner` (đổi cả vị trí X chân sang
+thẳng đứng dưới R30 trên) — case này GIỮ NGUYÊN vị trí chân, chỉ bỏ cung bo. Cài
+`ProfileService.R30Only` nhánh `under50` (mới) + `TangentPointFromExternal` (tiếp tuyến điểm-tới-đường
+tròn, khác `FlangedToe`/nhánh thường vốn chỉ cần tiếp tuyến chung 2 đường tròn cùng bán kính).
+⚠️ Chỉ áp dụng nhánh KHÔNG flanged (`R30Only`) — case hiếm "under-50 CÓ flanged" vẫn dùng
+`TemplateUnder50` (template cứng cũ, chưa động theo rule này).
 
 **Build3DService**: sinh outline (S,H,F) → Region → extrude chiều dày (6) căn giữa → đặt mặt ĐỨNG
 qua AlignCoordinateSystem. **Anchor = đầu CHẠM WEB DÀI** (`MinDistToWeb` per-end, robust — KHÔNG dùng

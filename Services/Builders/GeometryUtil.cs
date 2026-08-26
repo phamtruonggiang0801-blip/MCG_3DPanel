@@ -69,6 +69,29 @@ namespace MCG_3DPanel.Services.Builders
             catch { return -1; }
         }
 
+        /// <summary>True nếu <paramref name="pt"/> KHÔNG nằm gần (trong <paramref name="tol"/>) bất kỳ
+        /// member kết cấu nào khác (Web/Bracket/GirderEnd/HP/FlatBar, loại trừ chính <paramref name="self"/>)
+        /// — dùng để xác định "đầu tự do" của 1 đoạn FlatBar cho <see cref="FlatBarBuilder"/> (xem skill
+        /// sniped-end). Dùng <see cref="ClassifyUtil.DistToSegment"/> (đoạn tâm thật) nên đúng cả member CHÉO.</summary>
+        public static bool IsFreeEnd(Point3d pt, PanelPart self, ClassificationResult cls, double tol)
+        {
+            foreach (var o in cls.Parts)
+            {
+                if (ReferenceEquals(o, self)) continue;
+                switch (o.Type)
+                {
+                    case PartType.Web:
+                    case PartType.Bracket:
+                    case PartType.GirderEnd:
+                    case PartType.HP:
+                    case PartType.FlatBar:
+                        if (ClassifyUtil.DistToSegment(pt, o) <= tol) return false;
+                        break;
+                }
+            }
+            return true;
+        }
+
         /// <summary>Bán kính cung từ 2 đỉnh + bulge (0 nếu bulge ~ 0).</summary>
         public static double ArcRadius(Point2d p, Point2d q, double bulge)
         {

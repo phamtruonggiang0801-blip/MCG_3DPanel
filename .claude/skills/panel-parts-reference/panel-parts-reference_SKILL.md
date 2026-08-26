@@ -49,6 +49,10 @@ Chỉ xét **Closed LWPolyline** (bỏ qua line/text/dimension/nesting-block kh�
   Chiều dày phân biệt phần SỐ (6/10…), nhưng OB vs IB vs FB (có thể cùng dày) cần thêm dấu hiệu (text/vị trí)
   → xem mục 7. Nhận diện mã chi tiết là Backlog.
 - Flat Bar và HP **cùng layer** `Mechanical-AM_3` → phân biệt bằng **colorIndex 30 = HP**, còn lại = Flat Bar.
+- **Flat Bar — đầu tự do vát chéo (Sniped End)**: đầu FB không hàn Web/HP/FB nào khác bị vát chéo góc
+  dưới (cạnh hàn Top Plate luôn vuông sắc). FB vẽ liên tục xuyên qua HP trên Plan chỉ là quy ước vẽ
+  nhanh — thực tế phải tách tại chỗ giao HP trước khi xét đầu tự do. Chi tiết công thức + cài đặt:
+  xem [[sniped-end]].
 - **FACE PLATE (trên layer Flange):** Flange bình thường là **hình chữ nhật kín**. Nhưng ở **góc** hoặc
   vài **vị trí đặc biệt giữa Flange**, do yêu cầu kỹ thuật, phần đó bị **cắt rời & dựng lại KHÔNG vuông**
   → gọi là **Face Plate** (vd polyline v=13, bbox 500×800 trên layer `Mechanical-AM_11`). Face Plate nằm

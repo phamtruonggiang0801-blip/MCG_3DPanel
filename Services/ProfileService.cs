@@ -43,7 +43,7 @@ namespace MCG_3DPanel.Services
         public List<VertexBulge> BracketOutline(bool under50, double S, double H, double F, double thk,
             double dtop, double hpLedge, bool flanged, bool squareCorner)
         {
-            if (!flanged) return R30Only(S, H, F, dtop, hpLedge, squareCorner);
+            if (!flanged) return R30Only(S, H, F, dtop, hpLedge, squareCorner, under50);
             if (under50) return TemplateUnder50(S, H, F);        // stub nâng (hiếm) — template thk6, Dtop=105
             return FlangedToe(S, H, F, thk, dtop, hpLedge);      // over-50: parametric, scale dày + Dtop/ledge
         }
@@ -104,7 +104,7 @@ namespace MCG_3DPanel.Services
         }
 
         // ─── KHÔNG flanged: chỉ R30 (2 cung tiếp tuyến chung free-edge thẳng) ───
-        private static List<VertexBulge> R30Only(double S, double H, double F, double dtop, double ledge, bool squareCorner)
+        private static List<VertexBulge> R30Only(double S, double H, double F, double dtop, double ledge, bool squareCorner, bool under50 = false)
         {
             double R = ToeR;
             var cTop = new Point2d(S - ledge, -dtop - R);
@@ -125,6 +125,36 @@ namespace MCG_3DPanel.Services
                 osq.Add(new VertexBulge(tFreeSq.X, -H, 0));
                 osq.Add(new VertexBulge(0, -H, 0));
                 return osq;
+            }
+
+            if (under50)
+            {
+                // Chân bracket "thụt 30mm trên Flange" (Huse=WebH−30, F=15 cố định — xem KneeParams):
+                // bỏ hẳn cung R30 dưới, nhưng chân VẪN Ở ĐÚNG VỊ TRÍ CŨ (F,−H) — xác nhận kỹ sư
+                // 2026-08-26 (khác squareCorner: squareCorner đổi cả vị trí X chân sang thẳng đứng dưới
+                // R30 trên; ở đây chân giữ nguyên, chỉ đường free-edge nối THẲNG (không bo) từ tiếp
+                // tuyến R30 trên xuống đúng góc (F,−H) — góc SẮC tại đó thay vì bo tròn).
+                // Free-edge giờ là tiếp tuyến từ đường tròn R30 trên (tâm cTop) tới ĐIỂM (F,−H) — không
+                // còn đường tròn dưới để "tiếp tuyến chung 2 đường tròn" như nhánh thường bên dưới nữa.
+                var legBot = new Point2d(F, -H);
+
+                // Hướng tham khảo (n) để chọn đúng 1 trong 2 nghiệm tiếp tuyến — dùng CHÍNH cách tính n
+                // của nhánh R30-cả-2-đầu bên dưới (dựa trên đường tròn tưởng tượng tâm F+R,−H) để đảm
+                // bảo chọn đúng phía NGOÀI thân, nhất quán với mọi trường hợp khác.
+                Vector2d refCtr = new Point2d(F + R, -H) - cTop;
+                Vector2d refN = refCtr.Length > 1e-9 ? new Vector2d(refCtr.Y, -refCtr.X).GetNormal() : new Vector2d(1, 0);
+                if ((Point2d.Origin - cTop).DotProduct(refN) < 0.0) refN = refN.Negate();
+
+                Point2d tFreeTop50 = TangentPointFromExternal(cTop, R, legBot, refN);
+                double bTop50 = ArcBulge(cTop, tLegTop, tFreeTop50);
+
+                var o50 = new List<VertexBulge>(7);
+                TopSpan(o50, S, dtop, ledge);
+                o50.Add(new VertexBulge(tLegTop.X, tLegTop.Y, bTop50));
+                o50.Add(new VertexBulge(tFreeTop50.X, tFreeTop50.Y, 0));
+                o50.Add(new VertexBulge(legBot.X, legBot.Y, 0));   // góc SẮC, đúng vị trí chân cũ (F,−H)
+                o50.Add(new VertexBulge(0, -H, 0));
+                return o50;
             }
 
             var cBot = new Point2d(F + R, -H);
@@ -177,6 +207,25 @@ namespace MCG_3DPanel.Services
                 o.Add(new VertexBulge(x, y, v[2]));
             }
             return o;
+        }
+
+        /// <summary>Tiếp điểm trên đường tròn tâm <paramref name="c"/> bán kính <paramref name="r"/> của
+        /// tiếp tuyến đi qua điểm NGOÀI <paramref name="p"/> — có 2 nghiệm, chọn nghiệm có
+        /// <c>(T−c)</c> cùng hướng (tích vô hướng LỚN HƠN) với <paramref name="refN"/> (hướng tham khảo,
+        /// đã chọn đúng phía ngoài thân từ nơi gọi). Dùng cho <see cref="R30Only"/> nhánh <c>under50</c>
+        /// (bỏ vòng tròn R30 dưới, free-edge tiếp tuyến thẳng tới 1 ĐIỂM thay vì 1 đường tròn khác).</summary>
+        private static Point2d TangentPointFromExternal(Point2d c, double r, Point2d p, Vector2d refN)
+        {
+            Vector2d e = p - c;
+            double d2 = e.X * e.X + e.Y * e.Y;
+            if (d2 <= r * r) return p;   // suy biến (điểm trong/trên đường tròn) — không nên xảy ra thực tế
+            double rd2 = (r * r) / d2;
+            double k = r * Math.Sqrt(d2 - r * r) / d2;
+            var perp = new Vector2d(-e.Y, e.X);
+            Point2d t1 = c + e * rd2 + perp * k;
+            Point2d t2 = c + e * rd2 - perp * k;
+            double dot1 = (t1 - c).DotProduct(refN), dot2 = (t2 - c).DotProduct(refN);
+            return dot1 >= dot2 ? t1 : t2;
         }
 
         /// <summary>Bulge cung từ ps→pe quanh tâm c (lấy cung nhỏ, dấu theo chiều quét).</summary>

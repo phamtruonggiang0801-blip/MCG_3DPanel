@@ -7,12 +7,16 @@ using MCG_3DPanel.Models;
 namespace MCG_3DPanel.Services.Builders
 {
     /// <summary>
-    /// Dựng các bộ phận dạng TẤM/THANH prism: Top Plate, Web, Flange, Face Plate, Flat Bar,
+    /// Dựng các bộ phận dạng TẤM/THANH prism: Top Plate, Web, Flange, Face Plate,
     /// Closed Plate, Backing Plate.
     /// Cơ chế: lấy chính LWPolyline gốc → Region → extrude theo Z → dịch cao độ.
     /// Datum = mặt DƯỚI Top Plate = Z0. Xem skill panel-parts-reference (mục 3, 4, 4d).
     /// (HP tách riêng sang <see cref="HpBuilder"/> vì có tiết diện bulb; Bracket sang <see cref="BracketBuilder"/>;
-    /// CutOut KHÔNG qua đây — trừ boolean thẳng vào solid Top Plate, xem <see cref="CutOutBuilder"/>.)
+    /// CutOut KHÔNG qua đây — trừ boolean thẳng vào solid Top Plate, xem <see cref="CutOutBuilder"/>.
+    /// ⚠️ FlatBar KHÔNG qua đây nữa — <see cref="FlatBarBuilder"/> tự dựng TOÀN BỘ (kể cả hộp phẳng
+    /// không vát), vì clone entity gốc theo <c>part.Id</c> ở đây SẼ SAI cho đoạn FB đã bị
+    /// <see cref="Classify.FlatBarSplitter"/> tách — 1 Id gốc giờ có thể ứng với NHIỀU đoạn, và
+    /// <see cref="Extrude"/> luôn clone NGUYÊN VẸN polyline gốc, bỏ qua phần đã cắt.)
     /// </summary>
     public class PlateBuilder : IPartBuilder
     {
@@ -28,7 +32,6 @@ namespace MCG_3DPanel.Services.Builders
                 case PartType.Web:
                 case PartType.Flange:
                 case PartType.FacePlate:
-                case PartType.FlatBar:
                 case PartType.ClosedPlate:
                 case PartType.BackingPlate:
                     return true;
@@ -45,8 +48,8 @@ namespace MCG_3DPanel.Services.Builders
             {
                 case PartType.TopPlate: extrude = +input.TopPlateThickness; return true;
                 case PartType.Web: extrude = -input.WebHeight; return true;
-                case PartType.FlatBar: extrude = -input.FlatBarHeight; return true;
                 case PartType.HP: extrude = -input.HpHeight; return true;   // fallback khi HpBuilder không dựng được
+                // FlatBar KHÔNG có ở đây nữa — xem ghi chú trên CanBuild (FlatBarBuilder tự dựng toàn bộ).
                 case PartType.Flange: extrude = -input.FlangeThickness; moveZ = -input.WebHeight; return true;
                 case PartType.FacePlate: extrude = -input.FlangeThickness; moveZ = -input.WebHeight; return true;
                 case PartType.Bracket: extrude = -input.WebHeight; return true;
