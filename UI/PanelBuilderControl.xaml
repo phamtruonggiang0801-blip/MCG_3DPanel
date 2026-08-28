@@ -206,8 +206,11 @@
                                 <TextBlock Text="Flat Bar — spec (height*thickness, e.g. 120*6)" Style="{StaticResource Label}"/>
                                 <TextBox x:Name="TxtFlatBarSpec" Text="120*6"/>
 
-                                <TextBlock Text="HP — spec (height*thickness, e.g. 120*6)" Style="{StaticResource Label}"/>
-                                <TextBox x:Name="TxtHpSpec" Text="120*6"/>
+                                <TextBlock Text="HP — size (standard table)" Style="{StaticResource Label}"/>
+                                <ComboBox x:Name="CmbHpSpec"
+                                          Background="White" Foreground="#FF111111" Padding="4,3"/>
+                                <TextBlock Text="Thickness is read from the plan geometry; this only sets the profile height (b)."
+                                           Style="{StaticResource Hint}" Margin="0,3,0,0"/>
 
                                 <Button x:Name="BtnBuild" Content="Build 3D  →  preview"
                                         Style="{StaticResource PrimaryBtn}" Click="BtnBuild_Click"/>

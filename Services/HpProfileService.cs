@@ -23,6 +23,16 @@ namespace MCG_3DPanel.Services
         /// <summary>Tiết diện HP kín (2D local + bulge). r1=0 → góc sắc.</summary>
         List<VertexBulge> HpSection(double b, double t, double c, double r, double r1 = 0.0);
 
+        /// <summary>
+        /// Tiết diện LỖ KHOÉT trên web cho HP xuyên qua ("CO B — Cut Out Bulb-profile", block
+        /// <c>HP120x6-scaloop</c> trong CAS.dwt). Hệ trục KHỚP <see cref="HpSection"/>.
+        /// Mép LƯNG (x=0) trùng mặt LƯNG HP (gap = 0); phía BỤNG mở tới <c>W = (c + r) + coR</c>; phần
+        /// trên sâu tới Y = −(b−coR); chân "foot" = offset đoạn đáy ra bán kính <paramref name="coR"/>
+        /// (TABLE 1, cột R — tra <see cref="LookupCoRadius"/>). Cột h1/h2/B1–B4 của TABLE 1 = tham số LUG
+        /// (chi tiết riêng) → KHÔNG dùng. Xem skill web-hp-cutout.
+        /// </summary>
+        List<VertexBulge> HpCutoutSection(double b, double t, double c, double r, double coR);
+
         /// <summary>Tra tham số theo quy cách "cao*dày" (vd "120*6"). false nếu spec sai.</summary>
         bool TryGetSection(string spec, out List<VertexBulge> section, out bool estimated);
     }
@@ -58,6 +68,17 @@ namespace MCG_3DPanel.Services
             { 430, new[] { 62.5, 19.5, 14.0, 20.0 } },
         };
 
+        /// <summary>Danh sách quy cách HP tiêu chuẩn ("cao*dày") — 18 cỡ b trong <see cref="Table"/>,
+        /// dùng <c>tMin</c> làm chiều dày danh nghĩa. Đổ vào ComboBox chọn HP trên Palette. ⚠️ Khi dựng
+        /// chỉ <b>b</b> được dùng (chiều dày thật lấy theo hình học Plan) — <c>t</c> ở đây chỉ để hiển thị.</summary>
+        public static IEnumerable<string> StandardSpecs()
+        {
+            var keys = new List<int>(Table.Keys);
+            keys.Sort();
+            foreach (int b in keys)
+                yield return b.ToString() + "*" + Table[b][2].ToString("0.#");
+        }
+
         /// <summary>Tra (c, r) theo chiều cao b. estimated=true nếu b không có trong bảng (nội/ngoại suy).</summary>
         public static void LookupCR(double b, out double c, out double r, out bool estimated)
         {
@@ -73,6 +94,68 @@ namespace MCG_3DPanel.Services
             double f = (b - lo) / (double)(hi - lo);
             c = Table[lo][0] + f * (Table[hi][0] - Table[lo][0]);
             r = Table[lo][1] + f * (Table[hi][1] - Table[lo][1]);
+        }
+
+        /// <summary>
+        /// Bảng bán kính <b>R</b> của lỗ khoét CO ("CO B" / TABLE 1, cột R) — key = H (chiều cao HP
+        /// danh nghĩa). R = 15 / 20 / 30 / 30 rồi **35 CỐ ĐỊNH** từ H≥160. Các cột h1/h2/B1–B4 của
+        /// TABLE 1 là tham số LUG (chi tiết riêng) → KHÔNG dùng. Xem skill web-hp-cutout.
+        /// </summary>
+        private static readonly Dictionary<int, double> CoRadiusTable = new Dictionary<int, double>
+        {
+            {  80, 15.0 }, { 100, 20.0 }, { 120, 30.0 }, { 140, 30.0 }, { 160, 35.0 }, { 180, 35.0 },
+            { 200, 35.0 }, { 220, 35.0 }, { 240, 35.0 }, { 260, 35.0 }, { 280, 35.0 }, { 300, 35.0 },
+            { 320, 35.0 }, { 340, 35.0 }, { 370, 35.0 }, { 400, 35.0 }, { 430, 35.0 },
+        };
+
+        /// <summary>Tra bán kính R của lỗ khoét CO theo chiều cao b. b ngoài bảng (kể cả HP60 —
+        /// TABLE 1 không có hàng) → lấy mục H gần nhất (bảng bậc thang, KHÔNG nội suy).</summary>
+        public static void LookupCoRadius(double b, out double coR)
+        {
+            int key = (int)Math.Round(b);
+            if (CoRadiusTable.TryGetValue(key, out coR)) return;
+            int best = 0; double bestD = double.MaxValue;
+            foreach (int k in CoRadiusTable.Keys)
+            {
+                double d = Math.Abs(k - key);
+                if (d < bestD) { bestD = d; best = k; }
+            }
+            coR = CoRadiusTable[best];
+        }
+
+        /// <summary>
+        /// Tiết diện LỖ KHOÉT trên web cho HP xuyên qua ("CO B", block <c>HP120x6-scaloop</c> trong
+        /// CAS.dwt). Hệ trục KHỚP <see cref="HpSection"/>: gốc (0,0) = góc LƯNG–ĐẦU; +X → BỤNG; −Y xuống.
+        ///
+        /// Hình (xác nhận kỹ sư 2026-08-28): mép LƯNG (x=0) trùng mặt LƯNG HP (gap = 0 phía lưng); phía
+        /// BỤNG mở rộng tới <c>W = (c + r) + R</c>. Phần trên = chữ nhật sâu tới Y = −(b−R). Chân "foot"
+        /// = offset đoạn [(0,−b) → (c+r,−b)] ra ngoài bán kính R: nửa cung R sau LƯNG (tâm (0,−b), qua
+        /// (−R,−b)), đáy phẳng Y = −(b+R), cung ¼ R lên mép BỤNG (tâm (c+r,−b)).
+        /// Snipe 10×10 (vát mép hàn, DET.A) KHÔNG dựng vào solid.
+        /// <paramref name="t"/> (dày web HP) hiện không dùng — mép slot lưng = mặt LƯNG HP (gap 0).
+        /// </summary>
+        public List<VertexBulge> HpCutoutSection(double b, double t, double c, double r, double coR)
+        {
+            double R = coR;
+            if (b <= 0 || R <= 0 || c <= 0 || r <= 0)
+                return HpSection(b, t, c, r);                  // tham số vô lý → tiết diện HP thô (an toàn)
+
+            double bw = c + r;                                 // bề rộng bulb tính từ LƯNG
+            double W = bw + R;                                 // mép BỤNG lỗ (xác nhận kỹ sư: W = (c+r) + R)
+            double dUp = b - R;                                // đáy phần trên (= mức "90" HP120)
+            if (dUp <= 1e-6) dUp = b * 0.5;                    // HP quá thấp so với R → kẹp an toàn
+
+            const double B90 = 0.41421356;                     // |bulge| cung 90°
+            const double B180 = 1.0;                           // |bulge| cung 180°
+            return new List<VertexBulge>(6)
+            {
+                new VertexBulge(0,   0,          0),           // LƯNG ∩ ĐẦU
+                new VertexBulge(W,   0,          0),           // mặt dưới Top Plate → mép BỤNG
+                new VertexBulge(W,  -b,         -B90),         // mép BỤNG xuống ↓ → cung ¼ R (tâm (bw,−b))
+                new VertexBulge(bw, -(b + R),    0),           // đáy phẳng foot ←
+                new VertexBulge(0,  -(b + R),   -B180),        // → nửa cung R sau LƯNG (tâm (0,−b), qua (−R,−b))
+                new VertexBulge(0,  -dUp,        0),           // mặt LƯNG ↑ về (0,0)
+            };
         }
 
         public bool TryGetSection(string spec, out List<VertexBulge> section, out bool estimated)

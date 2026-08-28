@@ -38,3 +38,6 @@ FB nhiều quy cách — chi tiết trong skill `panel-parts-reference`.
 
 Girder End (skill `girder-end`) và Sniped End FlatBar (skill `sniped-end`) đã cài đặt (2026-08-26) —
 chưa test trực quan trong AutoCAD, xem TODO trong từng skill.
+
+Cutout on Web cho HP (skill `web-hp-cutout`, chi tiết **CO B**) đã cài đặt (2026-08-28): chỗ HP xuyên
+ngang qua Web → `WebHpCutoutBuilder` trừ boolean lỗ hình tiết diện HP khỏi solid Web — chưa test trực quan.

@@ -119,6 +119,9 @@ Tương đương hoàn toàn quy tắc cũ với HP song song trục.
 - [x] Generator `HpProfileService` + nội suy + fallback.
 - [ ] `r1` theo cỡ (chưa có nguồn).
 - [ ] Nối vào Build3DService: sweep tiết diện dọc trục HP, **+X trỏ về BỤNG** theo `BellyDir`.
+- [x] `HpCutoutSection(b,t,c,r,coR)` + `LookupCoRadius` — tiết diện LỖ KHOÉT web cho HP xuyên qua
+      (polygon 6 đỉnh: khe BỤNG rộng W=(c+r)+R + foot R). Xem [[web-hp-cutout]].
 
 Liên quan: [[bracket-identification]] (bụng/lưng → OB/IB), [[parametric-profiles]] (cơ chế profile tham số),
-[[panel-parts-reference]] (HP = AM_3 màu 30), [[module-per-object]] (tách builder theo đối tượng).
+[[panel-parts-reference]] (HP = AM_3 màu 30), [[module-per-object]] (tách builder theo đối tượng),
+[[web-hp-cutout]] (lỗ HP xuyên Web — dùng lại tiết diện HP).

@@ -540,6 +540,12 @@ tấm này mà không ai biết. Đã lấp bằng quy tắc hình học **xác 
   dựng. Gọi tường minh từ `Build3DService.Build` SAU vòng lặp dựng chính (cần solid Top Plate có sẵn).
   Lỗi ở 1 cutout không làm hỏng cutout khác — ghi vào Report, Top Plate coi như chưa khoét lỗ đó.
 
+- **Cutout on Web cho HP** (chi tiết **CO B**, 2026-08-28): CÙNG mô hình boolean-trừ như CutOut nhưng
+  target = **solid Web** (không phải Top Plate). Chỗ HP xuyên NGANG qua Web (`ClassifyUtil.CrossesThrough`)
+  → `WebHpCutoutBuilder.ApplyWebCutouts` trừ 1 dao cắt hình tiết diện HP (`HpCutoutSection`, gap=0 + bo
+  góc đáy R theo TABLE 1) xuyên suốt chiều dày web. HP kết thúc TẠI web → không khoét. LUG collar ngoài
+  phạm vi. Chi tiết đầy đủ: skill [[web-hp-cutout]].
+
 ⚠️ **Chưa test trực quan trong AutoCAD** — cần Build thử panel thật (VD 7D-17C) để xác nhận hình dạng.
 
 ## 6. Backlog (đã ghi nhận — phát triển sau, KHÔNG làm ở v1)

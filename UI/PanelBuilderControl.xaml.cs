@@ -19,6 +19,11 @@ namespace MCG_3DPanel.UI
         public PanelBuilderControl()
         {
             InitializeComponent();
+
+            // Danh sách HP tiêu chuẩn (18 cỡ) → ComboBox, thay vì nhập tay. Xem HpProfileService.StandardSpecs.
+            CmbHpSpec.ItemsSource = MCG_3DPanel.Services.HpProfileService.StandardSpecs().ToList();
+            CmbHpSpec.SelectedItem = "120*6";
+            if (CmbHpSpec.SelectedItem == null) CmbHpSpec.SelectedIndex = 0;
         }
 
         private void BtnInspect_Click(object sender, RoutedEventArgs e)
@@ -147,13 +152,14 @@ namespace MCG_3DPanel.UI
             if (!double.TryParse(TxtWebHeight.Text, out double h) || h <= 0) { error = "Invalid Web height."; return false; }
             if (!double.TryParse(TxtFlangeThk.Text, out double tf) || tf <= 0) { error = "Invalid Flange thickness."; return false; }
             if (!MCG_3DPanel.Models.PanelInput.TryParseSpec(TxtFlatBarSpec.Text, out _, out _)) { error = "Invalid Flat Bar spec (use height*thickness, e.g. 120*6)."; return false; }
-            if (!MCG_3DPanel.Models.PanelInput.TryParseSpec(TxtHpSpec.Text, out _, out _)) { error = "Invalid HP spec (use height*thickness, e.g. 120*6)."; return false; }
+            string hpSpec = CmbHpSpec.SelectedItem as string;
+            if (!MCG_3DPanel.Models.PanelInput.TryParseSpec(hpSpec, out _, out _)) { error = "Choose an HP size."; return false; }
 
             input.TopPlateThickness = t;
             input.WebHeight = h;
             input.FlangeThickness = tf;
             input.FlatBarSpec = TxtFlatBarSpec.Text;
-            input.HpSpec = TxtHpSpec.Text;
+            input.HpSpec = hpSpec;
             return true;
         }
 

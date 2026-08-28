@@ -61,6 +61,7 @@ namespace MCG_3DPanel.Services
                 int made = 0;
                 Solid3d topPlateSolid = null;
                 BuiltPartInfo topPlateInfo = null;
+                var webSolids = new List<(PanelPart part, Solid3d sol, BuiltPartInfo info)>();
                 foreach (var part in cls.Parts)
                 {
                     string handle = part.Id.Handle.ToString();
@@ -86,6 +87,17 @@ namespace MCG_3DPanel.Services
                     FillGeometry(info, sol);
 
                     if (part.Type == PartType.TopPlate) { topPlateSolid = sol; topPlateInfo = info; }
+                    if (part.Type == PartType.Web) webSolids.Add((part, sol, info));
+                }
+
+                // Lỗ khoét trên Web cho HP xuyên qua (CO B) — trừ boolean thẳng vào solid Web đã dựng,
+                // KHÔNG phải part riêng (giống CutOut ↔ Top Plate). Xem WebHpCutoutBuilder / skill web-hp-cutout.
+                if (webSolids.Count > 0)
+                {
+                    var webCutOk = WebHpCutoutBuilder.ApplyWebCutouts(
+                        ctx, webSolids.Select(w => (w.part, w.sol)).ToList());
+                    if (webCutOk.Count > 0)
+                        foreach (var w in webSolids) FillGeometry(w.info, w.sol); // cập nhật bbox/thể tích SAU khi khoét
                 }
 
                 // CutOut = lỗ khoét — trừ (boolean) thẳng vào solid Top Plate đã dựng, không phải part riêng.
