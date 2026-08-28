@@ -191,34 +191,31 @@ namespace MCG_3DPanel.Services.Classify
         }
 
         /// <summary>
-        /// Trục dài THẬT của member = hướng cạnh DÀI hơn trong 2 cạnh kề đầu tiên (rectangle 4/5 đỉnh).
-        /// Đúng cả khi member nằm CHÉO — bbox không suy ra được. Fallback: theo bbox (X/Y).
+        /// Trục dài THẬT của member = <see cref="ClassifyUtil.LongAxis"/> (hướng cạnh DÀI NHẤT) cho
+        /// rectangle 4/5 đỉnh — đúng cả member CHÉO VÀ 5 đỉnh vát góc (đoạn vát ngắn không bao giờ là
+        /// cạnh dài nhất; nhánh cũ "2 cạnh kề đầu tiên" chọn nhầm đoạn vát 41mm làm trục). Fallback bbox.
         /// </summary>
         private static Vector3d AxisOf(List<Point3d> pts, bool horiz)
         {
             int n = pts.Count;
             if (n == 4 || n == 5)
             {
-                Vector3d e0 = pts[1] - pts[0];
-                Vector3d e1 = pts[2 % n] - pts[1];
-                Vector3d pick = e0.Length >= e1.Length ? e0 : e1;
-                var flat = new Vector3d(pick.X, pick.Y, 0);
-                if (flat.Length > 1e-9) return flat.GetNormal();
+                ClassifyUtil.OrientedBox(pts.ToArray(), out Vector3d axis, out _, out _, out _, out _);
+                if (axis.Length > 1e-9) return axis;
             }
             return horiz ? Vector3d.XAxis : Vector3d.YAxis;
         }
 
-        /// <summary>Rectangle (4/5 đỉnh) → lấy cạnh từ khoảng cách đỉnh; ngược lại dùng bbox.</summary>
+        /// <summary>Rectangle (4/5 đỉnh) → span theo trục dài / trục vuông góc (<see cref="ClassifyUtil.OrientedBox"/>);
+        /// ngược lại dùng bbox. Nhánh cũ (d(v0,v1) vs d(v1,v2)) đọc SAI tấm 5 đỉnh vát góc `26FFF` —
+        /// ra thk=10/len=41.2 thay vì 20/500 (đoạn vát v1→v2 dài 41.2 bị chọn làm "cạnh"). </summary>
         private static void RectDims(List<Point3d> pts, Extents3d bounds, out double thickness, out double length)
         {
             int n = pts.Count;
             if (n == 4 || n == 5)
             {
-                double s0 = pts[0].DistanceTo(pts[1]);
-                double s1 = pts[1].DistanceTo(pts[2 % n]);
-                thickness = Math.Min(s0, s1);
-                length = Math.Max(s0, s1);
-                if (thickness > 1e-6) return;
+                ClassifyUtil.OrientedBox(pts.ToArray(), out _, out double len, out double thk, out _, out _);
+                if (thk > 1e-6) { thickness = thk; length = len; return; }
             }
             double dx = bounds.MaxPoint.X - bounds.MinPoint.X;
             double dy = bounds.MaxPoint.Y - bounds.MinPoint.Y;

@@ -43,13 +43,11 @@ namespace MCG_3DPanel.Services.Builders
                 bool free2 = GeometryUtil.IsFreeEnd(e2, part, ctx.Cls, ClassifyUtil.FB_FREE_END_TOL);
 
                 // Chỉ Snip End khi TỔNG chiều dài đường vẽ GỐC (Plan View, TRƯỚC khi FlatBarSplitter
-                // tách tại chỗ giao HP — xác nhận kỹ sư 2026-08-26: "chiều dài tổng" = chiều dài đường
-                // vẽ LIÊN TỤC gốc, KHÔNG PHẢI chiều dài riêng của từng đoạn sau khi tách) đủ ≥ 1
-                // "khoảng HP" — khoảng cách LỚN NHẤT giữa 2 HP song song liền kề trong panel, tái dùng
-                // GirderEndDetector.HpMaxSpan (trước đây là code chết, chỉ dành cho GB). FB có tổng độ
-                // dài ngắn hơn 1 khoảng HP giữ nguyên hộp vuông ở MỌI đoạn, không vát dù có đầu tự do.
-                // HpMaxSpan=0 (không đủ dữ liệu, <3 đường HP) ⇒ coi như KHÔNG chặn (vẫn vát).
-                double hpSpan = GirderEndDetector.HpMaxSpan(ctx.Cls.OfType(PartType.HP).ToList());
+                // tách — xác nhận kỹ sư 2026-08-26: "chiều dài tổng" = đường vẽ LIÊN TỤC gốc, KHÔNG phải
+                // chiều dài từng đoạn sau tách) đủ ≥ 1 "khoảng HP" (GirderEndDetector.HpMaxSpan: max
+                // khoảng 2 HP liền kề, bỏ khoảng có Web ở giữa, lấy phương nhiều HP hơn). FB ngắn hơn 1
+                // khoảng HP giữ hộp vuông ở MỌI đoạn. HpMaxSpan=0 (thiếu dữ liệu) ⇒ KHÔNG chặn (vẫn vát).
+                double hpSpan = GirderEndDetector.HpMaxSpan(ctx.Cls);
                 bool lengthOk = part.FbTotalPlanLength >= hpSpan;
                 // ⚠️ KHÔNG return null khi cả 2 đầu không tự do — outline bên dưới đã tự suy biến đúng
                 // thành hộp chữ nhật phẳng (nhánh else của free1/free2). Từng trả null ở đây để nhường

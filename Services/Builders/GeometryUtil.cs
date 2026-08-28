@@ -28,10 +28,20 @@ namespace MCG_3DPanel.Services.Builders
             return Math.Sqrt(dx * dx + dy * dy);
         }
 
-        /// <summary>Khoảng cách nhỏ nhất từ điểm tới ĐOẠN TÂM THẬT (không phải bbox) của MỌI
-        /// <see cref="PartType.Web"/> — kể cả Web-tier ngắn; MaxValue nếu không có Web nào.
+        /// <summary>Khoảng cách nhỏ nhất từ điểm tới ĐA GIÁC THẬT (<see cref="ClassifyUtil.DistToPart"/>)
+        /// của MỌI member AM_0 mà 1 bracket có thể HÀN LƯNG vào: <see cref="PartType.Web"/> (kể cả
+        /// Web-tier ngắn), <see cref="PartType.ClosedPlate"/>, <see cref="PartType.BackingPlate"/>;
+        /// MaxValue nếu không có cái nào.
         ///
-        /// ⚠️ PHẢI dùng đoạn tâm thật (<see cref="ClassifyUtil.DistToSegment"/>), KHÔNG phải bbox
+        /// ⚠️ Trước 2026-08-27 CHỈ xét <see cref="PartType.Web"/> ⇒ bracket hàn lưng vào 1 ClosedPlate
+        /// (VD `27002`/`26E5A`→`26FFF`, tấm 20mm) KHÔNG thấy neo nào — rơi về "Web ma" gần đó (part bị
+        /// phân loại nhầm) hoặc fallback tâm panel. Case `27002`: "Web ma" `26E5A` nằm ĐỐI XỨNG hoàn hảo
+        /// (w1==w2 khít) → `w1<=w2` chọn nhầm đầu HP làm neo → bracket dựng LẬT NGƯỢC. Thêm ClosedPlate
+        /// vào đây (+ Fix phân loại `26E5A` thành Bracket) làm neo về đúng `26FFF` với khoảng cách ~0.
+        /// ⚠️ Cần build lại 7D-17C xác nhận 108/108 sau thay đổi.
+        ///
+        /// ⚠️ PHẢI dùng hình học THẬT (<see cref="ClassifyUtil.DistToPart"/> — đa giác; trước là
+        /// <see cref="ClassifyUtil.DistToSegment"/> — đoạn tâm), KHÔNG phải bbox
         /// (<see cref="DistToBox"/>): Web CHÉO có bbox trục thẳng "phồng" rất lớn so với tiết diện thật
         /// (VD panel 7D-17C: Web chéo bbox 4115×8067 dù dày thật chỉ 6mm) — dùng bbox khiến CẢ HAI đầu
         /// của 1 bracket ngắn gần đó đều "gần Web" như nhau, làm <see cref="BracketBuilder.AnchorDir"/>
@@ -46,9 +56,11 @@ namespace MCG_3DPanel.Services.Builders
         public static double MinDistToWeb(Point3d p, ClassificationResult cls)
         {
             double best = double.MaxValue;
-            foreach (var w in cls.OfType(PartType.Web))
+            foreach (var w in cls.Parts)
             {
-                double d = ClassifyUtil.DistToSegment(p, w);
+                if (w.Type != PartType.Web && w.Type != PartType.ClosedPlate && w.Type != PartType.BackingPlate)
+                    continue;
+                double d = ClassifyUtil.DistToPart(p, w);
                 if (d < best) best = d;
             }
             return best;

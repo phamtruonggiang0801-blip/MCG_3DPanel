@@ -134,7 +134,10 @@ Face Plate = AM_11 **KHÔNG chữ nhật** (nv > 5, hình loe ở góc panel). B
 - **BackingPlate**: tấm đệm hàn TRÊN web — footprint nhỏ (≤80mm), đè ≥80% diện tích lên 1 Web dài,
   KHÔNG đè FacePlate.
 - **ClosedPlate**: tấm kín chữ nhật, không dài như girder (`MemberLength < GE_MIN_LEN`), đè lên FacePlate,
-  không phải tier girder (strip mỏng collinear web dài bị loại trừ).
+  không phải tier girder (strip mỏng collinear web dài bị loại trừ). **+ điều kiện 2 đầu mút** (xác nhận
+  kỹ sư 2026-08-26, `ClassifyUtil.IsClosedEndsPattern`): CẢ HAI đầu không chạm gì (tấm cô lập), **hoặc**
+  CẢ HAI đầu chạm member AM_0 khác (Web/Bracket) — KHÔNG chấp nhận 1 đầu chạm HP/FlatBar (dáng đó là
+  Bracket/GE thật) hay 1 đầu lửng lơ (chạm AM_0, đầu kia không chạm gì).
 
 ⚠️ **`PlateDetector.IsClosedPlate` dùng overlap BBOX (`ClassifyUtil.OverlapArea`), KHÔNG phải polygon
 thật** — chỉ AN TOÀN khi mảnh **KHÔNG chạm** HP/FB (`!touches`, ngưỡng 25%). **KHÔNG áp ngưỡng này cho
@@ -435,6 +438,84 @@ sẵn như HP chéo). `LocalOutwardNormal` vẫn áp dụng cho hướng của C
 **Bài học**: khi sửa 1 bug bằng cách thêm điều kiện MỚI vào 1 nhánh code, kiểm tra kỹ điều kiện đó có vô
 tình SIẾT LẠI (thu hẹp) 1 quy tắc CŨ vốn đang đúng ở nhánh khác hay không — đặc biệt khi 2 quy tắc
 (determination vs direction) bị gộp chung 1 biến `edge`/1 nhánh `if` như ở đây.
+
+### ⚠️ Bug #11 — `Endpoints()` cụt đầu mút web-tier VÁT 5 ĐỈNH → bỏ sót Bracket chạm HP (ĐÃ SỬA, 2026-08-26 · nhánh `v.Length==5` sau đó BỊ THAY bởi `OrientedBox` ở Bug #12 — đọc #12)
+
+**Triệu chứng thật** (panel `7D-01C_Assy`): 2 mảnh AM_0 ngắn thk10 (`27002`, và bản đối xứng `27049`)
+đúng ra là Bracket (1 đầu chạm HP thật, đầu kia chạm 1 Web-tier vát gần đó — `26FFF`/tương ứng) nhưng
+bị xếp thành **Web**. Đo tay: đầu mút của `27002` cách cạnh THẬT của `26FFF` chỉ **~11.8mm** (trong
+`ADJ_TOL=12`) — phải chạm, nhưng `ClassifyUtil.Endpoints()` (dùng bởi `IsBracketPattern`/`DistToSegment`)
+tính ra khoảng cách **~48mm** (ngoài ngưỡng) → `IsBracketPattern` sai thành false.
+
+**Nguyên nhân**: Web-tier vát 1:4 (mục 4b) có **5 đỉnh** (`v0..v4`: `v0-v1`=đầu 1, `v1-v2`=đoạn chéo
+vát, `v2-v3`=cạnh thẳng dài, `v3-v4`=đầu 2, `v4-v0`=cạnh thẳng dài còn lại). `Endpoints()` (và
+`PartCollector.AxisOf`/`RectDims`, CÙNG PATTERN nhưng chưa gây sự cố quan sát được — xem dưới) chỉ đọc
+**`v[0..3]`**, so `d(v0,v1)` với `d(v1,v2)` như thể vẫn là rectangle 4 đỉnh — với 5 đỉnh, đoạn chéo vát
+(`v1-v2`, ở case `26FFF` dài 41.2mm) THƯỜNG DÀI HƠN cạnh đầu chưa vát (`v0-v1`, dài 10mm), nên hàm chọn
+NHẦM `v1-v2` làm "cạnh dài" (trục chính) rồi lấy trung điểm `(v2,v3)` làm 1 đầu mút — điểm này nằm GIỮA
+CHỪNG cạnh thẳng `v2-v3` (đường 460mm), CỤT MẤT hẳn phần còn lại tới đầu THẬT `v3-v4` (lệch ~230mm dọc
+trục trong case `26FFF`).
+
+**Sửa**: `Endpoints()` thêm nhánh RIÊNG cho `v.Length==5` — theo ĐÚNG quy ước vẽ (thứ tự đỉnh cố định,
+không cần so cạnh dài/ngắn): trả thẳng `(Mid(v0,v1), Mid(v3,v4))`. Kiểm tay: đầu mút mới của `26FFF`
+đúng tại `(28699.6,23403.2)`/`(28704.6,23903.2)` (khớp 2 cạnh đầu thật) — khoảng cách từ `27002` tới
+đoạn này còn **~11.8mm**, ĐÚNG trong `ADJ_TOL` ⇒ `IsBracketPattern` giờ nhận đúng.
+
+**Chưa sửa (cùng họ bug, chưa quan sát thấy hậu quả thật)**: `PartCollector.AxisOf`/`RectDims` có
+CÙNG giới hạn (chỉ đọc `v[0..2]`/`v[0..3]`) — với `26FFF`, `AxisOf` chọn nhầm hướng trục theo đoạn chéo
+vát (`v1-v2`) thay vì trục dọc thật (`v4-v0`), khiến `PanelPart.AxisDir`/`MemberLength`/`FootprintThickness`
+của mọi web-tier 5 đỉnh đều SAI theo kiểu tương tự. Hiện `AxisDir` chỉ được `BracketCoder`/`HpBuilder`
+dùng (không áp dụng cho Web-tier) nên CHƯA gây lỗi quan sát được — nhưng nếu sau này có chỗ nào dùng
+`AxisDir`/`MemberLength` của 1 web-tier 5 đỉnh, cần rà lại theo đúng bài học Bug #1-#9 (dùng xấp xỉ ĐƠN
+GIẢN cho trường hợp phức tạp hơn — ở đây là "chỉ nhìn 3-4 đỉnh đầu" cho polyline 5 đỉnh).
+
+### ⚠️ Bug #12 — tấm chữ nhật VÁT GÓC (5 đỉnh) + `DistToSegment` đo tới đường tâm → sai quanh `ADJ_TOL` (ĐÃ SỬA, 2026-08-27)
+
+**Triệu chứng thật** (panel `7D-01C_Assy`, đối chiếu CSV review tay kỹ sư `MCG_PanelResult_20260827_151414`):
+- `26E5A` (→ nên **OB1**), `26E56` (→ nên **OB**): bar ngắn 270mm, 1 đầu chạm HP `26DF8`, đầu kia hàn
+  phẳng vào cạnh THẲNG của tấm vát góc `26FFF`/`27046` — bị xếp nhầm thành **Web** (thk10/thk6).
+- `2704E`, `27063` (→ nên **Closed Plate**): gusset CHÉO nối tier ngang `27061` với tấm đứng vát góc
+  `27050` — bị xếp nhầm thành **Web**.
+- `27002` (OB1, phân loại ĐÚNG) dựng 3D **LẬT NGƯỢC** (chân đứng ở đầu HP thay vì đầu tấm `26FFF`).
+
+**Nguyên nhân gốc (1 họ, 2 tầng)** — bản vẽ này dùng **tấm chữ nhật 20mm bị vát 45° ở 1 GÓC** (snipe:
+`26FFF`,`27046`,`27050`,`27062`…), khác hẳn web-tier vát 1:4 của Bug #11:
+1. **Nhánh `Endpoints()` 5 đỉnh của Bug #11 SAI cho snipe**: ở tấm snipe, `v0-v1` chỉ là **NỬA** cạnh đầu
+   (snipe ăn mất nửa kia) → `Mid(v0,v1)` lệch ~5mm khỏi tâm thật → "đường tâm" bị **nghiêng**. `27002`
+   bắt vào `26FFF` ở chỗ cao (đo 11.8mm ≤ 12 → Bracket), `26E5A` bắt chỗ thấp hơn trên CÙNG cạnh thẳng
+   (đo 13.3mm > 12 → Web). Cùng hình học, kết quả ngược nhau chỉ vì vị trí dọc theo đường tâm nghiêng.
+   `PartCollector.AxisOf`/`RectDims` (phần "chưa sửa" của Bug #11) cũng đọc SAI: `26FFF` ra `thk=10/len=41.2`
+   thay vì `20/500` (đoạn vát `v1-v2` dài 41.2 bị chọn làm "cạnh").
+2. **`DistToSegment` (đo tới ĐƯỜNG TÂM) vốn không đủ cho tấm DÀY 20mm**: 1 part hàn phẳng vào mặt tấm
+   20mm luôn cách đường tâm **~10mm** = gần hết `ADJ_TOL=12` → hầu như không còn dung sai cho bất kỳ sai
+   số Endpoints nào. `2704E` đo tới đường tâm 5-đỉnh của `27050` ra ~18mm (cạnh thật chỉ ~4.5mm).
+3. **`27002` lật ngược** = hệ quả tầng 3: `GeometryUtil.MinDistToWeb` chỉ xét `PartType.Web` → không
+   thấy tấm neo THẬT `26FFF` (ClosedPlate). Thứ `PartType.Web` duy nhất ở gần là `26E5A` — chính là cái
+   OB1 bị phân loại nhầm ở (1)! Nó nằm **song song, đối xứng hoàn hảo** với `27002` (w1==w2 khít từng
+   bit) → `if (w1<=w2)` phá hoà bằng cách chọn đầu HP làm neo → **lật**. Bản mirror `27049` thoát vì 1
+   web-tier thật (`27061`) tình cờ gần hơn phantom 2mm ở 1 đầu, phá hoà đúng chiều.
+
+**Sửa (3 phần, `ClassifyUtil` + `PartCollector` + `GeometryUtil`)**:
+- **A.** Thêm `ClassifyUtil.DistToPart(pt, other)` = khoảng cách tới **ĐA GIÁC THẬT** (`Vertices`, 0 nếu
+  trong) qua `PointInPolygon`+`DistToPolygonBoundary`. `IsBracketPattern`/`IsClosedEndsPattern` đổi
+  `NearAm0`/`NearHpFb` từ `DistToSegment` → `DistToPart`. Part hàn phẳng vào tấm 20mm giờ đo ~0-5mm,
+  không phải ~10-18mm.
+- **B.** `ClassifyUtil.Endpoints()` bỏ 2 nhánh cũ (4 đỉnh "d01/d12", 5 đỉnh "Mid(v0,v1)/Mid(v3,v4)"),
+  thay bằng `OrientedBox()` — chiếu đỉnh lên `LongAxis` (cạnh DÀI NHẤT — đoạn vát/cap ngắn không bao giờ
+  dài nhất) + trục vuông góc, lấy tâm span vuông góc → đường tâm KHÔNG lệch dù snipe. `PartCollector.AxisOf`/
+  `RectDims` cũng dùng `OrientedBox` → `26FFF` ra đúng `axis=dọc`, `thk=20`, `len=500`. Xử lý đúng CẢ
+  web-tier vát 1:4 LẪN tấm vát góc (thay thế hẳn fix Bug #11, không còn nhánh `v.Length==5` riêng).
+- **C.** `GeometryUtil.MinDistToWeb` xét thêm `PartType.ClosedPlate` + `PartType.BackingPlate` (bracket
+  hàn lưng được vào MỌI tấm AM_0, không chỉ Web), và dùng `DistToPart`. `27002` giờ neo về `26FFF` với
+  d≈0 (rõ ràng), không còn phụ thuộc phantom.
+
+**Kiểm tay sau sửa**: `26E5A`/`26E56` → Bracket (OB1/OB theo `thk` OrientedBox 10/6); `2704E`/`27063` →
+ClosedPlate (2 đầu đều chạm AM_0 ~5mm); `27002` anchor = đầu tấm `26FFF` (w1≈0 < w2≈270) → dựng đúng chiều.
+
+⚠️ **CHƯA build lại 7D-17C** — 2 thay đổi (A: `DistToSegment`→`DistToPart` trong `IsBracketPattern`/
+`IsClosedEndsPattern`; C: thêm ClosedPlate vào `MinDistToWeb`) đụng đường đi từng "khớp 108/108". `DistToPart`
+CHỈ nới lỏng (đo ≤ `DistToSegment` trong phạm vi nửa bề dày) nên về lý thuyết không phá case đang đúng,
+nhưng PHẢI build lại 7D-17C xác nhận trước khi coi là xong. ⚠️ **CHƯA test trực quan 7D-01C trong AutoCAD.**
 
 ## 5. Đầu ra
 

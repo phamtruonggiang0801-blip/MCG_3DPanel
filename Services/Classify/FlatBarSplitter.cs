@@ -20,47 +20,60 @@ namespace MCG_3DPanel.Services.Classify
     /// </summary>
     internal static class FlatBarSplitter
     {
-        public static List<PanelPart> Split(List<PanelPart> fbParts, List<PanelPart> hpParts)
+        /// <param name="crossMembers">HP + MỌI member AM_0 (Web/tier/Bracket/ClosedPlate — xác nhận kỹ sư
+        /// 2026-08-27) có thể ĐI XUYÊN NGANG qua FB. Tại thời điểm gọi (trong <c>ClassificationService</c>,
+        /// trước bước phân loại AM_0) các part này còn <see cref="PartType.Unknown"/> — chỉ dùng hình học
+        /// (<see cref="ClassifyUtil.CrossesThrough"/> tự lọc T-junction / gần song song).</param>
+        public static List<PanelPart> Split(List<PanelPart> fbParts, List<PanelPart> hpParts,
+            List<PanelPart> crossMembers)
         {
+            var all = new List<PanelPart>(hpParts.Count + crossMembers.Count);
+            all.AddRange(hpParts);
+            all.AddRange(crossMembers);
             var result = new List<PanelPart>(fbParts.Count);
             foreach (var p in fbParts)
-                result.AddRange(SplitOne(p, hpParts));
+                result.AddRange(SplitOne(p, all));
             return result;
         }
 
-        private static List<PanelPart> SplitOne(PanelPart p, List<PanelPart> hpParts)
+        private static List<PanelPart> SplitOne(PanelPart p, List<PanelPart> crossers)
         {
             var (e1, e2) = ClassifyUtil.Endpoints(p);
             double L = e1.DistanceTo(e2);
             if (L < 1e-6) { p.FbTotalPlanLength = L; return new List<PanelPart> { p }; }
             Vector3d dir = (e2 - e1) / L;
 
-            var cuts = new List<double>();
-            foreach (var h in hpParts)
+            // (t = tâm khe dọc trục FB, half = nửa bề dày member cắt ngang → khe = 2·half).
+            var cuts = new List<(double t, double half)>();
+            foreach (var m in crossers)
             {
-                if (!ClassifyUtil.Adjacent(p, h, ClassifyUtil.ADJ_TOL)) continue;
-                if (!ClassifyUtil.CrossesThrough(p, h)) continue;
-                double t = (h.Centroid.X - e1.X) * dir.X + (h.Centroid.Y - e1.Y) * dir.Y;
+                if (ReferenceEquals(m, p)) continue;
+                if (!ClassifyUtil.Adjacent(p, m, ClassifyUtil.ADJ_TOL)) continue;
+                if (!ClassifyUtil.CrossesThrough(p, m, out double t)) continue;
                 t = Math.Max(ClassifyUtil.FB_SPLIT_MARGIN, Math.Min(L - ClassifyUtil.FB_SPLIT_MARGIN, t));
-                cuts.Add(t);
+                cuts.Add((t, Math.Max(0.5, m.FootprintThickness / 2.0)));
             }
             if (cuts.Count == 0) { p.FbTotalPlanLength = L; return new List<PanelPart> { p }; }
 
-            cuts.Sort();
-            // Gộp các điểm cắt quá gần nhau (nhiều HP chạm cùng 1 chỗ, hoặc dung sai vẽ) thành 1.
-            var merged = new List<double>();
-            foreach (var t in cuts)
-                if (merged.Count == 0 || t - merged[merged.Count - 1] > ClassifyUtil.FB_SPLIT_MARGIN)
-                    merged.Add(t);
+            cuts.Sort((a, b) => a.t.CompareTo(b.t));
+            // Gộp các điểm cắt quá gần nhau (nhiều member chạm cùng 1 chỗ, hoặc dung sai vẽ) — giữ khe LỚN nhất.
+            var merged = new List<(double t, double half)>();
+            foreach (var c in cuts)
+                if (merged.Count == 0 || c.t - merged[merged.Count - 1].t > ClassifyUtil.FB_SPLIT_MARGIN)
+                    merged.Add(c);
+                else if (c.half > merged[merged.Count - 1].half)
+                    merged[merged.Count - 1] = (merged[merged.Count - 1].t, c.half);
 
             var segments = new List<PanelPart>(merged.Count + 1);
             double prev = 0;
-            foreach (var t in merged)
+            foreach (var c in merged)
             {
-                segments.Add(BuildSegment(p, e1, dir, prev, t, L));
-                prev = t;
+                double segEnd = c.t - c.half;                 // dừng tại MẶT member (chừa khe)
+                if (segEnd - prev > 1.0) segments.Add(BuildSegment(p, e1, dir, prev, segEnd, L));
+                prev = c.t + c.half;                          // đoạn kế bắt đầu ở mặt kia
             }
-            segments.Add(BuildSegment(p, e1, dir, prev, L, L));
+            if (L - prev > 1.0) segments.Add(BuildSegment(p, e1, dir, prev, L, L));
+            if (segments.Count == 0) { p.FbTotalPlanLength = L; return new List<PanelPart> { p }; }
             return segments;
         }
 

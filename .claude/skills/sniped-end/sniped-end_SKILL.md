@@ -1,13 +1,22 @@
 ---
 name: sniped-end
-description: Quy cách SNIPED END của Flat Bar (FB) — vát chéo góc ở đầu tự do (không hàn Web/HP/FB nào khác). Công thức rise/run (member−15, góc 30°/60° cố định) + quy tắc tách FB tại chỗ giao HP trước khi xét đầu tự do. Đọc khi nhận diện hoặc dựng FlatBar.
+description: Quy cách SNIPED END của Flat Bar (FB) VÀ HP — vát chéo góc ở đầu tự do (không hàn Web/HP/FB nào khác). Công thức rise/run (FLAT_TOP + góc 30°/60° cố định) + quy tắc tách FB tại chỗ giao HP/Web trước khi xét đầu tự do. Đọc khi nhận diện hoặc dựng FlatBar / HP.
 ---
 
-# Sniped End — vát chéo đầu tự do của Flat Bar
+# Sniped End — vát chéo đầu tự do của Flat Bar / HP
 
-**Sniped End KHÔNG áp dụng cho mọi đầu FB** — chỉ đầu nào **THỰC SỰ TỰ DO** (không hàn Web/Bracket/
-GirderEnd/HP/FB nào khác) mới bị vát. Đầu chạm 1 member khác (Web, HP, FB khác…) giữ nguyên vuông sắc
-(coi như đã "nối", không cần vát) — xác nhận kỹ sư, 2026-08-26.
+**Sniped End KHÔNG áp dụng cho mọi đầu** — chỉ đầu nào **THỰC SỰ TỰ DO** (không hàn Web/Bracket/
+GirderEnd/HP/FB nào khác) mới bị vát. Đầu chạm 1 member khác giữ nguyên vuông sắc (coi như đã "nối") —
+xác nhận kỹ sư, 2026-08-26.
+
+**FLAT_TOP = 15mm cho CẢ Flat Bar (`FlatBarBuilder.FLAT_TOP`) LẪN HP (`HpBuilder.SNIP_FLAT`)** — xác
+nhận kỹ sư 2026-08-27 (ban đầu thử HP=30mm rồi đổi về 15mm cho đồng nhất). Góc vát 30°/60° +
+`rise=b−15`, `run=rise·tan60°` dùng chung.
+
+HP dựng bằng extrude tiết diện thật (có bulb) → `HpBuilder.SnipHpEnd` TRỪ (BoolSubtract) 1 nêm tam giác
+ở mỗi đầu tự do (quét theo `belly` qua hết bề rộng tiết diện, kể cả bulb). `IsFreeEnd` dùng chung ngưỡng
+`FB_FREE_END_TOL=30`. KHÔNG có cổng chặn `hpSpan` cho HP (HP không bị tách như FB; chỉ kẹp an toàn
+`run=len/2` nếu HP quá ngắn).
 
 Phân tích từ `FB Sniped End.dump.json` (dump qua `MCG_DumpDrawing`) — không có Attribute/NOTE ghi
 công thức sẵn (khác `GE.dwg`), suy ra bằng cách đo trực tiếp polyline mẫu `1F851` (pentagon trong
@@ -165,10 +174,96 @@ mới là "chiều dài tổng" dùng để so ngưỡng, ÁP DỤNG CHUNG cho M
   — đã chọn phương án LỚN NHẤT toàn panel theo xác nhận kỹ sư, nhưng CHƯA test trên panel có bố trí HP
   không đều để xác nhận đủ.
 
+## 3e. FB đứt tại HP **VÀ mọi member AM_0** + CHỪA KHE = bề dày member (xác nhận kỹ sư 2026-08-27)
+
+Mở rộng mục 3: FB không chỉ đứt tại HP mà tại **MỌI member AM_0 đi xuyên ngang** (Web dài, web-tier
+ngắn, Bracket, ClosedPlate — kỹ sư liệt kê rõ; TRỪ lỗ khoét CutOut). Và 2 đoạn FB mới **cách nhau đúng
+bề dày member cắt ngang** (HP t6 → khe 6mm; Web t10 → khe 10mm) — mỗi đoạn dừng tại 1 MẶT của member,
+không phải tại đường tâm.
+
+**Cài (2026-08-27)**:
+- `ClassifyUtil.CrossesThrough(p, m, out double tCross)` viết lại: giao 2 ĐƯỜNG TÂM (`Endpoints`) thay
+  vì chiếu bbox — thêm 2 điều kiện: (a) **|cos(góc 2 trục)| ≤ 0.85** → loại member chạy gần SONG SONG
+  cạnh FB (Web dọc bên FB không phải "đi ngang qua"); (b) giao điểm phải nằm TRONG `m` (cách 2 đầu `m`
+  ≥ `max(FB.thk, 3)`) → loại **T-junction** (member kết thúc TẠI FB, FB vẫn liền). `tCross` = vị trí
+  giao chiếu lên trục FB (từ `e1`), làm TÂM khe.
+- `FlatBarSplitter.Split(fbParts, hpParts, crossMembers)` — thêm tham số; `crossMembers` = `am0` TRỪ
+  CutOut (lọc trong `ClassificationService` bằng đúng điều kiện CutOut: cùng block Top Plate + nằm hẳn
+  trong biên — vì lúc gọi `am0` còn `Unknown`). Mỗi cut mang `half = m.FootprintThickness/2`; đoạn con
+  dựng từ `tStart = prevCut.t + prevCut.half` tới `tEnd = cut.t − cut.half` (bỏ đoạn < 1mm).
+- `ClassificationService`: chuyển lời gọi `FlatBarSplitter.Split` xuống SAU 2 vòng phân loại CutOut
+  (để lọc được lỗ khoét) nhưng vẫn TRƯỚC vòng `am0` chính / `WebBracketSplitter` (vì `touches`/
+  `IsBracketPattern` cần list FB đã tách — giữ nguyên thứ tự đó).
+
+⚠️ **CHƯA test trực quan** — build 7D-17C xem: (1) FB cắt tại Web có khe đúng; (2) `CrossesThrough`
+chặt hơn (loại T-junction) không làm MẤT split HP nào kỹ sư mong đợi; (3) không over-split ở web-tier.
+
+## 3f. `HpMaxSpan` — quy tắc "1 khoảng HP" (ĐÃ CHỐT, xác nhận kỹ sư 2026-08-27)
+
+**Triệu chứng** (7D-17C): 4 FB song song đầu tự do ở `y≈27009` — chỉ 3/4 được Snip; `390FF`
+(totalPlanLen 4274) không, vì `hpSpan` cũ = **5372** (`390FF` 4274 < 5372 → `lengthOk=false`).
+
+**5372 từ đâu**: = khoảng cách X giữa **2 HP bulb CHÉO** ở khúc cong panel (`38EB8` cx≈91021 &
+`390E6` cx≈96393). Bbox 2 cái này cao > rộng → `IsHorizontal=false` → bị xếp nhầm vào "nhóm HP đứng"
+cùng `38EE9`(99039)+cụm mép(104355/104515); "max adjacent gap" lấy 96393−91021 = 5372.
+
+**Quy tắc kỹ sư (chốt)** — `GirderEndDetector.HpMaxSpan(ClassificationResult cls)`:
+1. `hpSpan` = khoảng cách **LỚN NHẤT** giữa 2 đường HP **liền kề**.
+2. Nếu GIỮA 2 đường HP đó có 1 **Web** (girder CÙNG PHƯƠNG, `MemberLength > WEB_MIN_LEN`) → 2 HP đó
+   KHÔNG "liền kề" → **BỎ** khoảng đó.
+3. Panel có cả HP dọc + ngang → lấy khoảng của phương **nhiều đường HP hơn**.
+4. (Ngầm) HP CHÉO (`ClassifyUtil.IsDiagonalBloatedBbox`) bị loại hẳn — thanh viền/vát góc, không field.
+
+7D-17C: ngang 33 đường HP ≫ đứng 3 → dùng ngang. Các gap lớn 826/867/970 đều có 1 girder Web ngang
+ở giữa (`Y≈16206 / 27243 / 28181`) → bỏ; mọi gap sạch còn lại ≈ **775** → `hpSpan = 775`. `390FF`
+(4274 ≥ 775) → **vát**. Stub 160–540mm (< 775) → không vát. Đúng "4/4".
+
+⚠️ `HpMaxSpan` giờ nhận `ClassificationResult` (cần cả Web) — caller `FlatBarBuilder` đã đổi. Chạy ở
+build-phase nên Web đã `PartType.Web`.
+
+## 3g. Sniped End cho BackingPlate — flat=15mm SÁT CẠNH KHÔNG VÁT, chéo suốt phần còn lại (ĐÃ ĐỐI CHIẾU MẪU, 2026-08-28)
+
+Khác FlatBar/HP (1 cạnh HÀN cố định vuông sắc suốt chiều dài + 1 cạnh TỰ DO bị vát 1 góc/đầu):
+BackingPlate KHÔNG có cạnh nào "hàn cố định" theo chiều cao — cả cạnh trên (gần Top Plate) lẫn cạnh
+dưới (gần Flange) đều THỤT 30mm, không chạm gì (`PlateBuilder.ZParams`).
+
+**Đối chiếu mẫu thật** (`CAS.dump.json`, `*Model_Space`, polyline `1F255`, layer `Mechanical-AM_0`,
+6 đỉnh — khớp CHÍNH XÁC kích thước part test `38ED5` L=50, H=314):
+```
+V0(1403.4476,903.908) V1(1438.4476,843.2862) V2(1438.4476,650.5298)
+V3(1403.4476,589.908) V4(1388.4476,589.908) V5(1388.4476,903.908)
+```
+Quy về local (gốc = V4, x=dọc trục dài, y=cao): `(15,0)→(50,-60.62)→(50,-253.38)→(15,-314)→(0,-314)→(0,0)`.
+Đo tay: cạnh TRÁI (x=0, V4-V5) dài ĐỦ 314 = H — KHÔNG vát, còn nguyên vẹn (đại diện đầu KHÔNG tự do,
+"lưng sát Web" = mép còn nguyên). Cạnh TRÊN từ (0,0) đi 15mm phẳng tới (15,0) — ĐÂY mới là `flat=15`,
+nằm SÁT cạnh không vát, KHÔNG nằm ở đầu tự do. Từ (15,0), đường CHÉO kéo dài suốt phần CÒN LẠI của
+chiều dài (`reach = L−15 = 35`) chạm THẲNG mép đầu tự do (x=50) — góc đó bị cắt trụi, không giữ flat.
+Độ dốc: `run (trục cao) = reach·tan(60°)` = 35×1.7320 = 60.62 — khớp khít toạ độ Y đo được
+(903.908−60.6218=843.2862 ✓).
+
+**⚠️ Đã sửa SAI 2 lần trước khi khớp mẫu**: lần 1 vát cả `rise=H−FLAT` (đường chéo khổng lồ, sai vì
+tấm này không cạnh nào "hàn cố định" để làm chuẩn trừ). Lần 2 đặt `flat=15` NGAY TẠI đầu tự do (dọc
+trục dài) rồi suy trục cao qua `tan60°` (rập khuôn kiểu "chamfer góc nhỏ") — kỹ sư đo thực tế ra ~24mm
+(không phải 15) → SAI, vì flat KHÔNG nằm ở đầu tự do mà nằm sát đầu KHÔNG vát (ngược hẳn vị trí).
+
+**Cài** (`Services/Builders/BackingPlateBuilder.cs`, đăng ký TRƯỚC `PlateBuilder`, cùng pattern
+`FlatBarBuilder`: outline elevation local → Region → extrude `FootprintThickness` → `AlignCoordinateSystem`
+→ dịch `(0,0,−30)`):
+- Đúng 1 đầu tự do (VD `38ED5`: free1=True): `flat=15` đặt sát đầu KHÔNG tự do, `reach=L−15`,
+  `run=reach·tan60°` (kẹp `≤H/2`), đường chéo chạm thẳng mép đầu tự do (không giữ flat ở đó).
+- KHÔNG đầu nào tự do: hộp phẳng nguyên vẹn (như cũ).
+- **CẢ 2 đầu tự do**: CHƯA có mẫu đối chiếu (mẫu chỉ có 1 đầu neo) — phỏng đoán AN TOÀN: chia đôi
+  chiều dài, dải flat 15mm nằm GIỮA tấm, mỗi nửa tự áp `reach=L/2−7.5` độc lập. **Cần xác nhận riêng**
+  nếu gặp panel có backing plate cả 2 đầu tự do.
+
+⚠️ Vẫn nên kiểm mắt trong AutoCAD 1 lần nữa để xác nhận khớp mẫu — đặc biệt case cả 2 đầu tự do (chưa
+có dữ liệu đối chiếu).
+
 ## 4. Chưa chốt / TODO
 
-- [ ] **FB cắt ngang FB khác hoặc Web** (không phải HP) — user mới xác nhận case **HP**; chưa rõ 2
-      trường hợp này có cần tách tương tự không (`FlatBarSplitter` hiện CHỈ xét `hpParts`).
+- [ ] **BackingPlate Sniped End** — xem mục 3g, đã sửa 1 lần theo số đo thực tế, VẪN chưa đối chiếu
+      bản vẽ mẫu — có thể còn cần sửa tiếp sau khi kỹ sư xem/đo lại bản dựng 3D mới.
+- [x] ~~**FB cắt ngang FB khác hoặc Web**~~ — xác nhận kỹ sư 2026-08-27: đứt tại MỌI member AM_0 (mục 3e).
 - [x] ~~**Đoạn FB rất ngắn**~~ — một phần đã trả lời bằng điều kiện `L≥hpSpan` (mục 3d): đoạn quá ngắn
       (thường ngắn hơn cả khoảng HP) sẽ không được vát nữa, tránh hẳn case chồng vát 2 đầu trong đa số
       trường hợp thực tế. Vẫn giữ kẹp an toàn `run=L/2` trong `FlatBarBuilder` làm lưới an toàn cuối

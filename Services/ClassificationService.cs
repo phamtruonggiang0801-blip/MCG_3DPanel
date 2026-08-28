@@ -69,14 +69,6 @@ namespace MCG_3DPanel.Services
                     }
                 }
 
-                // FlatBar: người vẽ 2D thường kéo 1 polyline liên tục xuyên qua HP cho nhanh, nhưng
-                // THỰC TẾ FB không liên tục — nó kết thúc tại đúng vị trí giao với HP (xác nhận kỹ sư,
-                // xem skill sniped-end). Tách trước khi add vào result.Parts, để mỗi đoạn có 2 đầu mút
-                // THẬT — cần cho FlatBarBuilder xác định đầu nào tự do (cần vát) / đầu nào chạm HP.
-                // Không có HP nào cắt ngang thật → trả nguyên polyline gốc (không đổi hành vi cũ).
-                fbParts = FlatBarSplitter.Split(fbParts, hpParts);
-                result.Parts.AddRange(fbParts);
-
                 // Top Plate = AREA lớn nhất trên layer 0.
                 PanelPart top = null;
                 if (topCands.Count > 0)
@@ -98,6 +90,18 @@ namespace MCG_3DPanel.Services
                         if (OwnerBlock(p) == topKey && ClassifyUtil.StrictlyInside(p, top, ClassifyUtil.EDGE_TOL))
                         { p.Type = PartType.CutOut; result.Parts.Add(p); }
                     }
+
+                // FlatBar: người vẽ 2D thường kéo 1 polyline liên tục xuyên qua HP/Web cho nhanh, nhưng
+                // THỰC TẾ FB không liên tục — nó đứt tại đó, chừa khe = bề dày member cắt ngang (xác nhận
+                // kỹ sư 2026-08-27, xem skill sniped-end). Tách TRƯỚC khi add vào result.Parts / dùng ở
+                // vòng am0 bên dưới, để mỗi đoạn có 2 đầu mút THẬT (cần cho FlatBarBuilder xác định đầu tự
+                // do). Xét cắt bởi HP + MỌI member AM_0 TRỪ lỗ khoét (Web/tier/Bracket/ClosedPlate — còn
+                // Unknown ở bước này nên chỉ dùng hình học; loại lỗ khoét = cùng block Top Plate + nằm hẳn
+                // trong biên, đúng điều kiện CutOut ở vòng am0). Không member nào cắt ngang → giữ nguyên.
+                var fbCrossers = am0.Where(p => !(top != null && OwnerBlock(p) == topKey
+                        && ClassifyUtil.StrictlyInside(p, top, ClassifyUtil.EDGE_TOL))).ToList();
+                fbParts = FlatBarSplitter.Split(fbParts, hpParts, fbCrossers);
+                result.Parts.AddRange(fbParts);
 
                 // AM_0: tách CutOut / BackingPlate / ClosedPlate; phần còn lại mới đưa vào Web/Bracket.
                 // ⚠️ CutOut xét ĐẦU TIÊN khi "cùng owner block với biên Top Plate" (xác nhận kỹ sư
@@ -123,14 +127,14 @@ namespace MCG_3DPanel.Services
 
                     bool touches = hpParts.Any(h => ClassifyUtil.Adjacent(p, h, ClassifyUtil.ADJ_TOL))
                                 || fbParts.Any(f => ClassifyUtil.Adjacent(p, f, ClassifyUtil.ADJ_TOL));
-                    if (!touches && PlateDetector.IsClosedPlate(p, faceplates, longWebs))
+                    if (!touches && PlateDetector.IsClosedPlate(p, faceplates, longWebs, am0, hpParts, fbParts))
                     { p.Type = PartType.ClosedPlate; result.Parts.Add(p); continue; }
 
                     // "Chạm" nhưng KHÔNG đáng tin (bbox chéo của HP bị phồng, hoặc member khớp lại
                     // NGẮN HƠN p — phi lý làm chỗ hàn) ⇒ vẫn xét ClosedPlate, đòi hỏi bằng chứng MẠNH
                     // hơn hẳn (đa giác FacePlate thật ≥90%, không phải bbox 25%). Xem ClassifyUtil.HasOnlyWeakTouch.
                     if (touches && ClassifyUtil.HasOnlyWeakTouch(p, hpParts, fbParts, ClassifyUtil.ADJ_TOL)
-                        && PlateDetector.IsClosedPlateStrict(p, faceplates))
+                        && PlateDetector.IsClosedPlateStrict(p, faceplates, am0, hpParts, fbParts))
                     { p.Type = PartType.ClosedPlate; result.Parts.Add(p); continue; }
 
                     webCands.Add(p);

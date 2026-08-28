@@ -27,7 +27,8 @@ namespace MCG_3DPanel.Services
             new BracketBuilder(),   // Bracket có mã knee (OB/IB/FB)
             new HpBuilder(),        // HP tiết diện bulb thật
             new FlatBarBuilder(),   // FlatBar — tự dựng TOÀN BỘ (vát Sniped End ở đầu tự do, hộp phẳng nếu không)
-            new PlateBuilder(),     // TopPlate/Web/Flange/FacePlate/FlatBar + fallback
+            new BackingPlateBuilder(), // BackingPlate — vát góc Sniped End ở đầu tự do (2 góc/đầu), hộp phẳng nếu không
+            new PlateBuilder(),     // TopPlate/Web/Flange/FacePlate/ClosedPlate + fallback (kể cả BackingPlate)
         };
 
         private readonly IProfileService _profile = new ProfileService();
