@@ -136,8 +136,105 @@ CÙNG hệ trục local với `HpBuilder` để lỗ khớp đúng HP solid:
 - [ ] **Mép LƯNG lỗ trùng mặt LƯNG HP** (gap=0): 2 solid riêng, không boolean với nhau — chỉ trùng
   thị giác (= đường hàn). Nếu AutoCAD render z-fighting, cân nhắc lùi mép LƯNG lỗ vào 0.1–0.5mm.
 - [ ] **`dUp = b − R`** (mức mở của foot) suy từ HP120 (E8 = 90 = 120−30). Chưa đối chiếu cỡ khác.
-- [ ] **LUG B1R** (tấm collar) — chi tiết riêng, làm sau: solid MỚI dày `tw`, cao `B1` (TABLE 1),
-  vát đỉnh 45°, overlap HP `OL=max(30, tw×4)`, hàn vào web+HP (dạng như Bracket/BackingPlate).
+- [ ] **LUG B1R** (tấm collar) — xem **§7**. Quy tắc + hình học đã chốt qua Hatch; `WebCollarPlateBuilder`
+  ĐÃ CÀI (2026-08-28) — **CHƯA test trực quan**; còn 1 mâu thuẫn B1 cần kỹ sư xác nhận (§7c).
+
+## 7. LUG B1R — Collar Plate (đã cài 2026-08-28, chưa test)
+
+Tấm bù (compensation / collar plate) hàn quanh lỗ CO nơi HP xuyên web — khôi phục tính liên tục của web.
+Nguồn: **Hatch `1F3F2`** (`layer DM4_STEEL_CUTOUT_RASTER`, `*Model_Space` của `CAS.dump.json`, HP120) —
+biên polyline 9 đỉnh = mặt cắt THẬT tấm collar. Hình "LUG B1R (LUG FOR BULB-PROFILE)" + TABLE 1 tham khảo.
+
+### 7a. Quy tắc VỊ TRÍ (xác nhận kỹ sư 2026-08-28)
+
+Note gốc:
+
+```text
+ADD COLLAR PLATE IF WEB HEIGHT IS LESS THAN 300mm
+AND AT EACH TRANSVERSE/LONGITUDINAL WEB ON THE OUTMOST 2 HP SLOTS
+AND AT THE PARTIAL TRANSVERSE WEB WHICH IS IN LINE WITH CORNER SUPPORTS
+```
+
+Diễn giải đã chốt với kỹ sư (2026-08-28) — **3 dòng note = 3 rule CỘNG THÊM, ĐỘC LẬP** (KHÔNG phải cổng chung):
+
+- **Rule chính (note 2) — LUÔN áp dụng, KHÔNG phụ thuộc chiều cao web:** HP (chạy NGANG) xuyên qua
+  **Web dọc**. Tại mỗi chỗ một **Web ngang** (chạy ∥ HP) giao vào Web dọc, chỉ **2 lỗ HP gần điểm giao
+  đó nhất** (trên Web dọc) được thêm 1 Collar Plate. HP thứ 3 trở đi (xa hơn) — **chỉ cutout, KHÔNG collar**.
+- **note 1 ("web < 300"):** kỹ sư chốt "vẫn chỉ 2 HP quanh junction" ⇒ với tool hiện tại (1 `WebHeight`
+  chung) **KHÔNG thêm gì** so với rule chính → builder **BỎ hẳn gate WebHeight**. Ghi lại cho tương lai:
+  khi có H riêng từng web, web < 300 → collar ở **MỌI** lỗ HP của web đó.
+- **note 3 (partial transverse web ∥ corner support):** **BỎ tạm thời** — block Plan 2D không chứa
+  corner support / cột chống; cũng chưa có cờ "web cụt (partial)". Ghi lại, làm khi có dữ liệu.
+- Collar là **1 tấm** (không phải 2), nằm **phía BỤNG HP**, dày **`tl = tw`** (chiều dày Web dọc).
+
+Cài đặt (`Services/Builders/WebCollarPlateBuilder.cs`, `internal static`, KHÔNG `IPartBuilder` — như
+`WebHpCutoutBuilder`): `BuildCollarPlates(ctx)` → `List<(Solid3d sol, string tag)>` (đã set Layer/Color
+theo web dọc). `Build3DService` gọi SAU `WebHpCutoutBuilder.ApplyWebCutouts` → `btr.AppendEntity` +
+ghi Report `[Collar] solid <handle> = <tag>` + `BuiltPartInfo.Code = tag` (truy vết "vì sao có collar này":
+web dọc × HP × web ngang × phía L1/L2/R1/R2 × jpos/s).
+
+- `web dọc` = **web run** (gộp tier) — `RunSpan` = đoạn tâm đầy đủ + trục (spine = tier dài nhất).
+- lỗ CO = `ClassifyUtil.CrossesThrough(hp, tierPart, tCross)` + kẹp `tCross ∈ [b/2, L−b/2]` (HP kết thúc
+  tại web → bỏ, giống `WebHpCutoutBuilder`).
+- `web ngang` = web run KHÁC, `|cos(trục)| ≤ 0.34` (~⟂), đoạn tâm 2 run cắt nhau (`LineIntersect`) tại
+  điểm: (a) trong `[−0.03, 1.03]·len` web DỌC (cho phép junction ở đầu mút web dọc = khung kết thúc tại
+  girder); (b) **TRONG thân web NGANG** (`sNgang ∈ [60, len−60]`) — web ngang phải ĐI XUYÊN, KHÔNG phải
+  kết thúc tại web dọc (girder ngang chạm khung biên ⇒ loại). Fix 2026-08-28 sau khi kỹ sư báo collar sai.
+- **slot cap**: lỗ HP chỉ nhận collar nếu `|s − jpos| ≤ 2.6× bước HP median` (sàn 2200mm) — tránh "lỗ gần
+  nhất" thực ra cách junction hàng mét (web dọc grouped span dài, đoạn quanh junction không có lỗ).
+- mỗi junction → `SLOTS_PER_SIDE = 2` lỗ HP liền kề **MỖI PHÍA** (2 lỗ `s ≤ jpos` gần nhất + 2 lỗ
+  `s > jpos` gần nhất). KHÔNG phải "N gần nhất theo |Δ|" (2 web ngang sát nhau ⇒ bỏ sót HP ngoài).
+  Dedupe `HashSet<"webHandle~hpHandle">` (HP chung 2 junction chỉ dựng 1 lần). VD 2 web ngang A,B
+  chung HP_giữa: A→{HP_trái1,HP_trái2,HP_giữa,HP_phải1}, B→{HP_giữa,HP_trái1,HP_phải1,HP_phải2} ⇒
+  union {trái2,trái1,giữa,phải1,phải2}.
+
+### 7b. Kích thước hình học — `HpProfileService.CollarPlateSection` (KHỚP 1:1 Hatch `1F3F2`)
+
+Hệ trục KHỚP `HpCutoutSection` (gốc = LƯNG∩ĐẦU HP, +X→BỤNG, −Y xuống). HP `b`, `c`, `r`, `t` (dày thân);
+`R = coR` (`LookupCoRadius(b)` — theo **bulb**); `W = (c+r)+R`; `HC = 10` (vát gót 10×10);
+`B1 = LookupB1(b)` = TABLE 1 cột B1 **tra theo b (HP height)** — xác nhận kỹ sư: "HP120 ⇒ B1 = 90".
+
+Polygon **8 đỉnh CCW** (bulge dương, đúng thứ tự Hatch). HP120 (b120,c17,r5,coR30 ⇒ W52, B1=90) khớp Hatch:
+
+| # | (X, Y) HP120 | công thức | bulge→kế |
+|---|---|---|---|
+| 1 | (83, −60)      | `(W+R, −B1+R)`               | 0 |
+| 2 | (83, −52.4)    | `(W+R, −(HC+R√2))`           | +0.1989 (¼ cung R: mép bụng ↔ vát 45°) |
+| 3 | (74.2, −31.2)  | `(W+R/√2, −(HC+R√2)+R/√2)`   | 0 (đường vát 45°) |
+| 4 | (43, 0)        | `(W−HC, 0)`                  | 0 (top-flat trên mặt dưới Top Plate) |
+| 5 | (16, 0)        | `(t+HC, 0)`                  | 0 (vát gót 10×10) |
+| 6 | (6, −10)       | `(t, −HC)`                  | 0 (mép GÓT = mặt bụng thân HP) |
+| 7 | (6, −90)       | `(t, −B1)`                   | 0 (đáy collar) |
+| 8 | (53, −90)      | `(W, −B1)`                   | +0.4142 (¼ cung R góc bụng-đáy) |
+
+Đáy collar `Y = −B1` (HP120: −90 — trùng `−(b−R)` chỉ do coR≈b/4; HP khác thì `B1 ≠ b−R`). **KHÔNG có
+"váy"** kéo dưới B1. Tấm KHÔNG chồng thân/bầu HP (mép gót `X=t`) → **KHÔNG cần trừ lỗ**. Extrude `tl`
+dọc trục HP, áp 1 MẶT web (phía web ngang), ra ngoài. Mép bụng `X = W+R` (lấn qua mép lỗ CO ~`R`).
+
+### 7c. CHƯA chốt / cần test
+
+- [x] ~~MÂU THUẪN B1~~ **GIẢI QUYẾT 2026-08-28**: TABLE 1 cột "H" = **chiều cao HP** (giống cột R /
+  `CoRadiusTable`), KHÔNG phải chiều cao web. HP120 ⇒ B1 = 90 = đáy Hatch. `CollarPlateSection` dùng
+  `−B1` (= `LookupB1(b)`); HP120 trùng `−(b−R)` chỉ do trùng số. Hình "LUG B1R": "H" trong hình cũng
+  là chiều cao HP (`B1 + H/4 = H` ⇒ `B1 = 0.75·HP`, `H/4` = vùng foot dưới B1). Không có váy riêng.
+- [x] ~~Gate WebHeight~~ **BỎ 2026-08-28** — kỹ sư chốt 3 rule cộng thêm độc lập, rule "2 HP quanh
+  junction" LUÔN áp dụng bất kể chiều cao web. (Lần build đầu 28/08 bị gate `WebHeight=374 ≥ 300` chặn
+  → 0 collar; đã bỏ.)
+- [ ] **CHƯA test trực quan** — build lại panel HP-xuyên-Web bất kỳ. Kiểm: (1) collar đúng 2 lỗ quanh
+  junction web-ngang; (2) hình khớp Hatch (mép gót sát mặt bụng thân HP, mép bụng lấn web ~R, vát
+  45°+10×10, đáy tại −B1); (3) đúng 1 mặt web, không đè HP; (4) report
+  `[WebCollarPlateBuilder] N web run · M lỗ CO · K junction → P Collar Plate`.
+- [ ] **Junction web-ngang chưa test** — logic `LineIntersect` + kẹp `[−0.03,1.03]` +
+  `dOnNgang ≤ 2·max(thk,ADJ_TOL)` chưa chạy trên panel thật.
+- [ ] **Mặt nào của Web dọc** — code chọn mặt về phía **Web ngang** (`(wn.center−cross)·hpAxis`). Giả
+  định — cần xác nhận.
+- [x] ~~"2 lỗ gần nhất theo |Δ|"~~ **SỬA 2026-08-28 (2 lượt)**: (1) → 1 lỗ liền kề mỗi phía; (2) kỹ sư
+  chốt **2 lỗ mỗi phía** (`SLOTS_PER_SIDE=2`). Junction đơn lẻ → 4 collar; 2 junction sát nhau → 5
+  (xem VD §7a). Chưa xác nhận junction đơn lẻ có nên là 4 hay 2.
+- [ ] **`W = (c+r)+R`** dùng chung với lỗ CO (skill §2, HP120 52≈53). Cỡ khác chưa đối chiếu.
+- [ ] TABLE 1 cột `h1, h2, B2, B3, B4` — biến thể LUG khác (B2R/B3R/B4R?); note chỉ yêu cầu **B1R**.
+- [x] `MCG_DumpDrawing` xuất biên Hatch (`DrawingDumpCommand`, nhánh `Hatch` → `loops[]`) — 2026-08-28.
+- [x] `HpProfileService.CollarPlateSection` + `WebCollarPlateBuilder` + wire `Build3DService` — 2026-08-28.
 
 Liên quan: [[hp-profile]] (tiết diện `b,t,c,r` + bảng tra) · [[panel-parts-reference]] (mục 5a — CutOut
 Top Plate, cùng mô hình boolean-trừ) · [[sniped-end]] (mục 3e — `CrossesThrough` dùng chung) ·

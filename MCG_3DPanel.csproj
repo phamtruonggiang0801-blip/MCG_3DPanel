@@ -1,19 +1,44 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net48</TargetFramework>
+    <!-- ============================================================
+         .NET 8 (net8.0-windows) — BẮT BUỘC cho AutoCAD 2026.
+         API managed AutoCAD 2026 (AcMgd/AcDbMgd/AcCoreMgd) = .NETCoreApp v8.0;
+         plugin net48 KHÔNG NETLOAD được. Bản .NET 8 chỉ chạy AutoCAD 2025+.
+         ============================================================ -->
+    <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
-    <Platforms>x64</Platforms>
+    <Platforms>AnyCPU;x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
-    <LangVersion>8.0</LangVersion>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>MCG_3DPanel</RootNamespace>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-    <!-- AutoCAD tự nạp DLL; không copy assembly của AutoCAD vào output -->
-    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
-    <AppendTargetFrameworkToOutputPath>true</AppendTargetFrameworkToOutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendPlatformToOutputPath>false</AppendPlatformToOutputPath>
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+
+    <!-- Sinh .deps.json + copy dependency ra output (AutoCAD 2025+ nạp plugin
+         trong AssemblyLoadContext riêng). -->
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <RollForward>LatestMinor</RollForward>
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <DebugType>portable</DebugType>
+    <!-- Plugin AutoCAD luôn chạy Windows — tắt cảnh báo platform-compat. -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <!-- MSB3277: AcDbMgdBrep/AcTcMgd của AutoCAD 2026 kéo Microsoft.VisualBasic 10.1
+         và System.Drawing bản cũ — vô hại (AutoCAD tự cấp lúc runtime, Private=False). -->
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
+
+    <!-- Đổi để build cho AutoCAD khác (2025+). -->
+    <AcadYear>2026</AcadYear>
+    <AcadPath>C:\Program Files\Autodesk\AutoCAD $(AcadYear)</AcadPath>
   </PropertyGroup>
 
-  <!-- Debug: DLL kèm timestamp => NETLOAD nạp lại được mà KHÔNG cần restart AutoCAD (file mới, không bị khoá). -->
+  <!-- Debug: DLL kèm timestamp => NETLOAD nạp lại được mà KHÔNG cần restart AutoCAD. -->
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
     <AssemblyName>MCG_3DPanel_$([System.DateTime]::Now.ToString('yyyyMMdd_HHmmss'))</AssemblyName>
   </PropertyGroup>
@@ -22,22 +47,37 @@
     <AssemblyName>MCG_3DPanel</AssemblyName>
   </PropertyGroup>
 
-  <!-- Tham chiếu AutoCAD 2023 .NET API. Private=false => KHÔNG copy vào bin -->
+  <!-- Release: deploy NGUYÊN thư mục output + PackageContents.xml vào
+       C:\CustomTools\Autocad\MCG_3DPanel\. -->
+  <Target Name="DeployToCustomTools" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+    <ItemGroup>
+      <_Deploy Include="$(OutputPath)**\*" />
+      <_Deploy Include="$(ProjectDir)PackageContents.xml" />
+    </ItemGroup>
+    <RemoveDir Directories="C:\CustomTools\Autocad\MCG_3DPanel" />
+    <MakeDir Directories="C:\CustomTools\Autocad\MCG_3DPanel" />
+    <Copy SourceFiles="@(_Deploy)"
+          DestinationFiles="@(_Deploy-&gt;'C:\CustomTools\Autocad\MCG_3DPanel\%(RecursiveDir)%(Filename)%(Extension)')"
+          ContinueOnError="true" />
+    <Message Text="[Deploy] MCG_3DPanel (net8, full folder) → C:\CustomTools\Autocad\MCG_3DPanel" Importance="High" />
+  </Target>
+
+  <!-- Tham chiếu AutoCAD 2026 .NET API. Private=false => KHÔNG copy vào bin -->
   <ItemGroup>
     <Reference Include="AcCoreMgd">
-      <HintPath>C:\Program Files\Autodesk\AutoCAD 2023\AcCoreMgd.dll</HintPath>
+      <HintPath>$(AcadPath)\AcCoreMgd.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="AcDbMgd">
-      <HintPath>C:\Program Files\Autodesk\AutoCAD 2023\AcDbMgd.dll</HintPath>
+      <HintPath>$(AcadPath)\AcDbMgd.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="AcMgd">
-      <HintPath>C:\Program Files\Autodesk\AutoCAD 2023\AcMgd.dll</HintPath>
+      <HintPath>$(AcadPath)\AcMgd.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="AcDbMgdBrep">
-      <HintPath>C:\Program Files\Autodesk\AutoCAD 2023\AcDbMgdBrep.dll</HintPath>
+      <HintPath>$(AcadPath)\AcDbMgdBrep.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

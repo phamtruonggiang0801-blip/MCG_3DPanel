@@ -5,6 +5,7 @@ using System.Text;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
+using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
 using MCG_3DPanel.Utilities;
 
@@ -168,6 +169,59 @@ namespace MCG_3DPanel.Commands
                     { "type", "Dim" }, { "layer", L }, { "color", c },
                     { "dimType", ent.GetType().Name }, { "meas", dim.Measurement }, { "text", dim.DimensionText },
                 };
+            if (ent is Hatch hat)
+            {
+                // Biên Hatch = outline THẬT của chi tiết tô đặc (vd tấm Collar Plate "LUG B1R" trong
+                // CAS.dwt). Trước đây rơi vào fallback cuối → chỉ có type/layer/color, MẤT hình học.
+                string pat;
+                try { pat = hat.PatternName; } catch { pat = "?"; }
+                var loops = new List<object>();
+                try
+                {
+                    for (int i = 0; i < hat.NumberOfLoops; i++)
+                    {
+                        HatchLoop loop = hat.GetLoopAt(i);
+                        var lo = new JsonObject { { "loopType", loop.LoopType.ToString() } };
+                        if (loop.IsPolyline)
+                        {
+                            var vs = new List<object>();
+                            foreach (BulgeVertex bv in loop.Polyline)
+                                vs.Add(new JsonObject { { "x", bv.Vertex.X }, { "y", bv.Vertex.Y }, { "bulge", bv.Bulge } });
+                            lo.Add("polyline", true);
+                            lo.Add("vertices", vs);
+                        }
+                        else
+                        {
+                            var cs = new List<object>();
+                            foreach (Curve2d cv in loop.Curves)
+                            {
+                                var co = new JsonObject
+                                {
+                                    { "curve", cv.GetType().Name },
+                                    { "x0", cv.StartPoint.X }, { "y0", cv.StartPoint.Y },
+                                    { "x1", cv.EndPoint.X }, { "y1", cv.EndPoint.Y },
+                                };
+                                if (cv is CircularArc2d ca)
+                                {
+                                    co.Add("cx", ca.Center.X); co.Add("cy", ca.Center.Y); co.Add("r", ca.Radius);
+                                    co.Add("a0", ca.StartAngle); co.Add("a1", ca.EndAngle);
+                                }
+                                cs.Add(co);
+                            }
+                            lo.Add("polyline", false);
+                            lo.Add("curves", cs);
+                        }
+                        loops.Add(lo);
+                    }
+                }
+                catch (System.Exception ex) { loops.Add(new JsonObject { { "error", ex.Message } }); }
+
+                return new JsonObject
+                {
+                    { "type", "Hatch" }, { "handle", ent.Handle.ToString() }, { "layer", L }, { "color", c },
+                    { "pattern", pat }, { "numLoops", hat.NumberOfLoops }, { "loops", loops },
+                };
+            }
             if (ent is Solid3d s3d)
             {
                 try

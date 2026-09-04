@@ -4,7 +4,7 @@
     ProductCode="{C7A2E9D4-8B31-4F6A-9E2C-5D1F3A6B7C8E}">
   <CompanyDetails Name="MCG" Email="mcgautomation3@gmail.com"/>
   <Components Description="MCG 3D Panel Components">
-    <RuntimeRequirements OS="Win64" Platform="AutoCAD*" SeriesMin="R24.2" SeriesMax="R24.2"/>
+    <RuntimeRequirements OS="Win64" Platform="AutoCAD*" SeriesMin="R25.0" SeriesMax="R25.1"/>
     <ComponentEntry AppName="MCG_3DPanel" Version="1.0.0"
         ModuleName="./Contents/MCG_3DPanel.dll"
         LoadOnAutoCADStartup="True" LoadOnCommandInvocation="True">

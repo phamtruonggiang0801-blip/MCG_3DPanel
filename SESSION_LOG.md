@@ -1,5 +1,23 @@
 # SESSION LOG — MCG_3DPanel
 
+## Session 2026-09-04 — Migrate .NET 8 cho AutoCAD 2026
+
+### Đã làm
+- `MCG_3DPanel.csproj`: `net48` → `net8.0-windows`; `EnableDynamicLoading` + `RollForward` + `CopyLocalLockFileAssemblies=true`; `AppendTargetFrameworkToOutputPath` → false; output cố định `bin\$(Config)\`.
+- Ref API AutoCAD **2026** (`$(AcadPath)`, auto-detect 2026→2025): `AcCoreMgd`/`AcDbMgd`/`AcMgd`/`AcDbMgdBrep`.
+- `NoWarn CA1416` + demote `MSB3277` (AcDbMgdBrep/AcTcMgd kéo Microsoft.VisualBasic 10.1 / System.Drawing cũ — vô hại).
+- `PackageContents.xml`: `SeriesMin=SeriesMax=R24.2` → `SeriesMin=R25.0 SeriesMax=R25.1`.
+- Thêm target `DeployToCustomTools` (Release): deploy NGUYÊN thư mục + `PackageContents.xml` vào `C:\CustomTools\Autocad\MCG_3DPanel\`.
+- Build `dotnet build -c Debug` → **0 error, 0 warning**.
+
+### Trạng thái
+- Bản .NET 8 chỉ chạy AutoCAD 2025+. Chưa test trong AutoCAD 2026 thật.
+
+### Bước tiếp theo
+- NETLOAD + bundle autoload trong AutoCAD 2026 → lệnh `MCG_Build3DPanel`, dựng 3D, xuất CSV.
+
+---
+
 ## ⚡ Trạng thái hiện tại
 
 **Phase 2 (Build3DService) — CODE XONG, build OK, chờ test dựng 3D trong AutoCAD.**
@@ -14,6 +32,10 @@ Face Plate như Flange (xác nhận), Web tầng cùng cao H (xác nhận).
    **Build 3D** → pick panel → chọn **Yes/No** (giữ 3D & xoá 2D / bỏ). Kiểm hình + layer/màu.
 2. **Parametric profiles (Bracket trước)**: hướng đã chốt = **DWG profile-library** (xem skill
    `parametric-profiles`). CHỜ user gửi bản vẽ bracket + dim fixed/scale → định quy ước DWG + viết ProfileService.
+3. **Collar Plate / LUG B1R** (2026-08-28): ĐÃ CÀI đủ (build OK, **chưa test trực quan**) —
+   `MCG_DumpDrawing` xuất biên Hatch, `HpProfileService.CollarPlateSection` (khớp 1:1 Hatch `1F3F2`,
+   đáy = −B1 tra theo chiều cao HP), `WebCollarPlateBuilder` (2 HP quanh junction web-ngang, KHÔNG gate
+   WebHeight) + wire `Build3DService`. Skill `web-hp-cutout` §7. Test: build lại panel HP-xuyên-Web bất kỳ.
 
 ## Trạng thái từng file
 

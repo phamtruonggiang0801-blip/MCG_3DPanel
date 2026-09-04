@@ -100,6 +100,20 @@ namespace MCG_3DPanel.Services
                         foreach (var w in webSolids) FillGeometry(w.info, w.sol); // cập nhật bbox/thể tích SAU khi khoét
                 }
 
+                // Collar Plate / LUG B1R — SOLID MỚI (không boolean) hàn phía bụng HP quanh lỗ CO, tại
+                // 2 lỗ gần mỗi junction web-ngang × web-dọc, chỉ khi WebHeight < 300. Xem skill web-hp-cutout §7.
+                foreach (var (collar, tag) in WebCollarPlateBuilder.BuildCollarPlates(ctx))
+                {
+                    btr.AppendEntity(collar);
+                    tr.AddNewlyCreatedDBObject(collar, true);
+                    made++;
+                    string ch = collar.Handle.ToString();
+                    var cInfo = new BuiltPartInfo { Handle = ch, Type = "CollarPlate", Code = tag, Built = true };
+                    result.Parts.Add(cInfo);
+                    FillGeometry(cInfo, collar);
+                    ctx.Report.Add($"[Collar] solid {ch} = {tag}");
+                }
+
                 // CutOut = lỗ khoét — trừ (boolean) thẳng vào solid Top Plate đã dựng, không phải part riêng.
                 if (topPlateSolid != null)
                 {

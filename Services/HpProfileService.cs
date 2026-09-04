@@ -33,6 +33,18 @@ namespace MCG_3DPanel.Services
         /// </summary>
         List<VertexBulge> HpCutoutSection(double b, double t, double c, double r, double coR);
 
+        /// <summary>
+        /// Tiết diện tấm <b>Collar Plate / LUG B1R</b> (Hatch <c>1F3F2</c>, layer <c>DM4_STEEL_CUTOUT_RASTER</c>,
+        /// <c>*Model_Space</c> của CAS.dwt — HP120). Hệ trục KHỚP <see cref="HpCutoutSection"/> (gốc = LƯNG∩ĐẦU,
+        /// +X → BỤNG, −Y xuống). Tấm phẳng nằm trong MẶT PHẲNG WEB, PHỦ phần BỤNG của lỗ CO + lấn lên web:
+        /// mép GÓT tại <c>X = t</c> (mặt bụng thân HP); đáy tại <c>Y = −B1</c> (<see cref="LookupB1"/> — TABLE 1
+        /// cột B1 tra theo <b>b</b>, HP120 ⇒ 90); mép BỤNG tại <c>X = W + coR</c> (<c>W = (c+r)+coR</c>);
+        /// vát góc gót 10×10; đỉnh phía bụng vát 45° + bo <c>coR</c>; góc bụng-đáy bo <c>coR</c>. KHÔNG có
+        /// "váy" dưới B1 (xác nhận qua Hatch 2026-08-28) — tấm KHÔNG chồng thân/bầu HP nên KHÔNG trừ lỗ.
+        /// Xem skill web-hp-cutout §7.
+        /// </summary>
+        List<VertexBulge> CollarPlateSection(double b, double t, double c, double r, double coR);
+
         /// <summary>Tra tham số theo quy cách "cao*dày" (vd "120*6"). false nếu spec sai.</summary>
         bool TryGetSection(string spec, out List<VertexBulge> section, out bool estimated);
     }
@@ -124,6 +136,35 @@ namespace MCG_3DPanel.Services
         }
 
         /// <summary>
+        /// Bảng chiều cao tấm <b>Collar Plate / LUG B1R</b> — TABLE 1 (CAS.dwt), cột <b>B1</b>. Key = <b>H
+        /// = chiều cao HP</b> (bulb <c>b</c>) — GIỐNG <see cref="CoRadiusTable"/>, KHÔNG phải chiều cao web
+        /// (xác nhận kỹ sư 2026-08-28: "HP120 → B1 = 90"; Hatch `1F3F2` đáy collar tại Y = −90 = −B1).
+        /// <c>B1 ≈ round5(b − min(b/4, 100)) ≈ 0.75·b</c>. Cổng "web &lt; 300" là điều kiện RIÊNG.
+        /// Xem skill web-hp-cutout §7.
+        /// </summary>
+        private static readonly Dictionary<int, double> B1Table = new Dictionary<int, double>
+        {
+            {  80,  60.0 }, { 100,  75.0 }, { 120,  90.0 }, { 140, 105.0 }, { 160, 120.0 }, { 180, 135.0 },
+            { 200, 150.0 }, { 220, 165.0 }, { 240, 180.0 }, { 260, 195.0 }, { 280, 210.0 }, { 300, 225.0 },
+            { 320, 240.0 }, { 340, 255.0 }, { 370, 275.0 }, { 400, 300.0 }, { 430, 320.0 },
+        };
+
+        /// <summary>Tra chiều cao B1 tấm Collar Plate theo chiều cao HP <paramref name="b"/> (mm) — bulb.
+        /// b ngoài bảng → mục gần nhất (bảng bậc thang, KHÔNG nội suy — như <see cref="LookupCoRadius"/>).</summary>
+        public static void LookupB1(double b, out double b1)
+        {
+            int key = (int)Math.Round(b);
+            if (B1Table.TryGetValue(key, out b1)) return;
+            int best = 0; double bestD = double.MaxValue;
+            foreach (int k in B1Table.Keys)
+            {
+                double d = Math.Abs(k - key);
+                if (d < bestD) { bestD = d; best = k; }
+            }
+            b1 = B1Table[best];
+        }
+
+        /// <summary>
         /// Tiết diện LỖ KHOÉT trên web cho HP xuyên qua ("CO B", block <c>HP120x6-scaloop</c> trong
         /// CAS.dwt). Hệ trục KHỚP <see cref="HpSection"/>: gốc (0,0) = góc LƯNG–ĐẦU; +X → BỤNG; −Y xuống.
         ///
@@ -155,6 +196,55 @@ namespace MCG_3DPanel.Services
                 new VertexBulge(bw, -(b + R),    0),           // đáy phẳng foot ←
                 new VertexBulge(0,  -(b + R),   -B180),        // → nửa cung R sau LƯNG (tâm (0,−b), qua (−R,−b))
                 new VertexBulge(0,  -dUp,        0),           // mặt LƯNG ↑ về (0,0)
+            };
+        }
+
+        // Vát góc gót collar 10×10 (hình "10×10"); cũng dùng làm mức lùi mép TOP-FLAT phía bụng (W − HC).
+        private const double CollarHeelChamfer = 10.0;
+
+        /// <summary>
+        /// Tiết diện Collar Plate / LUG B1R — polygon 8 đỉnh KHỚP 1:1 Hatch <c>1F3F2</c> (HP120: b=120,
+        /// c≈17, r≈5, coR=30 ⇒ W=52, mép bụng X=82≈83, đáy Y=−B1=−90). Hệ trục = <see cref="HpCutoutSection"/>.
+        /// Duyệt CCW (bulge DƯƠNG, khớp thứ tự đỉnh trong Hatch). Đáy = −B1 (<see cref="LookupB1"/>), KHÔNG váy.
+        /// </summary>
+        public List<VertexBulge> CollarPlateSection(double b, double t, double c, double r, double coR)
+        {
+            double R = coR;
+            double bw = c + r;
+            double W = bw + R;                                 // mép BỤNG lỗ CO
+            LookupB1(b, out double b1);                        // chiều cao collar = TABLE 1 cột B1 (theo b — HP120 ⇒ 90)
+            double bot = -b1;                                  // Y đáy collar
+            double HC = CollarHeelChamfer;
+            double hIn = t;                                    // mép GÓT collar = mặt BỤNG thân HP
+
+            // Tham số vô lý → chữ nhật đơn giản hIn..W+R × 0..bot (an toàn, không vỡ build).
+            if (b <= 0 || R <= 0 || c <= 0 || r <= 0 || b1 <= R + HC || (W - HC) <= (hIn + HC))
+            {
+                double xr = Math.Max(W + R, hIn + 1);
+                return new List<VertexBulge>(4)
+                {
+                    new VertexBulge(hIn, 0,   0),
+                    new VertexBulge(xr,  0,   0),
+                    new VertexBulge(xr,  bot, 0),
+                    new VertexBulge(hIn, bot, 0),
+                };
+            }
+
+            double sq = R * Math.Sqrt(2.0);
+            double s = R / Math.Sqrt(2.0);
+            const double B45 = 0.19891237;                     // tan(45°/4) — cung ¼ R nối 45° → mép bụng đứng
+            const double B90 = 0.41421356;                     // tan(90°/4) — cung ¼ R góc bụng-đáy
+
+            return new List<VertexBulge>(8)
+            {
+                new VertexBulge(W + R,     bot + R,        0),      // (83,−60) đầu cung R góc bụng-đáy
+                new VertexBulge(W + R,    -(HC + sq),       B45),   // (83,−52.4) mép BỤNG đứng ↑ → cung ¼ R
+                new VertexBulge(W + s,    -(HC + sq) + s,   0),     // (74.2,−31.2) tiếp điểm cung ↔ đường vát 45°
+                new VertexBulge(W - HC,    0,               0),     // (43,0) đỉnh đường vát 45° trên mặt dưới Top Plate
+                new VertexBulge(hIn + HC,  0,               0),     // (16,0) hết top-flat → vát góc gót
+                new VertexBulge(hIn,      -HC,              0),     // (6,−10) vát góc gót 10×10
+                new VertexBulge(hIn,       bot,             0),     // (6,−90) mép GÓT (mặt bụng thân HP) xuống đáy
+                new VertexBulge(W,         bot,             B90),   // (53,−90) đáy → cung ¼ R lên (83,−60)
             };
         }
 
