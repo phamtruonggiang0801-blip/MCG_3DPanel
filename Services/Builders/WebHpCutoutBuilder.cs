@@ -56,6 +56,14 @@ namespace MCG_3DPanel.Services.Builders
                 if (sol == null) continue;
                 double webThk = web.FootprintThickness;
                 if (webThk <= 1e-6) continue;
+                // Web phân loại sai cho FootprintThickness hàng nghìn mm → dao cắt khổng lồ (span = webThk
+                // + 2·MARGIN dọc trục HP). WebBracketSplitter (WEB_MAX_THK) lẽ ra đã chặn — lớp chắn cuối.
+                if (webThk > ClassifyUtil.WEB_MAX_THK)
+                {
+                    ctx.Report.Add($"{LOG} Bỏ khoét Web {web.Id.Handle}: bề dày {webThk:0.#}mm > " +
+                        $"{ClassifyUtil.WEB_MAX_THK:0} — nghi phân loại sai, web giữ nguyên.");
+                    continue;
+                }
 
                 foreach (var hp in hps)
                 {

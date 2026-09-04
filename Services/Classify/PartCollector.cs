@@ -207,8 +207,11 @@ namespace MCG_3DPanel.Services.Classify
         }
 
         /// <summary>Rectangle (4/5 đỉnh) → span theo trục dài / trục vuông góc (<see cref="ClassifyUtil.OrientedBox"/>);
-        /// ngược lại dùng bbox. Nhánh cũ (d(v0,v1) vs d(v1,v2)) đọc SAI tấm 5 đỉnh vát góc `26FFF` —
-        /// ra thk=10/len=41.2 thay vì 20/500 (đoạn vát v1→v2 dài 41.2 bị chọn làm "cạnh"). </summary>
+        /// ngược lại dùng bbox cho <paramref name="length"/> và <see cref="ClassifyUtil.MinWidth"/> cho
+        /// <paramref name="thickness"/>. Nhánh cũ (d(v0,v1) vs d(v1,v2)) đọc SAI tấm 5 đỉnh vát góc `26FFF` —
+        /// ra thk=10/len=41.2 thay vì 20/500 (đoạn vát v1→v2 dài 41.2 bị chọn làm "cạnh"). Với polygon &gt;5
+        /// đỉnh (web bẻ góc chữ L, tier vát nhiều bậc), bbox <c>min(dx,dy)</c> "phồng" — vd web L 6mm bbox
+        /// 2749×1777 ⇒ thickness = 1777 (SAI, bug collar 2026-09-04, panel 701S handle 6303E). </summary>
         private static void RectDims(List<Point3d> pts, Extents3d bounds, out double thickness, out double length)
         {
             int n = pts.Count;
@@ -219,8 +222,10 @@ namespace MCG_3DPanel.Services.Classify
             }
             double dx = bounds.MaxPoint.X - bounds.MinPoint.X;
             double dy = bounds.MaxPoint.Y - bounds.MinPoint.Y;
-            thickness = Math.Min(dx, dy);
             length = Math.Max(dx, dy);
+            double bboxThk = Math.Min(dx, dy);
+            double mw = ClassifyUtil.MinWidth(pts.ToArray());
+            thickness = (mw > 1e-6) ? Math.Min(mw, bboxThk) : bboxThk;
         }
     }
 }

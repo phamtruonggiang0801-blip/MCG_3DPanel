@@ -1,5 +1,51 @@
 # SESSION LOG — MCG_3DPanel
 
+## Session 2026-09-04c — Fix Collar Plate khổng lồ/lệch chỗ (test 701P/701S)
+
+**Triệu chứng:** 4/12 Collar Plate của 701S dài ~2–9 m, đặt ngoài panel. Log: `tl=1777.3` / `tl=9039.1`
+(đáng ra ~6). Nguồn: web dọc `6875E` (polygon 15931×9039mm ~ đường bao panel, lọt layer AM_0 → nhận
+nhầm `Web`) và `6303E` (web chữ L, `PartCollector.RectDims` với >5 đỉnh fallback bbox `min(dx,dy)` = 1777).
+`WebCollarPlateBuilder.BuildOne` dùng `web.FootprintThickness` vừa làm bề dày vừa làm quãng extrude +
+offset → solid dài hàng mét. Cùng giá trị hỏng vào `WebHpCutoutBuilder` (`webThk=9039.1`).
+
+**Fix A (gốc — phân loại):**
+- `ClassifyUtil.MinWidth(v[])` — bề rộng nhỏ nhất thật qua pháp tuyến mọi cạnh (đúng strip L/chéo/vát).
+- `PartCollector.RectDims` — polygon >5 đỉnh: `thickness = min(MinWidth, bbox-min)` thay vì bbox-min.
+  → `6303E` ra ~6–10mm (đúng). 4/5 đỉnh giữ nguyên `OrientedBox` (không đụng 108/108 đã verify).
+- `ClassifyUtil.WEB_MAX_THK = 40` + gate ở `WebBracketSplitter.Split`: polygon AM_0 dày > 40mm →
+  `PartType.Unknown` (Build3DService bỏ qua) + `ClassificationResult.Notes`. CutOut/BackingPlate/
+  ClosedPlate đã tách TRƯỚC nên không bị đụng. → `6875E` không còn dựng khối đặc 37.8e9.
+- `Notes` surface lên cả classify report (`notes`) lẫn build report (đầu mảng `report`).
+
+**Fix B (phòng vệ — builder):** `WebCollarPlateBuilder` (gom candidate + `BuildOne`) và
+`WebHpCutoutBuilder` bỏ web có `FootprintThickness` ngoài `[1, WEB_MAX_THK]` + ghi Report.
+
+Build lại 701P/701S: collar OK (21 tấm, `tl=6`/`10`, vol ~34k). `75EA5`/`6875E` → Unknown, không dựng.
+
+**Fix C — Top Plate 701-series mất (test 142210):** Sau khi bỏ slab `6875E`, lộ ra boong 3D bé xíu
+(Ø80, vol 30159) — **bug có sẵn**: mọi build 701P/701S (135627…142124) đều vậy, chỉ bị slab che.
+Nguyên nhân: bản vẽ 701 vẽ tấm boong trên layer **Mechanical-AM_0** (7D-17C vẽ trên "0"); layer "0"
+chỉ còn mốc Ø80 → `topCands.OrderBy(Area).First()` ra mốc. Kỹ sư xác nhận 2026-09-04: `75EA5` = Top
+Plate, mốc Ø80 = lỗ khoét (CutOut).
+- `ClassificationService.FindFullSpanPlate` — polyline AM_0 phủ ≥75% mỗi chiều panel + đặc (area ≥40%
+  bbox). Nếu có + Top Plate layer-0 (nếu có) nhỏ hơn ×0.25 → promote thành `TopPlate`, mốc layer-0
+  trong biên → `CutOut`, mốc ngoài biên → `Unknown`. Ghi `Notes`. Guard `×0.25` → 7D-17C không dính.
+
+Build Debug (Rebuild) OK, 0 error / 0 CS-warning. **Chưa test trực quan Fix C** — build lại 701P/701S:
+(1) boong 3D phủ toàn panel dày = TopPlateThickness; (2) lỗ Ø80 khoét trên boong; (3) collar vẫn OK.
+Còn tồn: `longWebs` (ClassificationService) — nếu KHÔNG promote thì `6875E` vẫn trong đó (ảnh hưởng nhẹ
+PlateDetector); sau promote thì đã `am0.Remove`.
+
+## Session 2026-09-04b — Bỏ Snip End HP + phân tích Bracket "B" đầu HP
+
+- **`HpBuilder`**: bỏ hẳn Sniped End (`SnipHpEnd` + hằng số `SNIP_*`) — đầu HP giờ VUÔNG SẮC (xác nhận kỹ sư).
+- **`deploy.bat`**: sửa trỏ `bin\Debug\` (không còn `net48\`) — nguyên nhân crash NETLOAD `0xC0000005`
+  (nạp nhầm DLL net48 vào AutoCAD 2026). Xoá `bin\Debug\net48\` cũ.
+- **Bracket "B" đầu HP** (`Bracket B.dump.json` → skill `sniped-end` §5): gusset knee nơi HP dừng đúng
+  30mm trước Web ngang. Kỹ sư chốt hết tham số (`thk`=dày HP, `reach`=max(180,30+1.5b), `Ht`=WebHeight−b,
+  `d1` 2 biến thể theo overhang như OB/IB, mặt đặt đơn/cặp). **ĐÃ CÀI** `HpEndBracketBuilder` + wire
+  `Build3DService`, build OK — **chưa test trực quan**.
+
 ## Session 2026-09-04 — Migrate .NET 8 cho AutoCAD 2026
 
 ### Đã làm

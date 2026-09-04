@@ -58,6 +58,10 @@ namespace MCG_3DPanel.Services
                     GeProfile = _geProfile,
                 };
 
+                // Chẩn đoán từ khâu phân loại (part bị bỏ vì phi lý…) — đưa lên đầu report build.
+                if (cls?.Notes != null && cls.Notes.Count > 0)
+                    ctx.Report.AddRange(cls.Notes);
+
                 int made = 0;
                 Solid3d topPlateSolid = null;
                 BuiltPartInfo topPlateInfo = null;
@@ -112,6 +116,20 @@ namespace MCG_3DPanel.Services
                     result.Parts.Add(cInfo);
                     FillGeometry(cInfo, collar);
                     ctx.Report.Add($"[Collar] solid {ch} = {tag}");
+                }
+
+                // Bracket đầu HP mã "B" — SOLID MỚI, nơi HP kết thúc cách 1 Web ngang 30mm (KHÔNG xuyên
+                // qua). Thay Sniped End HP (đã bỏ). Xem skill sniped-end §5.
+                foreach (var (brkt, tag) in HpEndBracketBuilder.BuildHpEndBrackets(ctx))
+                {
+                    btr.AppendEntity(brkt);
+                    tr.AddNewlyCreatedDBObject(brkt, true);
+                    made++;
+                    string ch = brkt.Handle.ToString();
+                    var bInfo = new BuiltPartInfo { Handle = ch, Type = "HpEndBracketB", Code = tag, Built = true };
+                    result.Parts.Add(bInfo);
+                    FillGeometry(bInfo, brkt);
+                    ctx.Report.Add($"[BracketB] solid {ch} = {tag}");
                 }
 
                 // CutOut = lỗ khoét — trừ (boolean) thẳng vào solid Top Plate đã dựng, không phải part riêng.

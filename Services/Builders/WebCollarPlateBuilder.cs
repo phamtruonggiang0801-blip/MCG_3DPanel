@@ -89,6 +89,16 @@ namespace MCG_3DPanel.Services.Builders
                 var cands = new List<(PanelPart webPart, PanelPart hp, Point3d cross, double s)>();
                 foreach (var part in run)
                 {
+                    // Phòng vệ: bề dày web = quãng extrude + offset của tấm collar (BuildOne). Web phân loại
+                    // sai (polygon lớn / bbox chéo phồng) cho FootprintThickness hàng nghìn mm → collar dài
+                    // hàng mét, lệch ra ngoài panel (bug 2026-09-04). Bỏ, ghi Report. Khâu phân loại lẽ ra
+                    // đã chặn (WebBracketSplitter, ngưỡng WEB_MAX_THK) — đây là lớp chắn cuối.
+                    if (part.FootprintThickness < 1.0 || part.FootprintThickness > ClassifyUtil.WEB_MAX_THK)
+                    {
+                        ctx.Report.Add($"{LOG} Bỏ collar quanh web {part.Id.Handle}: bề dày " +
+                            $"{part.FootprintThickness:0.#}mm ngoài [1..{ClassifyUtil.WEB_MAX_THK:0}] — nghi phân loại sai.");
+                        continue;
+                    }
                     foreach (var hp in hps)
                     {
                         if (!ClassifyUtil.CrossesThrough(hp, part, out double tCross)) continue;
@@ -185,7 +195,7 @@ namespace MCG_3DPanel.Services.Builders
         {
             double t = hp.FootprintThickness;
             double tl = web.FootprintThickness;
-            if (t <= 1e-6 || tl <= 1e-6) return null;
+            if (t <= 1e-6 || tl <= 1e-6 || tl > ClassifyUtil.WEB_MAX_THK) return null;   // tl phi lý → xem ghi chú BuildCollarPlates
 
             Vector3d axis = hp.AxisDir;
             if (axis.Length < 1e-9) axis = ClassifyUtil.Endpoints(hp).Item2 - ClassifyUtil.Endpoints(hp).Item1;

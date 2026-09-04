@@ -69,6 +69,10 @@ namespace MCG_3DPanel.Services
         public List<PanelPart> Parts { get; } = new List<PanelPart>();
         public PanelPart TopPlate { get; set; }
 
+        /// <summary>Ghi chú chẩn đoán khi phân loại (part bị bỏ vì phi lý, nhận nhập nhằng…) — surface
+        /// lên cả classify report lẫn build report để kỹ sư thấy.</summary>
+        public List<string> Notes { get; } = new List<string>();
+
         public IEnumerable<PanelPart> OfType(PartType t) => Parts.Where(p => p.Type == t);
 
         /// <summary>Các Web logic: gom part Web theo GroupId (mỗi nhóm = 1 web nhiều tầng dày).</summary>

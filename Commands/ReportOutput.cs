@@ -138,6 +138,7 @@ namespace MCG_3DPanel.Commands
             {
                 { "panelBlockName", result.PanelBlockName },
                 { "summary", result.Summary() },
+                { "notes", result.Notes.Select(r => (object)r).ToList() },
                 { "counts", counts },
                 { "webRuns", webRuns },
                 { "flanges", flanges },

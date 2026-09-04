@@ -33,6 +33,25 @@ namespace MCG_3DPanel.Services.Classify
             var brkPieces = new List<PanelPart>();
             foreach (var p in webCands)
             {
+                // Polygon AM_0 quá DÀY để là tôn web/plate thật (tôn kết cấu ≤ ~32mm) — gần như luôn là
+                // đường bao panel / nét dựng phụ lọt layer AM_0 (vd 701S handle 6875E: 15931×9039mm,
+                // ~100m²). Nhận là Web thì: (1) dựng thành khối đặc khổng lồ; (2) FootprintThickness sai
+                // lan sang WebHpCutoutBuilder + WebCollarPlateBuilder → collar dài hàng mét, lệch ra ngoài
+                // panel (bug 2026-09-04). Để Unknown → Build3DService bỏ qua, vẫn hiện trong report
+                // (built=false) + Notes. CutOut/BackingPlate/ClosedPlate đã tách TRƯỚC bước này nên
+                // ngưỡng dày không đụng tới chúng.
+                if (p.FootprintThickness > ClassifyUtil.WEB_MAX_THK)
+                {
+                    p.Type = PartType.Unknown;
+                    result.Parts.Add(p);
+                    double bw = p.Bounds.MaxPoint.X - p.Bounds.MinPoint.X;
+                    double bh = p.Bounds.MaxPoint.Y - p.Bounds.MinPoint.Y;
+                    result.Notes.Add($"[WebBracketSplitter] BỎ QUA polygon AM_0 {p.Id.Handle}: bề dày " +
+                        $"{p.FootprintThickness:0} > {ClassifyUtil.WEB_MAX_THK:0}mm (bbox {bw:0}×{bh:0}) — " +
+                        "không phải Web thật (nghi đường bao / nét dựng), không dựng solid.");
+                    continue;
+                }
+
                 bool isShort = p.MemberLength < ClassifyUtil.WEB_MIN_LEN;
                 bool isBracket = isShort
                     && ClassifyUtil.IsBracketPattern(p, allAm0, hpParts, fbParts, ClassifyUtil.ADJ_TOL);

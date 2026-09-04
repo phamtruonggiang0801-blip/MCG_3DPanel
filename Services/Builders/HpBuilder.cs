@@ -18,17 +18,22 @@ namespace MCG_3DPanel.Services.Builders
     ///   local Z → <c>axis</c>  (trục dài HP) → hướng extrude
     /// Gốc đặt tại: tâm HP − ½·len·axis − ½·t·belly, ở Z = 0.
     ///
+    /// **Sniped End HP (2026-09-04, xác nhận kỹ sư):**
+    ///  - Đầu "End 30" + bracket OB/IB gần nhất trên HP cách đầu HP &lt; <c>reach</c> → **vát**.
+    ///  - Đầu "End 30" + OB/IB đủ xa (hoặc không có) → **bracket B**, không vát.
+    ///  - Đầu KHÔNG phải "End 30" nhưng **TỰ DO** (`GeometryUtil.IsFreeEnd`) → **vát**.
+    ///  - Đầu chạm 1 member khác → GIỮ VUÔNG SẮC.
+    /// Quyết định: <see cref="HpEndBracketBuilder.WantsEndBracket"/>.
+    ///
     /// Nếu thiếu dữ liệu (không có BellyDir / spec sai) → trả null để Build3DService fallback
     /// sang <see cref="PlateBuilder"/> (hộp chữ nhật) — không làm vỡ bản dựng.
-    /// Xem skill hp-profile.
+    /// Xem skill hp-profile · sniped-end §5.
     /// </summary>
     public class HpBuilder : IPartBuilder
     {
         private const string LOG = "[HpBuilder]";
 
-        // Sniped End cho HP — CÙNG quy tắc + CÙNG FLAT_TOP = 15mm với FlatBar (xác nhận kỹ sư 2026-08-27,
-        // sửa từ 30mm). Vát góc DƯỚI-NGOÀI ở đầu HP THỰC SỰ TỰ DO: từ cạnh hàn (Z=0) giữ thẳng đứng đúng
-        // 15mm, rồi vát chéo 30°/60° (cố định) xuống mép đáy bulb (Z=−b).
+        // Sniped End: giữ thẳng đứng 15mm sát cạnh hàn (Z=0), rồi vát chéo 30°/60° cố định xuống mép đáy bulb.
         private const double SNIP_FLAT = 15.0;
         private static readonly double SNIP_RUN_FACTOR = Math.Tan(60.0 * Math.PI / 180.0);
         private const double SNIP_MARGIN = 2.0;
@@ -78,19 +83,20 @@ namespace MCG_3DPanel.Services.Builders
                 var sob = new SweepOptionsBuilder();
                 sol.CreateExtrudedSolid(reg, axis * len, sob.ToSweepOptions());
 
-                // Sniped End: vát đầu HP THỰC SỰ TỰ DO (không chạm Web/Bracket/GE/HP/FB nào khác).
+                // Sniped End: (a) đầu "End 30" mà bracket OB/IB quá gần (không có chỗ cho bracket B);
+                //             (b) đầu KHÔNG phải "End 30" nhưng thực sự TỰ DO (không chạm member nào).
                 var (e1, e2) = ClassifyUtil.Endpoints(part);           // e1 ở s=0 (đầu 'o'), e2 ở s=len
-                bool free1 = GeometryUtil.IsFreeEnd(e1, part, ctx.Cls, ClassifyUtil.FB_FREE_END_TOL);
-                bool free2 = GeometryUtil.IsFreeEnd(e2, part, ctx.Cls, ClassifyUtil.FB_FREE_END_TOL);
-                int freeCount = (free1 ? 1 : 0) + (free2 ? 1 : 0);
+                bool snip1 = SnipEnd(ctx, part, e1, e2);
+                bool snip2 = SnipEnd(ctx, part, e2, e1);
+                int snipCount = (snip1 ? 1 : 0) + (snip2 ? 1 : 0);
                 double run = Math.Max(0.0, b - SNIP_FLAT) * SNIP_RUN_FACTOR;
-                if (freeCount > 0 && run * freeCount > len) run = len / 2.0;   // HP quá ngắn → kẹp an toàn
-                if (free1) SnipHpEnd(sol, part.Centroid - axis * (len / 2.0),  axis, belly, b, run);
-                if (free2) SnipHpEnd(sol, part.Centroid + axis * (len / 2.0), -axis, belly, b, run);
+                if (snipCount > 0 && run * snipCount > len) run = len / 2.0;   // HP quá ngắn → kẹp an toàn
+                if (snip1) SnipHpEnd(sol, part.Centroid - axis * (len / 2.0),  axis, belly, b, run);
+                if (snip2) SnipHpEnd(sol, part.Centroid + axis * (len / 2.0), -axis, belly, b, run);
 
                 ctx.Report.Add($"HP len={len:0} b={b:0} t={t:0} c={c:0.#} r={r:0.#}" +
                                $"{(estimated ? " (c/r NỘI SUY - ngoài bảng)" : "")} " +
-                               $"free1={free1} free2={free2} snipRun={run:0.#} " +
+                               $"snip1={snip1} snip2={snip2} " +
                                $"belly=({belly.X:0.##},{belly.Y:0.##}) center=({part.Centroid.X:0},{part.Centroid.Y:0})");
                 return sol;
             }
@@ -102,12 +108,20 @@ namespace MCG_3DPanel.Services.Builders
             finally { reg?.Dispose(); }
         }
 
+        /// <summary>Đầu HP <paramref name="he"/> có bị vát không: "End 30" + OB/IB quá gần (không chỗ
+        /// đặt bracket B), HOẶC không phải "End 30" nhưng thực sự TỰ DO.</summary>
+        private static bool SnipEnd(BuildContext ctx, PanelPart hp, Point3d he, Point3d other)
+        {
+            bool wantsBracket = HpEndBracketBuilder.WantsEndBracket(ctx, hp, he, other, out bool isEnd30);
+            if (isEnd30) return !wantsBracket;                          // End 30: bracket HOẶC vát
+            return GeometryUtil.IsFreeEnd(he, hp, ctx.Cls, ClassifyUtil.FB_FREE_END_TOL);   // tự do → vát
+        }
+
         /// <summary>
-        /// Trừ (BoolSubtract) 1 nêm tam giác khỏi <paramref name="sol"/> ở đầu HP tự do — bỏ góc
-        /// DƯỚI-NGOÀI. Hệ local: x = <paramref name="inward"/> (dọc trục, VÀO thân HP), y = Z thế giới
-        /// (0 = cạnh hàn, −b = mép đáy bulb). Tam giác `(−M,−30) → (−M,−b−M) → (run,−b−M)`: cạnh đóng
-        /// `(run,−b−M)→(−M,−30)` là đường vát 30° (khớp FlatBar, xem skill sniped-end). Quét theo
-        /// <paramref name="belly"/> qua HẾT bề rộng tiết diện (kể cả bulb).
+        /// Trừ (BoolSubtract) 1 nêm tam giác khỏi <paramref name="sol"/> ở đầu HP — bỏ góc DƯỚI-NGOÀI.
+        /// Hệ local: x = <paramref name="inward"/> (dọc trục, VÀO thân HP), y = Z thế giới (0 = cạnh hàn,
+        /// −b = mép đáy bulb). Tam giác `(−M,−15) → (−M,−b−M) → (run,−b−M)`: cạnh đóng `(run,−b−M)→(−M,−15)`
+        /// là đường vát 30°. Quét theo <paramref name="belly"/> qua HẾT bề rộng tiết diện (kể cả bulb).
         /// </summary>
         private static void SnipHpEnd(Solid3d sol, Point3d baseC, Vector3d inward, Vector3d belly, double b, double run)
         {
@@ -122,8 +136,8 @@ namespace MCG_3DPanel.Services.Builders
             Region reg = GeometryUtil.RegionFrom(tri);
             if (reg == null) return;
 
-            double sweep = b + 2 * M;                              // ≥ bề rộng mọi tiết diện HP (b ≫ rộng)
-            Point3d origin = baseC - belly * (b / 2.0 + M);        // lùi 1 nửa để quét đối xứng qua tiết diện
+            double sweep = b + 2 * M;
+            Point3d origin = baseC - belly * (b / 2.0 + M);
             reg.TransformBy(Matrix3d.AlignCoordinateSystem(
                 Point3d.Origin, Vector3d.XAxis, Vector3d.YAxis, Vector3d.ZAxis,
                 origin, inward, Vector3d.ZAxis, belly));

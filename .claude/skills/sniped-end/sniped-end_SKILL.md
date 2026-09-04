@@ -9,14 +9,24 @@ description: Quy cách SNIPED END của Flat Bar (FB) VÀ HP — vát chéo góc
 GirderEnd/HP/FB nào khác) mới bị vát. Đầu chạm 1 member khác giữ nguyên vuông sắc (coi như đã "nối") —
 xác nhận kỹ sư, 2026-08-26.
 
-**FLAT_TOP = 15mm cho CẢ Flat Bar (`FlatBarBuilder.FLAT_TOP`) LẪN HP (`HpBuilder.SNIP_FLAT`)** — xác
-nhận kỹ sư 2026-08-27 (ban đầu thử HP=30mm rồi đổi về 15mm cho đồng nhất). Góc vát 30°/60° +
-`rise=b−15`, `run=rise·tan60°` dùng chung.
+**FLAT_TOP = 15mm** cho Flat Bar (`FlatBarBuilder.FLAT_TOP`). Góc vát 30°/60° + `rise=h−15`,
+`run=rise·tan60°`.
 
-HP dựng bằng extrude tiết diện thật (có bulb) → `HpBuilder.SnipHpEnd` TRỪ (BoolSubtract) 1 nêm tam giác
-ở mỗi đầu tự do (quét theo `belly` qua hết bề rộng tiết diện, kể cả bulb). `IsFreeEnd` dùng chung ngưỡng
-`FB_FREE_END_TOL=30`. KHÔNG có cổng chặn `hpSpan` cho HP (HP không bị tách như FB; chỉ kẹp an toàn
-`run=len/2` nếu HP quá ngắn).
+## ⚠️ HP Sniped End — CÓ ĐIỀU KIỆN (2026-09-04, xác nhận kỹ sư)
+
+`HpBuilder` **KHÔNG** vát đầu tự do bình thường nữa. HP chỉ vát khi đầu HP là chỗ **"End 30"** (kết thúc
+cách 1 Web ~⟂ đúng 30mm) **VÀ** bracket **OB/IB gần nhất trên HP cách đầu HP < `reach`**
+(`reach = max(180, 30 + 1.5·b)`) → không đủ chỗ đặt bracket "B" → vát góc dưới-ngoài (flat 15 + 30°/60°).
+
+- "End 30" + `dist(OB/IB → đầu HP) ≥ reach` → **bracket "B"**, KHÔNG vát.
+- "End 30" + `dist(OB/IB → đầu HP) < reach` → **vát** (SnipHpEnd), KHÔNG bracket "B".
+- KHÔNG phải "End 30" nhưng **TỰ DO** (`GeometryUtil.IsFreeEnd`, không chạm member nào trong 30mm) →
+  **vát** (VD stub HP chéo ở góc cong panel — 2026-09-04, kỹ sư hỏi `(99041.6, 16420.4)`).
+- KHÔNG phải "End 30" + chạm 1 member → giữ vuông sắc.
+
+Quyết định: `HpEndBracketBuilder.WantsEndBracket(ctx, hp, he, other, out isEnd30)`. Chi tiết bracket "B":
+**§5**. `hp_end_brkt_1` "IF≥50" · `hp_end_brkt_2` "IF<50" (`Bracket B.dwg`). Phần §1–§3g dưới đây chỉ còn
+áp dụng cho **Flat Bar** và **BackingPlate** (hình học vát 15/30-60 dùng chung).
 
 Phân tích từ `FB Sniped End.dump.json` (dump qua `MCG_DumpDrawing`) — không có Attribute/NOTE ghi
 công thức sẵn (khác `GE.dwg`), suy ra bằng cách đo trực tiếp polyline mẫu `1F851` (pentagon trong
@@ -277,3 +287,97 @@ có dữ liệu đối chiếu).
 Liên quan: [[panel-parts-reference]] (mục 1 bảng nhận diện Flat Bar) · [[girder-end]] (cùng khuôn
 `member−15`, khác ở góc vát cố định thay vì R30/R50) · [[parametric-profiles]] (pattern
 Region→Extrude→AlignCoordinateSystem dùng chung).
+
+---
+
+## 5. Bracket đầu HP — mã "B" (`Bracket B.dwg`, đang PHÂN TÍCH 2026-09-04)
+
+Thay cho Sniped End (đã bỏ): nơi HP **kết thúc cách 1 Web ngang một khe ~30mm**, thêm 1 **gusset knee**
+nối **Web ngang + Flange** đỡ đầu HP. Nguồn: `Bracket B.dump.json` (`*Model_Space`, 4 detail) —
+2 block `hp_end_brkt_1` / `hp_end_brkt_2` + dims.
+
+### 5a. Hình học (elevation — mặt phẳng chứa TRỤC HP + Z) — ĐÃ CHỐT tham số 2026-09-04
+
+Tấm phẳng đứng, cùng mặt phẳng thân HP. Hệ local: gốc = (mặt gần Web ngang) ∩ (mặt trên Flange);
+`+x` = ngược trục HP (vào khoang, về phía thân HP); `+y` = lên (+Z).
+
+| ký hiệu | ý nghĩa | công thức (ĐÃ CHỐT) | HP120/H374 |
+|---|---|---|---|
+| `thk` | bề dày tấm | **= `HP.FootprintThickness`** | 6 |
+| `Ht` | chiều cao (đáy Flange → đáy HP) | **`WebHeight − b`** (đáy HP = `Z=−b`) | 254 |
+| `reach` | vươn dọc trục HP | **`max(180, 30 + 1.5·b)`** | 210 |
+| `gap` | HP lùi khỏi Web ngang | **30** cố định | 30 |
+| `R` | cung toe lõm (góc Web–đỉnh) | **50** cố định | 50 |
+| `topL` | mép trên bắt đầu (sau cung R) | **= `R` = 50** | 50 |
+| `e15` | mép đầu tự do đứng | **15** cố định | 15 |
+| `off2` | brkt_2: đáy cách Flange | **30** cố định | 30 |
+| `d1` | mép hàn dọc Flange | **2 biến thể theo `overhang`** (như OB/IB under-50) | 149 |
+
+**Selector + `d1`** (`overhang` = mép Flange phía HP − mặt Web ngang phía HP):
+- `overhang ≥ 50` → **`hp_end_brkt_1`**, `d1 = overhang − 15` (kiểm: 164−15 = 149 ✔), đáy hàn Flange (y=0).
+- `overhang < 50` → **`hp_end_brkt_2`**, `d1 = 15`, đáy NÂNG `off2 = 30` phía trên Flange.
+
+Polygon brkt_1 (CCW): `(0,0)→(d1,0)→(reach, Ht−e15)→(reach, Ht)→(topL, Ht) —cung R lõm→ (0, Ht−R)→(0,0)`.
+Polygon brkt_2 (CCW): `(0,off2)→(d1,off2)→(reach, Ht−e15)→(reach, Ht)→(topL, Ht) —cung R→ (0, Ht−R)→ (0,off2)`.
+
+### 5b. Phát hiện vị trí "End 30mm" + chọn bracket vs snipe
+
+1. Đầu mút HP (`ClassifyUtil.Endpoints`) cách 1 Web (`PartType.Web`, `|cos góc trục| ≤ 0.70` → chấp
+   nhận Web XIÊN) một khoảng `|nearFace − 30| ≤ 16` dọc trục HP (hiệu chỉnh xiên). → "End 30". (HP xuyên
+   QUA web = lỗ CO — xem [[web-hp-cutout]]. Case này HP DỪNG trước Web.)
+2. Tính `dKnee` = khoảng cách từ đầu-bám-HP của bracket **OB/IB** gần nhất (ngồi trên HP đó) tới đầu HP.
+3. `dKnee ≥ reach` → **bracket "B"**. `dKnee < reach` → **Sniped End** (HpBuilder). Không có OB/IB →
+   `dKnee = ∞` → luôn bracket "B".
+
+### 5c. Đặt 3D
+
+- `hpAxis` = trục HP; `hpEnd` = đầu mút gần Web; Web ngang ở `hpEnd + gap·hpAxis` (gap≈30).
+- Gốc local = giao (mặt gần Web ngang) × (mặt trên Flange = `Z = −WebHeight`), trên tuyến thân HP.
+- `local x → −hpAxis` (vào khoang), `local y → +Z`, `local z → phương bề dày tấm`.
+- **Mặt đặt tấm** (SỬA 2026-09-04 sau test): **CÓ backing mặt đối diện** (HP/Web/FlatBar/Bracket/GE
+  khác kết thúc mặt bên kia cùng Web ngang) → tấm **NẰM NGAY DƯỚI HP** (đồng phẳng thân HP, tâm trùng
+  tuyến HP, không lệch). **KHÔNG backing** → tấm **lệch `1·thk` (6mm) về phía BỤNG** (KHÔNG phải phía
+  lưng như bản đầu).
+- Region từ polygon (5a) → extrude `thk` → `AlignCoordinateSystem` (pattern chung, như `BracketBuilder`).
+
+### 5d. Đã chốt (2026-09-04) — xem bảng 5a
+
+`thk` = dày HP · `reach = max(180, 30+1.5b)` · `Ht = WebHeight − b` · `d1` 2 biến thể theo `overhang`
+(≥50: `overhang−15` + đáy trên Flange; <50: `d1=15` + đáy nâng 30) · `gap/R/topL/e15/off2` hằng số ·
+mặt đặt: 6mm sau lưng (đơn) / đồng phẳng lưng (cặp đối xứng).
+
+### 5e. Chốt hết + cài đặt (2026-09-04)
+
+- [x] `overhang` = (mép Flange về phía khoang HP, cùng hướng `reach`) − (mặt gần Web ngang). ✔
+- [x] Detail 1 & 2 = chỉ ký hiệu hàn, KHÔNG solid → BỎ QUA. ✔
+- [x] "bracket đối xứng" = có **HP HOẶC Web HOẶC mã** khác kết thúc ở mặt ĐỐI DIỆN cùng Web ngang
+  (~thẳng hàng, trong `gap + wThk + tol`). Có → đồng phẳng lưng HP; không → lùi thêm `1·thk`. ✔
+- [x] `gap` = **đúng 30mm** (dung sai phát hiện ±14). ✔
+- [ ] "B" mã con theo dày — chưa hỏi, hiện dùng `thk = dày HP` cho mọi cỡ.
+
+**Cài** (`Services/Builders/HpEndBracketBuilder.cs`, `internal static`, KHÔNG `IPartBuilder` — gọi sau
+`WebCollarPlateBuilder` trong `Build3DService`, append solid + report `[BracketB] solid <handle> = <tag>`).
+Solid **cùng Layer với Web ngang** (không phải HP).
+- `FindTransverseWeb`: Web mà tuyến tâm HP cắt qua (`|cos| ≤ 0.94` — chấp nhận **Web XIÊN**, chỉ loại
+  ~song song); `nearFace` = khoảng dọc trục HP tới mặt gần Web, hiệu chỉnh xiên `wThk/2 / |outward×wAxis|`;
+  `|nearFace − 30| ≤ 16`.
+- `FlangeOverhang`: Flange gần điểm giao nhất, chiếu `Vertices` lên −`outward` từ mặt Web ngang.
+- `HasOppositeTermination`: quét HP/Web/FlatBar/Bracket/GE kết thúc mặt đối diện.
+- `Build`: polygon 6 đỉnh (5a) → `RegionFrom` → `AlignCoordinateSystem`(localX=−outward, localY=+Z,
+  localZ=`belly`) → extrude `belly·thk`. Gốc tại mặt Web ngang ∩ `Z=−WebHeight`; **có backing** → tâm
+  trùng tuyến HP (`o = p − belly·t/2`); **không backing** → lệch thêm `belly·t`.
+
+### 5f. Test lượt 1 (2026-09-04) — sửa
+
+- Layer → theo **Web ngang** (trước: HP).
+- Mặt đặt: **backing → tấm nằm giữa thân HP** (không lệch) · không backing → lệch `1·thk` về **BỤNG**
+  (bản đầu lệch nhầm hướng + lệch cả khi có backing).
+- `FlangeOverhang`: CHỈ xét flange **chạy dọc trục HP** (`|fAxis·hpAxis| ≥ 0.7`) — trước lấy nhầm flange
+  chạy dọc Web ngang → `overhang` phồng 1500+ (d1 clamp 195, hình sai).
+- `HasOppositeTermination`: nới `reachOpp = 2·GAP + wThk + 25`, `latTol = wThk + 30` (đối diện cũng lùi 30).
+- `PERP_COS` 0.34 → **0.70** (bắt Web XIÊN tới ~45°, vẫn loại ~song song). ⚠️ Web CHÉO góc cong panel
+  (`38E57`/`38EB8`, bbox phồng) hiện cũng qua — HP đầu biên panel nhận bracket. **Chưa biết đúng/sai** —
+  hỏi kỹ sư.
+
+⚠️ **Còn phải test:** (1) không lật/mirror; (2) brkt ở web xiên/chéo góc panel — đúng hay thừa;
+(3) `sym=True` khi HP 2 phía Web ngang; (4) hình khớp `hp_end_brkt_1/2`.

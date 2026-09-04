@@ -21,6 +21,13 @@ namespace MCG_3DPanel.Services.Classify
 
         public const double WEB_MIN_LEN = 1000.0;       // AM_0 dài hơn = Web chính
         public const double WEB_TIER_LEN = 470.0;       // mảnh ngắn nhưng ≥ ngưỡng + collinear web dài = Web tier (không phải bracket)
+        public const double WEB_MAX_THK = 40.0;         // polygon AM_0 dày hơn ngưỡng này KHÔNG phải tôn web/plate
+                                                        // thật (tôn kết cấu ≤ ~32mm) — gần như luôn là đường bao
+                                                        // panel / nét dựng phụ lọt layer AM_0. Nhận nhầm là Web →
+                                                        // dựng khối đặc khổng lồ + FootprintThickness sai lan sang
+                                                        // WebHpCutoutBuilder & WebCollarPlateBuilder (collar dài
+                                                        // hàng mét, lệch ra ngoài panel — bug 2026-09-04, panel
+                                                        // 701S handle 6875E). Xem WebBracketSplitter.Split.
         public const double GE_MIN_LEN = 600.0;         // GE: mảnh dài ≥ ngưỡng…
         public const double GE_MIN_THK = 10.0;          // …và dày ≥ ngưỡng, KHÔNG collinear web dài
         public const double HP_MIN_LEN = 500.0;         // HP đủ dài mới xét bụng/lưng
@@ -238,6 +245,34 @@ namespace MCG_3DPanel.Services.Classify
                 if (L > bestLen) { bestLen = L; best = e; }
             }
             return bestLen > 1e-9 ? best.GetNormal() : Vector3d.XAxis;
+        }
+
+        /// <summary>Bề rộng NHỎ NHẤT thật của đa giác (mm) = min qua MỌI cạnh của [span các đỉnh chiếu lên
+        /// pháp tuyến cạnh đó]. Đúng cho strip mỏng mọi hình: chữ nhật, chữ L bẻ góc, vát 1:4, gusset —
+        /// khác bbox <c>min(dx,dy)</c> vốn "phồng" cho member CHÉO / chữ L (vd web L dày 6mm bbox 2749×1777
+        /// ⇒ bbox-min = 1777, SAI). Trả 0 nếu &lt; 3 đỉnh hoặc mọi cạnh suy biến.</summary>
+        internal static double MinWidth(Point3d[] v)
+        {
+            if (v == null || v.Length < 3) return 0.0;
+            int n = v.Length;
+            double best = double.MaxValue;
+            for (int i = 0, j = n - 1; i < n; j = i++)
+            {
+                double ex = v[i].X - v[j].X, ey = v[i].Y - v[j].Y;
+                double elen = Math.Sqrt(ex * ex + ey * ey);
+                if (elen < 1e-6) continue;                        // cạnh suy biến (2 đỉnh trùng)
+                double nx = -ey / elen, ny = ex / elen;           // pháp tuyến đơn vị của cạnh
+                double lo = double.MaxValue, hi = double.MinValue;
+                for (int k = 0; k < n; k++)
+                {
+                    double proj = v[k].X * nx + v[k].Y * ny;
+                    if (proj < lo) lo = proj;
+                    if (proj > hi) hi = proj;
+                }
+                double w = hi - lo;
+                if (w < best) best = w;
+            }
+            return best < double.MaxValue ? best : 0.0;
         }
 
         /// <summary>

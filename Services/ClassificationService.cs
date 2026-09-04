@@ -78,12 +78,41 @@ namespace MCG_3DPanel.Services
                     result.TopPlate = top;
                     result.Parts.Add(top);
                 }
+
+                // Bản vẽ 701-series: tấm boong (Top Plate) vẽ trên layer Mechanical-AM_0, KHÔNG phải "0"
+                // (7D-17C thì trên "0"). Layer "0" chỉ còn mốc Ø80 → `top` ra bé tí, boong 3D biến mất
+                // (xác nhận kỹ sư 2026-09-04). Nhận diện: polyline AM_0 phủ ~toàn panel + đặc, mà Top Plate
+                // layer-0 (nếu có) nhỏ hơn hẳn. Mốc Ø80 layer-0 nằm trong boong = lỗ khoét boong → CutOut.
+                PanelPart deckOnAm0 = FindFullSpanPlate(am0, all);
+                bool deckPromoted = deckOnAm0 != null && (top == null || top.Area < deckOnAm0.Area * 0.25);
+                if (deckPromoted)
+                {
+                    foreach (var p in topCands)   // mốc/loop layer-0 trong boong = lỗ khoét
+                        if (ClassifyUtil.StrictlyInside(p, deckOnAm0, ClassifyUtil.EDGE_TOL))
+                        {
+                            bool isOldTop = ReferenceEquals(p, top);
+                            p.Type = PartType.CutOut;
+                            if (!isOldTop) result.Parts.Add(p);
+                        }
+                    if (top != null && top.Type == PartType.TopPlate)
+                        top.Type = PartType.Unknown;   // mốc layer-0 cũ KHÔNG nằm trong boong → không dựng
+
+                    deckOnAm0.Type = PartType.TopPlate;
+                    result.TopPlate = deckOnAm0;
+                    result.Parts.Add(deckOnAm0);
+                    am0.Remove(deckOnAm0);
+                    result.Notes.Add($"[ClassificationService] Top Plate = polyline AM_0 {deckOnAm0.Id.Handle} " +
+                        $"(phủ toàn panel, area {deckOnAm0.Area:0}) — layer \"0\" chỉ có mốc nhỏ" +
+                        (top != null ? $" ({top.Id.Handle})" : "") + " → xử lý là CutOut. (701-series: boong vẽ ở AM_0)");
+                    top = deckOnAm0;
+                }
+
                 ObjectId topKey = top != null ? OwnerBlock(top) : ObjectId.Null;
                 var faceplates = result.OfType(PartType.FacePlate).ToList();
                 var longWebs = am0.Where(p => p.MemberLength > ClassifyUtil.WEB_MIN_LEN).ToList();
 
                 // CutOut layer-0: polyline layer 0 khác Top Plate, cùng block Top Plate, nằm HẲN trong biên.
-                if (top != null)
+                if (top != null && !deckPromoted)
                     foreach (var p in topCands)
                     {
                         if (ReferenceEquals(p, top)) continue;
@@ -187,5 +216,29 @@ namespace MCG_3DPanel.Services
         /// Part nằm trực tiếp trong block ngoài cùng (không qua block con) ⇒ ObjectId.Null.</summary>
         private static ObjectId OwnerBlock(PanelPart p)
             => (p.IdPath != null && p.IdPath.Length >= 3) ? p.IdPath[1] : ObjectId.Null;
+
+        /// <summary>Polyline AM_0 phủ ~toàn bộ panel (bbox ≥ 75% mỗi chiều so union bbox mọi part) và
+        /// ĐẶC (area ≥ 40% bbox của chính nó — loại khung/đường bao rỗng). = tấm boong 701-series vẽ nhầm
+        /// sang layer AM_0. null nếu không có. Xem chỗ gọi (promote Top Plate).</summary>
+        private static PanelPart FindFullSpanPlate(List<PanelPart> am0, List<PanelPart> allParts)
+        {
+            if (am0.Count == 0 || allParts.Count == 0) return null;
+
+            var u = allParts[0].Bounds;
+            foreach (var p in allParts) u.AddExtents(p.Bounds);
+            double uw = u.MaxPoint.X - u.MinPoint.X, uh = u.MaxPoint.Y - u.MinPoint.Y;
+            if (uw < 1.0 || uh < 1.0) return null;
+
+            PanelPart best = null;
+            foreach (var p in am0)
+            {
+                double pw = p.Bounds.MaxPoint.X - p.Bounds.MinPoint.X;
+                double ph = p.Bounds.MaxPoint.Y - p.Bounds.MinPoint.Y;
+                if (pw < uw * 0.75 || ph < uh * 0.75) continue;
+                if (p.Area < pw * ph * 0.4) continue;
+                if (best == null || p.Area > best.Area) best = p;
+            }
+            return best;
+        }
     }
 }
