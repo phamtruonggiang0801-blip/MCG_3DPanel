@@ -21,11 +21,36 @@ namespace MCG_3DPanel.Services
         public ObjectId BtrId { get; set; }         // định nghĩa block 3D
         public int SolidCount { get; set; }
         public string BlockName { get; set; }
+        /// <summary>Tên block 2D nguồn (Build nhiều panel 1 lúc → để biết solid thuộc panel nào).</summary>
+        public string PanelBlockName { get; set; }
         public bool Kept { get; set; }
+        /// <summary>File report JSON đã ghi sau Build (không tự mở) — null nếu ghi lỗi.</summary>
+        public string ReportPath { get; set; }
         public System.Collections.Generic.List<string> Report { get; } = new System.Collections.Generic.List<string>();
 
         /// <summary>Từng part đã dựng hay bị bỏ qua — dùng để xuất report JSON đọc lại kết quả build.</summary>
         public System.Collections.Generic.List<BuiltPartInfo> Parts { get; } = new System.Collections.Generic.List<BuiltPartInfo>();
+
+        /// <summary>Từng solid CÒN LẠI trong block 3D (đã trừ GE hợp nhất vào Web) — nguồn của tab Result.</summary>
+        public System.Collections.Generic.List<BuiltSolid> Solids { get; } = new System.Collections.Generic.List<BuiltSolid>();
+    }
+
+    /// <summary>1 solid trong block 3D: id để highlight/zoom + part nguồn để gắn nhãn loại.</summary>
+    public class BuiltSolid
+    {
+        public ObjectId SolidId { get; set; }
+        /// <summary>Part 2D nguồn; null với solid sinh thêm (Collar Plate, Bracket B đầu HP).</summary>
+        public PanelPart Part { get; set; }
+        /// <summary>Loại khi <see cref="Part"/> null: "CollarPlate" / "HpEndBracketB" / "GirderFlange".</summary>
+        public string Type { get; set; }
+        /// <summary>Code part sinh ra solid phụ (vd "GE-HP" cho GirderFlange); rỗng nếu không có.</summary>
+        public string Code { get; set; }
+        /// <summary>Bbox WCS SAU mọi boolean (CutOut/CO…) — block 3D chèn tại gốc, không xoay/scale.</summary>
+        public Extents3d Bounds { get; set; }
+        /// <summary>Thể tích solid cuối (null nếu AutoCAD không tính được) — cho report JSON.</summary>
+        public double? Volume { get; set; }
+        /// <summary>Code các GE/GB đã hợp nhất vào solid Web này (vd "GE-HP") — để tab Result vẫn ghi rõ GE/GB.</summary>
+        public System.Collections.Generic.List<string> MergedCodes { get; } = new System.Collections.Generic.List<string>();
     }
 
     /// <summary>1 dòng trạng thái build của 1 <see cref="Services.PanelPart"/> — dùng cho report JSON.</summary>

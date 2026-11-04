@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using MCG_3DPanel.Models;
 using MCG_3DPanel.Services;
+using MCG_3DPanel.UI;
 using MCG_3DPanel.Utilities;
 
 namespace MCG_3DPanel.Commands
@@ -33,32 +34,57 @@ namespace MCG_3DPanel.Commands
             catch (System.Exception ex) { Debug.WriteLine($"{LOG_PREFIX} Không mở được file: {ex.Message}"); }
         }
 
-        /// <summary>Ghi report KẾT QUẢ DỰNG 3D ra JSON: tổng quan (số solid, block, kept), từng part đã
-        /// dựng/bị bỏ qua (handle/type/code/built), và các dòng chẩn đoán builder tự thêm vào
-        /// <c>BuildResult.Report</c> (fallback, lỗi CutOut…). Gọi TỰ ĐỘNG sau mỗi lần Build.</summary>
-        public static void WriteBuildReport(ClassificationResult cls, BuildResult build, string path)
+        /// <summary>
+        /// Ghi report KẾT QUẢ DỰNG 3D ra JSON — tự động sau mỗi Build, KHÔNG tự mở (chỉ để debug).
+        /// 1 file cho cả lô; <c>panels</c> = 1 phần tử / panel đã chọn.
+        /// <c>solids</c> = từng SOLID 3D trong block, dựng từ <see cref="ResultRow.From"/> nên handle / kind /
+        /// type / thứ tự TRÙNG KHỚP tab Result và file CSV export. Handle 2D gốc chỉ là trường phụ
+        /// <c>source2DHandle</c> để lần ngược về bản vẽ 2D. <c>notBuilt</c> = part 2D không ra solid
+        /// (không có handle 3D). Kèm các dòng chẩn đoán builder (<c>BuildResult.Report</c>).
+        /// </summary>
+        public static void WriteBuildReport(List<BuildResult> builds, string path)
         {
-            var parts = build.Parts.Select(p => (object)new JsonObject
-            {
-                { "handle", p.Handle }, { "type", p.Type }, { "code", p.Code ?? "" }, { "built", p.Built },
-                { "minX", Round(p.MinX) }, { "minY", Round(p.MinY) }, { "minZ", Round(p.MinZ) },
-                { "maxX", Round(p.MaxX) }, { "maxY", Round(p.MaxY) }, { "maxZ", Round(p.MaxZ) },
-                { "volume", Round(p.Volume) },
-            }).ToList();
-
             var root = new JsonObject
             {
-                { "panelBlockName", cls?.PanelBlockName ?? "" },
-                { "blockName", build.BlockName ?? "" },
-                { "solidCount", build.SolidCount },
-                { "partCount", build.Parts.Count },
-                { "builtCount", build.Parts.Count(p => p.Built) },
-                { "skippedCount", build.Parts.Count(p => !p.Built) },
-                { "kept", build.Kept },
-                { "parts", parts },
-                { "report", build.Report.Select(r => (object)r).ToList() },
+                { "panelCount", builds.Count },
+                { "solidCount", builds.Sum(b => b.Solids.Count) },
+                { "panels", builds.Select(b => (object)BuildPanelJson(b)).ToList() },
             };
             File.WriteAllText(path, JsonWriter.Serialize(root), System.Text.Encoding.UTF8);
+        }
+
+        /// <summary>1 panel trong report lô Build.</summary>
+        private static JsonObject BuildPanelJson(BuildResult build)
+        {
+            var solids = ResultRow.From(build, includeErased: true).Select(r => (object)new JsonObject
+            {
+                { "panel", r.Panel ?? "" },
+                { "handle", r.Handle },
+                { "kind", r.Kind ?? "" },
+                { "type", r.DetectedType ?? "" },
+                { "source2DHandle", r.Solid?.Part != null ? r.Solid.Part.Id.Handle.ToString() : "" },
+                { "mergedCodes", (r.Solid?.MergedCodes ?? new List<string>()).Select(c => (object)c).ToList() },
+                { "minX", Round(r.Bounds.MinPoint.X) }, { "minY", Round(r.Bounds.MinPoint.Y) }, { "minZ", Round(r.Bounds.MinPoint.Z) },
+                { "maxX", Round(r.Bounds.MaxPoint.X) }, { "maxY", Round(r.Bounds.MaxPoint.Y) }, { "maxZ", Round(r.Bounds.MaxPoint.Z) },
+                { "volume", Round(r.Solid?.Volume) },
+            }).ToList();
+
+            var notBuilt = build.Parts.Where(p => !p.Built).Select(p => (object)new JsonObject
+            {
+                { "source2DHandle", p.Handle }, { "type", p.Type }, { "code", p.Code ?? "" },
+            }).ToList();
+
+            return new JsonObject
+            {
+                { "panelBlockName", build.PanelBlockName ?? "" },
+                { "blockName", build.BlockName ?? "" },
+                { "kept", build.Kept },
+                { "solidCount", solids.Count },
+                { "notBuiltCount", notBuilt.Count },
+                { "solids", solids },
+                { "notBuilt", notBuilt },
+                { "report", build.Report.Select(r => (object)r).ToList() },
+            };
         }
 
         /// <summary>Ghi report phân loại chi tiết ra JSON (breakdown theo từng loại/instance).</summary>

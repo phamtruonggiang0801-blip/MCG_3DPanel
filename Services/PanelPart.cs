@@ -56,6 +56,14 @@ namespace MCG_3DPanel.Services
         // đó, KHÔNG PHẢI MemberLength của riêng từng đoạn sau khi tách. Xem skill sniped-end.
         public double FbTotalPlanLength { get; set; }
 
+        // true = đoạn con do splitter cắt (GirderEndSplitter): builder phải dựng từ Vertices, KHÔNG clone
+        // polyline gốc theo Id (1 Id ứng với nhiều đoạn).
+        public bool FromVertices { get; set; }
+
+        // GE tách từ 1 tấm Web liền: trỏ tới phần Web còn lại để Build3DService HỢP NHẤT lại thành 1 solid
+        // (GE chỉ là cách gọi tên đầu girder, thực tế là 1 tấm liền mạch — kỹ sư xác nhận 2026-11-03).
+        public PanelPart JoinWithWeb { get; set; }
+
         public Point3d Centroid { get; set; }          // tâm bbox (WCS)
         public Extents3d Bounds { get; set; }          // bbox (WCS)
         public Point3d[] Vertices { get; set; }         // đỉnh polyline (WCS) — cần cho FacePlate loe (chiếu mép thật)

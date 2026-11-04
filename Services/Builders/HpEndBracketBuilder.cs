@@ -40,6 +40,16 @@ namespace MCG_3DPanel.Services.Builders
         /// <summary>Chiều cao "reach" (= vươn dọc trục) của bracket B theo chiều cao HP.</summary>
         public static double Reach(double b) => Math.Max(MIN_REACH, 30.0 + 1.5 * b);
 
+        /// <summary>Các loại member mà đầu HP có thể "kết thúc cách 30mm" để nhận bracket B: Web, đầu Web
+        /// (GirderEnd), VÀ ClosedPlate — ở vài bản vẽ (vd 4D-03P) vách/cột biên nơi HP dừng lại được vẽ
+        /// thành cụm tấm kín, `PlateDetector` xếp `ClosedPlate` chứ không phải `Web`. Nếu chỉ xét `Web`
+        /// thì đầu HP đó bị coi là "tự do" → Sniped End thay vì bracket B (kỹ sư báo 2026-09-04).</summary>
+        private static readonly PartType[] TRANSVERSE_TYPES =
+            { PartType.Web, PartType.GirderEnd, PartType.ClosedPlate };
+
+        private static List<PanelPart> TransverseMembers(BuildContext ctx)
+            => ctx.Cls.Parts.Where(p => Array.IndexOf(TRANSVERSE_TYPES, p.Type) >= 0).ToList();
+
         /// <summary>Đầu HP <paramref name="he"/> có phải chỗ "End 30" (cách 1 Web ~⟂ đúng 30mm) VÀ còn đủ
         /// chỗ (≥ reach) từ bracket OB/IB gần nhất tới đầu HP để đặt bracket B?
         ///   true  → dựng bracket B, KHÔNG Sniped End.
@@ -48,7 +58,7 @@ namespace MCG_3DPanel.Services.Builders
         public static bool WantsEndBracket(BuildContext ctx, PanelPart hp, Point3d he, Point3d other, out bool isEnd30)
         {
             isEnd30 = false;
-            var webs = ctx.Cls.OfType(PartType.Web).ToList();
+            var webs = TransverseMembers(ctx);
             if (webs.Count == 0) return false;
 
             Vector3d axis = hp.AxisDir;
@@ -94,7 +104,7 @@ namespace MCG_3DPanel.Services.Builders
 
             var hps = ctx.Cls.OfType(PartType.HP).ToList();
             if (hps.Count == 0) return outSolids;
-            var webs = ctx.Cls.OfType(PartType.Web).ToList();
+            var webs = TransverseMembers(ctx);   // Web + GirderEnd + ClosedPlate (xem TRANSVERSE_TYPES)
             if (webs.Count == 0) return outSolids;
             var flanges = ctx.Cls.OfType(PartType.Flange).ToList();
 
@@ -153,7 +163,7 @@ namespace MCG_3DPanel.Services.Builders
 
                     bool sym = HasOppositeTermination(ctx, hp, ixWeb, outward, axis, web);
 
-                    string tag = $"HP {hp.Id.Handle} end@({he.X:0},{he.Y:0}) × Web {web.Id.Handle} · " +
+                    string tag = $"HP {hp.Id.Handle} end@({he.X:0},{he.Y:0}) × {web.Type} {web.Id.Handle} · " +
                                  $"{(big ? "brkt_1" : "brkt_2")} overhang={overhang:0} d1={d1:0} sym={sym}";
 
                     Solid3d sol = null;

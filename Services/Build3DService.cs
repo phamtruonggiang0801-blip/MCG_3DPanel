@@ -66,6 +66,7 @@ namespace MCG_3DPanel.Services
                 Solid3d topPlateSolid = null;
                 BuiltPartInfo topPlateInfo = null;
                 var webSolids = new List<(PanelPart part, Solid3d sol, BuiltPartInfo info)>();
+                var builtMap = new Dictionary<PanelPart, (Solid3d sol, BuiltPartInfo info)>();
                 foreach (var part in cls.Parts)
                 {
                     string handle = part.Id.Handle.ToString();
@@ -80,7 +81,12 @@ namespace MCG_3DPanel.Services
                     Solid3d sol = Dispatch(ctx, part);
                     var info = new BuiltPartInfo { Handle = handle, Type = part.Type.ToString(), Code = part.Code ?? "", Built = sol != null };
                     result.Parts.Add(info);
-                    if (sol == null) continue;
+                    if (sol == null)
+                    {
+                        foreach (var x in ctx.Extras) x.Solid.Dispose();   // part chính hỏng → bỏ luôn solid phụ
+                        ctx.Extras.Clear();
+                        continue;
+                    }
 
                     // Giữ nguyên Layer + Color gốc của đối tượng 2D (view tổng quát rõ hơn).
                     sol.Layer = part.Layer;
@@ -89,6 +95,24 @@ namespace MCG_3DPanel.Services
                     tr.AddNewlyCreatedDBObject(sol, true);
                     made++;
                     FillGeometry(info, sol);
+                    builtMap[part] = (sol, info);
+                    result.Solids.Add(new BuiltSolid { SolidId = sol.ObjectId, Part = part, Type = part.Type.ToString() });
+
+                    // Solid phụ ĐỘC LẬP builder sinh kèm (flange GE/GB) — Layer/Color builder đã gán sẵn
+                    // (theo Flange girder gốc), KHÔNG ghi đè bằng layer của part.
+                    foreach (var x in ctx.Extras)
+                    {
+                        btr.AppendEntity(x.Solid);
+                        tr.AddNewlyCreatedDBObject(x.Solid, true);
+                        made++;
+                        string xh = x.Solid.Handle.ToString();
+                        var xInfo = new BuiltPartInfo { Handle = xh, Type = x.Type, Code = x.Code, Built = true };
+                        result.Parts.Add(xInfo);
+                        FillGeometry(xInfo, x.Solid);
+                        result.Solids.Add(new BuiltSolid { SolidId = x.Solid.ObjectId, Type = x.Type, Code = x.Code });
+                        ctx.Report.Add($"[{x.Type}] solid {xh} của {part.Code} {handle} · layer={x.Solid.Layer}");
+                    }
+                    ctx.Extras.Clear();
 
                     if (part.Type == PartType.TopPlate) { topPlateSolid = sol; topPlateInfo = info; }
                     if (part.Type == PartType.Web) webSolids.Add((part, sol, info));
@@ -104,6 +128,31 @@ namespace MCG_3DPanel.Services
                         foreach (var w in webSolids) FillGeometry(w.info, w.sol); // cập nhật bbox/thể tích SAU khi khoét
                 }
 
+                // GE + Web còn lại vốn là 1 tấm liền (GE chỉ là cách gọi tên đầu girder) — GirderEndSplitter
+                // cắt để tính hình học; ở đây HỢP NHẤT lại thành 1 solid (sau CO để lỗ HP khoét xong trên Web).
+                foreach (var kv in builtMap.Where(k => k.Key.Type == PartType.GirderEnd && k.Key.JoinWithWeb != null).ToList())
+                {
+                    if (!builtMap.TryGetValue(kv.Key.JoinWithWeb, out var web)) continue;
+                    var ge = kv.Value;
+                    try
+                    {
+                        ObjectId geId = ge.sol.ObjectId;
+                        web.sol.BooleanOperation(BooleanOperationType.BoolUnite, ge.sol);   // ge.sol bị tiêu thụ
+                        ge.sol.Erase();
+                        result.Solids.RemoveAll(s => s.SolidId == geId);
+                        result.Solids.Find(s => s.SolidId == web.sol.ObjectId)?.MergedCodes.Add(kv.Key.Code);
+                        made--;
+                        ge.info.Code = $"{kv.Key.Code} → hợp nhất vào Web {kv.Key.JoinWithWeb.Id.Handle}";
+                        FillGeometry(web.info, web.sol);
+                        ctx.Report.Add($"[GE merge] GE {ge.info.Handle} L={kv.Key.MemberLength:0} hợp nhất vào Web {web.info.Handle} " +
+                            $"→ 1 solid liền (lumps={GeometryUtil.CountLumps(web.sol)}).");
+                    }
+                    catch (System.Exception ex)
+                    {
+                        ctx.Report.Add($"[GE merge] không hợp nhất được GE {ge.info.Handle} vào Web {web.info.Handle}: {ex.Message} — giữ 2 solid.");
+                    }
+                }
+
                 // Collar Plate / LUG B1R — SOLID MỚI (không boolean) hàn phía bụng HP quanh lỗ CO, tại
                 // 2 lỗ gần mỗi junction web-ngang × web-dọc, chỉ khi WebHeight < 300. Xem skill web-hp-cutout §7.
                 foreach (var (collar, tag) in WebCollarPlateBuilder.BuildCollarPlates(ctx))
@@ -115,6 +164,7 @@ namespace MCG_3DPanel.Services
                     var cInfo = new BuiltPartInfo { Handle = ch, Type = "CollarPlate", Code = tag, Built = true };
                     result.Parts.Add(cInfo);
                     FillGeometry(cInfo, collar);
+                    result.Solids.Add(new BuiltSolid { SolidId = collar.ObjectId, Type = "CollarPlate" });
                     ctx.Report.Add($"[Collar] solid {ch} = {tag}");
                 }
 
@@ -129,6 +179,7 @@ namespace MCG_3DPanel.Services
                     var bInfo = new BuiltPartInfo { Handle = ch, Type = "HpEndBracketB", Code = tag, Built = true };
                     result.Parts.Add(bInfo);
                     FillGeometry(bInfo, brkt);
+                    result.Solids.Add(new BuiltSolid { SolidId = brkt.ObjectId, Type = "HpEndBracketB" });
                     ctx.Report.Add($"[BracketB] solid {ch} = {tag}");
                 }
 
@@ -148,6 +199,16 @@ namespace MCG_3DPanel.Services
                 var bref = new BlockReference(Point3d.Origin, btrId) { Layer = "0" };
                 ms.AppendEntity(bref);
                 tr.AddNewlyCreatedDBObject(bref, true);
+
+                // Bbox + thể tích cuối của từng solid (sau mọi boolean) — tab Result zoom, report JSON.
+                foreach (var s in result.Solids)
+                {
+                    var solid = (Solid3d)tr.GetObject(s.SolidId, OpenMode.ForRead);
+                    try { s.Bounds = solid.GeometricExtents; }
+                    catch { /* để Bounds rỗng — row vẫn highlight được, chỉ không zoom */ }
+                    try { s.Volume = solid.MassProperties.Volume; }
+                    catch { /* để null nếu AutoCAD không tính được (hình phức tạp) */ }
+                }
 
                 result.BlockRefId = bref.ObjectId;
                 result.BtrId = btrId;
@@ -190,7 +251,8 @@ namespace MCG_3DPanel.Services
             }
             // Fallback cuối: prism theo ZParams (bracket không mã, HP thiếu belly…).
             if (PlateBuilder.ZParams(part.Type, ctx.Input, out double ex, out double mz) && System.Math.Abs(ex) > 1e-6)
-                return PlateBuilder.Extrude(ctx.Tr, part, ex, mz);
+                return part.FromVertices ? PlateBuilder.ExtrudeVertices(part, ex, mz, ctx.Report)
+                                         : PlateBuilder.Extrude(ctx.Tr, part, ex, mz);
             return null;
         }
 

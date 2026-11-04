@@ -15,8 +15,13 @@ namespace MCG_3DPanel.UI
         // Guid cố định để AutoCAD nhớ vị trí/kích thước palette giữa các phiên.
         private static readonly Guid PaletteGuid = new Guid("B3D5A1F2-3C4D-4E5F-9A8B-1C2D3E4F5A6B");
 
+        // Thứ tự tab — index dùng cho PaletteSet.Activate.
+        private const int TabInput = 0;
+        private const int TabResult = 1;
+
         private PaletteSet _ps;
-        private PanelBuilderControl _control;
+        private PanelInputView _input;
+        private PanelResultView _result;
 
         private PaletteManager() { }
 
@@ -30,8 +35,19 @@ namespace MCG_3DPanel.UI
                     Style = PaletteSetStyles.ShowCloseButton,
                     MinimumSize = new Size(320, 480),
                 };
-                _control = new PanelBuilderControl();
-                _ps.AddVisual("Builder", _control);
+
+                // Mỗi bước là 1 tab GỐC của PaletteSet (như MCG_FittingManagement), không phải TabControl
+                // WPF lồng bên trong — thanh tab trông giống hệt plugin Fitting.
+                _input = new PanelInputView();
+                _result = new PanelResultView();
+                _input.Built += r =>
+                {
+                    _result.Load(r);
+                    if (r.Exists(b => b.Kept)) _ps.Activate(TabResult);   // giữ 3D → nhảy sang tab Result xem từng solid
+                };
+                _ps.AddVisual("Input", _input);
+                _ps.AddVisual("Result", _result);
+                _ps.Activate(TabInput);
 
                 // Cố định CẠNH TRÁI, chỉ cho dock trái (không dock phải/trên/dưới, hạn chế float tự do).
                 _ps.DockEnabled = DockSides.Left;

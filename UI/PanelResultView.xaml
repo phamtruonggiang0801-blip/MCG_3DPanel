@@ -1,0 +1,93 @@
+<UserControl x:Class="MCG_3DPanel.UI.PanelResultView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="#FFF2F2F2"
+             FontSize="11">
+    <!-- Tab "Result" của PaletteSet. Bố cục theo tab Fitting Table: thanh công cụ → bảng → trạng thái. -->
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="PanelStyles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- Dòng user đã sửa "Correct type" → chữ XANH SemiBold, như dòng user chủ động sửa bên Fitting. -->
+            <Style x:Key="ResultRowStyle" TargetType="DataGridRow">
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsCorrected}" Value="True">
+                        <Setter Property="Foreground" Value="#FF0050C8"/>
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <Grid Margin="4">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>   <!-- 0: thanh công cụ -->
+            <RowDefinition Height="Auto"/>   <!-- 1: hướng dẫn -->
+            <RowDefinition Height="*" MinHeight="80"/>
+            <RowDefinition Height="Auto"/>   <!-- 3: trạng thái -->
+        </Grid.RowDefinitions>
+
+        <!-- ===== Row 0: Thanh công cụ ===== -->
+        <WrapPanel Grid.Row="0" Margin="1,0,1,2">
+            <Button x:Name="BtnExport" Content="Export CSV" Style="{StaticResource ToolbarPrimaryButtonStyle}"
+                    Click="BtnExport_Click" ToolTip="Export the table (incl. corrected types) to a CSV file"/>
+            <Button x:Name="BtnCopy" Content="Copy" Style="{StaticResource ToolbarButtonStyle}"
+                    Click="BtnCopy_Click" ToolTip="Copy the table to the clipboard (paste straight into Excel)"/>
+        </WrapPanel>
+
+        <TextBlock Grid.Row="1" Style="{StaticResource HelperTextStyle}" Margin="2,2,2,6"
+                   Text="Solids of the last kept 3D build. Select a row (or press ⌖) to highlight &amp; zoom the solid. Type in Correct type to fix a wrong type, then Export."/>
+
+        <!-- ===== Row 2: Bảng kết quả ===== -->
+        <DataGrid x:Name="GridResult" Grid.Row="2" Style="{StaticResource PanelDataGridStyle}"
+                  RowStyle="{StaticResource ResultRowStyle}"
+                  SelectionMode="Single"
+                  SelectionChanged="GridResult_SelectionChanged">
+            <DataGrid.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Zoom to Object" Click="MnuZoomTo_Click"/>
+                    <MenuItem Header="Clear Correction" Click="MnuClearCorrection_Click"
+                              ToolTip="Empty Correct type for the selected row"/>
+                    <Separator/>
+                    <MenuItem Header="Copy Table" Click="BtnCopy_Click"
+                              ToolTip="Copy the table to the clipboard (paste straight into Excel)"/>
+                    <MenuItem Header="Export Table to CSV..." Click="BtnExport_Click"/>
+                </ContextMenu>
+            </DataGrid.ContextMenu>
+
+            <DataGrid.Columns>
+                <!-- Chỉ hiện khi Build nhiều panel 1 lúc (PanelResultView.Load bật/tắt). -->
+                <DataGridTextColumn x:Name="ColPanel" Header="Panel" Binding="{Binding Panel}" Width="Auto" IsReadOnly="True" Visibility="Collapsed"/>
+                <DataGridTextColumn Header="Handle" Binding="{Binding Handle}" Width="Auto" IsReadOnly="True"/>
+                <!-- Chủng loại GB/GE/OB/IB/BF/B — đậm, màu primary để quét mắt nhanh giữa danh sách dài. -->
+                <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="Auto" MinWidth="40" IsReadOnly="True">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="TextAlignment" Value="Center"/>
+                            <Setter Property="FontWeight" Value="SemiBold"/>
+                            <Setter Property="Foreground" Value="#FF005E9E"/>
+                        </Style>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+                <DataGridTextColumn Header="Type" Binding="{Binding DetectedType}" Width="*" IsReadOnly="True"/>
+                <!-- Cột DUY NHẤT cho sửa tay. -->
+                <DataGridTextColumn Header="Correct type" Binding="{Binding CorrectedType, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
+                <DataGridTemplateColumn Header="" Width="26">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Button Content="⌖" Width="20" Height="18" Margin="0" Padding="0" FontSize="12"
+                                    ToolTip="Zoom to and highlight this object" Click="BtnZoomRow_Click"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- ===== Row 3: Trạng thái ===== -->
+        <TextBlock Grid.Row="3" x:Name="TxtStatus" Style="{StaticResource StatusTextStyle}"
+                   Text="No 3D model yet. Run Build 3D in the Input tab."/>
+    </Grid>
+</UserControl>

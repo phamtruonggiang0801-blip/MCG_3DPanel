@@ -1,5 +1,27 @@
 # SESSION LOG — MCG_3DPanel
 
+## Session 2026-09-04d — Bracket End HP không dựng ở "End 30" là ClosedPlate (test 4D-03P)
+
+Kỹ sư báo: HP `1AAB2` (ngang, Y≈1824) — 2 đầu `(1696.78, 1823.82)` / `(12886.79, 1823.82)` — không có
+Bracket End HP, lại bị Sniped End. Nguyên nhân: đầu HP dừng đúng **30mm** trước 1 tấm biên đứng
+(`1AB8C` / `1AB8E`, X≈1662 / 12921) NHƯNG tấm đó `PlateDetector` xếp **`ClosedPlate`**, còn
+`HpEndBracketBuilder` (`FindTransverseWeb` + `WantsEndBracket`) chỉ quét `PartType.Web` → không thấy →
+`isEnd30=false` → `HpBuilder.SnipEnd` rơi về nhánh `IsFreeEnd` → vát. (HP mirror `1AB72` ở đỉnh dừng
+30mm trước 1 `Web` thật nên có phát hiện — nhưng build lỗi riêng: `t=102` + `overhang=11453`
+`eCannotScaleNonUniformly`, xem "còn tồn".)
+
+**Fix:** `HpEndBracketBuilder.TRANSVERSE_TYPES = { Web, GirderEnd, ClosedPlate }` + helper
+`TransverseMembers(ctx)` thay `ctx.Cls.OfType(PartType.Web)` ở `WantsEndBracket` và `BuildHpEndBrackets`.
+Tag report đổi `× Web` → `× {web.Type}`. Skill sniped-end §5b cập nhật.
+
+Build Debug (Rebuild) OK, 0 error / 0 CS-warning. **Chưa test trực quan** — build lại 4D-03P: 2 đầu
+HP 1AAB2 ra bracket B (không vát).
+
+Còn tồn (CHƯA sửa — hỏi kỹ sư): HP `1AB72` (đỉnh 4D-03P) nhận `FootprintThickness=102` (bbox Y≈102,
+volume 135M) — nghi polyline HP vẽ gồm cả biên/không phải strip 6mm, hoặc là thanh biên bị xếp nhầm
+HP. Kéo theo `FlangeOverhang` phồng 11453 → bracket B build fail. Cần Inspect 4D-03P xem `1AB72`
+(layer/nv/verts).
+
 ## Session 2026-09-04c — Fix Collar Plate khổng lồ/lệch chỗ (test 701P/701S)
 
 **Triệu chứng:** 4/12 Collar Plate của 701S dài ~2–9 m, đặt ngoài panel. Log: `tl=1777.3` / `tl=9039.1`

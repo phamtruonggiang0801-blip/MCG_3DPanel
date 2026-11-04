@@ -366,6 +366,30 @@ namespace MCG_3DPanel.Services.Builders
         ///    (bbox không đại diện vì loe không đều). Xem skill panel-parts-reference (Face Plate).
         /// Fallback (không tấm đỡ): đối xứng.
         /// </summary>
+        /// <summary>
+        /// Tấm đỡ (Flange girder) mà <paramref name="part"/> đứng lên — gần điểm neo nhất (2D, tới bbox).
+        /// Ưu tiên Flange; không có thì FacePlate; không có cả hai → null. Dùng để flange GE/GB mượn Layer/Color.
+        /// </summary>
+        public static PanelPart SupportPlate(PanelPart part, ClassificationResult cls)
+        {
+            AnchorDir(part, cls, out Point3d anchor, out _, out _);
+            return NearestTo(anchor, cls.OfType(PartType.Flange)) ?? NearestTo(anchor, cls.OfType(PartType.FacePlate));
+        }
+
+        private static PanelPart NearestTo(Point3d p, IEnumerable<PanelPart> plates)
+        {
+            PanelPart best = null; double bestD = double.MaxValue;
+            foreach (var s in plates)
+            {
+                Extents3d b = s.Bounds;
+                double dx = Math.Max(0, Math.Max(b.MinPoint.X - p.X, p.X - b.MaxPoint.X));
+                double dy = Math.Max(0, Math.Max(b.MinPoint.Y - p.Y, p.Y - b.MaxPoint.Y));
+                double d = dx * dx + dy * dy;
+                if (d < bestD) { bestD = d; best = s; }
+            }
+            return best;
+        }
+
         public static double OverhangProj(PanelPart part, ClassificationResult cls)
         {
             AnchorDir(part, cls, out Point3d anchor, out Vector3d dir, out _);

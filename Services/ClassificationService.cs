@@ -172,6 +172,9 @@ namespace MCG_3DPanel.Services
                 // 2. Web vs Bracket
                 WebBracketSplitter.Split(webCands, am0, hpParts, fbParts, result);
 
+                // 2a. Tầng Web DÀI (≥1000) có đầu chạm HP/FB → cắt GE (L<775) / GB
+                GirderEndSplitter.Apply(result, hpParts, fbParts);
+
                 // 2b. Tách Girder End (GE) khỏi Bracket (collinear + liên tục với Web chính)
                 GirderEndDetector.Apply(result, hpParts, fbParts);
 

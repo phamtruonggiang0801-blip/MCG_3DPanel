@@ -113,7 +113,7 @@ GIRDER END WITH FLANGE 50x10 IF:  THICKNESS=6mm & D>=350,  OR  THICKNESS=10mm & 
 
 **Số đo trực tiếp từ DIM (GE.dwg model space):**
 - `D`: GE1=**314.3** · GE5=**349.15** · GE2=**624.87** · GE6=**639.59** (khớp công thức `√((L−Lb)²+(H−Dend)²)`).
-- `L`: 271.32 / 734 / 271.32 / 730 — DIM ghi **`L<775mm`** ⇒ **giới hạn L, và GB khi `L ≥ 775`** (=HPmaxspan≈bước HP 775).
+- `L`: 271.32 / 734 / 271.32 / 730 — DIM ghi **`L<775mm`**. **Ý nghĩa (kỹ sư xác nhận 2026-11-03)**: L = khoảng cách từ đầu end tại HP/FB tới mép gần của **Web vuông góc bị ngắt tại girder đang xét** (chỉ tính `Web`, KHÔNG tính Bracket). `L<775` = điều kiện áp dụng GE. **Không có Web vuông góc trong 775mm ⇒ GB.** (Suy luận cũ "L≥775=GB, 775=bước HP" đã bỏ.)
 - `50 <>` (đoạn 50) · `10 "50x<>"` (Flange **50×10**) · `15`/`30` (clearance lưng/bụng + snip).
 - HP block đặt cách GE đúng **L** (GE1@1331, HP@1060 → 271) ⇒ **L = web→lưng HP, KHÔNG trừ 15 ngang** (15 là Dend đứng).
 
@@ -144,6 +144,11 @@ GIRDER END WITH FLANGE 50x10 IF:  THICKNESS=6mm & D>=350,  OR  THICKNESS=10mm & 
 **Bản KHÔNG flange** (GE1/3/5): toe đáy bo **R30**.
 **Bản CÓ flange** (GE2/4/6): toe đáy **góc SẮC** (không bo).
 
+**Chân của bản CÓ flange (kỹ sư chốt 2026-11-04):** KHÔNG thụt 15 như Bracket/GE không flange mà **đẩy SÁT
+mép flange girder** ⇒ hình học dùng `Lb = overhang` (thay vì `overhang − 15`). Flange 50×10 bám free-edge
+**từ đúng góc chân** lên. ⚠️ **D để quyết định có flange VẪN tính với `Lb = overhang − 15`** (ngưỡng đã
+kiểm chứng GE2/GE6 ở trên) — chỉ khi đã `flanged` mới dời chân ra sát mép. Áp dụng cả GB ([[girder-bracket]]).
+
 ## 4. FLANGE của GE (bản chẵn)
 
 - **50 rộng × 10 dày**, hàn dọc **free-edge** (mép dưới nghiêng), nằm **ngoài** đường bao, chạy tới góc đáy.
@@ -151,6 +156,10 @@ GIRDER END WITH FLANGE 50x10 IF:  THICKNESS=6mm & D>=350,  OR  THICKNESS=10mm & 
 - **SNIP END** ở **đầu phía CAO** (phía HP/FB): vát **15mm** (đo vuông góc) ở **30°**, **CẢ HAI bên**
   ⇒ cạnh vát dài `15/sin30° = 30`, còn lại **20mm phẳng** giữa. Kiểm chứng: `15 + 20 + 15 = 50` ✔
   (block AM_7 đo được cạnh **30–20–30**).
+- **Đầu THẤP** (phía chân): dừng **đúng tại góc chân**, **cắt vuông** (kỹ sư chốt 2026-11-04).
+- **SOLID ĐỘC LẬP** (kỹ sư chốt 2026-11-04): flange KHÔNG union vào web GE/GB — là 1 solid riêng,
+  **Layer + Color theo Flange girder gốc** (tấm Flange gần điểm neo nhất, `BracketBuilder.SupportPlate`;
+  không có Flange → FacePlate; không có cả hai → layer của GE/GB). Tab Result: dòng `flange GE-HP` / `flange GB-FB`.
 
 ## 5. Số liệu 4 block tham chiếu (GE.dwg, girder thk 6)
 
@@ -191,10 +200,11 @@ GIRDER END WITH FLANGE 50x10 IF:  THICKNESS=6mm & D>=350,  OR  THICKNESS=10mm & 
 - ✅ **Hình học PARAMETRIC** (`GeProfileService`, thay template): dựng R30(Lb)→free-edge→R50→đoạn 50→span-face
   theo công thức tangent-from-P + R50 fillet tại P=(L−50,−Dend). **Kiểm chứng khớp block GE1/GE2 từng đỉnh**
   (tanLedge 254.3, tanFree 208.3, R50c 254.3/−155, bR50 0.3, T 111.2, bR30 0.1). Dend scale = member−15.
-- ✅ **Flange 50×10** (`GirderEndBuilder.AddFlange`): bar dọc free-edge, 50 rộng (z, căn giữa web) × 10 dày,
-  union vào web khi `flanged`. `GirderEndBuilder` tính D = √((L−Lb)²+(H−Dend)²) → chọn flange theo ngưỡng.
-- ⚠️ **v1 flange chưa snip 15@30** (bar thẳng); Dend bụng (GE3/4, −30) chờ mẫu; `L`=pieceLength, `Lb`=overhang−15
-  (kẹp ≤ L−R30) — cần **test mắt** hiệu chỉnh.
+- ✅ **Flange 50×10** (`GirderEndBuilder.AddFlangeSnip`, dùng chung với GB): dọc free-edge, 50 rộng (z, căn giữa
+  web) × 10 dày, **snip 15@30° (30–20–30) đầu cao**, cắt vuông tại chân; union vào web khi `flanged`.
+  `GirderEndBuilder` tính D = √((L−Lb)²+(H−Dend)²) với `Lb`=overhang−15 (kẹp ≤ L−R30) → chọn flange theo ngưỡng;
+  `flanged` ⇒ dựng với `Lb = min(overhang, L−30)` (chân sát mép, 2026-11-04).
+- ⚠️ Dend bụng (GE3/4, −30) chờ mẫu; `L`=pieceLength — cần **test mắt** hiệu chỉnh.
 
 ## 6c. Toe-end Flange khi Flange/FacePlate đỡ DÀI HƠN member — squareCorner (xác nhận kỹ sư, 2026-08-25)
 
@@ -245,3 +255,17 @@ như cũ — đúng tinh thần "Toe-end HP giống nhau, chỉ Toe-end Flange k
       phải sửa `DrawingDumpCommand` để dump cả **Layout/Paper Space**.
 
 Liên quan: [[panel-parts-reference]] (mục 4b taper web 1:4) · [[bracket-identification]] · [[parametric-profiles]] · [[hp-profile]]
+
+## 8. Tầng END dài ≥1000 — `GirderEndSplitter` (2026-11-03, TẠM, chưa test trực quan)
+
+Ca 7D-16C: tầng END dày 20 dài 1200 (`1B897`, `1B865`) bị coi Web chữ nhật vì `WebBracketSplitter` chỉ xét mảnh <1000.
+`GirderEndSplitter` (chạy sau WebBracketSplitter, trước GirderEndDetector): Web ≥1000, thk ≥10, **đầu chạm HP/FB cắt ngang** →
+tìm Web vuông góc (|cos|≤0.3, đầu Web chạm thân girder) có mép gần nhất cách đầu HP **t < 775** →
+cắt: **[0,t] = GE** (L=t, `PanelPart.FromVertices`), phần còn lại = Web. Không có ⇒ `Code="GB"` + Notes (giữ Web chữ nhật).
+Ngưỡng flange theo thk: 6→D≥350 · 10→D≥600 · **20→D≥1500** (`GirderEndBuilder`).
+Kỳ vọng 7D-16C: `1B897` → GE L≈242 + Web ≈958; `1B865` → GE L≈255 + Web ≈945.
+Chưa chốt: cắt tại mép gần (hay tâm Web ⊥); Bracket OB1 (`1B86A`/`1B866`, cao 344, cách đầu HP 90) nhô khỏi GE.
+
+**Hợp nhất (kỹ sư xác nhận 2026-11-03):** GE chỉ là TÊN gọi đầu girder — tấm thật là 1 tấm liền mạch. `GirderEndSplitter` chỉ cắt để
+tính hình học (`PanelPart.JoinWithWeb`); `Build3DService` sau khoét CO **union GE vào Web còn lại → 1 solid** (report `[GE merge]`;
+nếu union lỗi thì giữ 2 solid + ghi lý do). Hình GE (profile), Bracket OB1, Bracket B HP: kỹ sư đã xác nhận đúng.

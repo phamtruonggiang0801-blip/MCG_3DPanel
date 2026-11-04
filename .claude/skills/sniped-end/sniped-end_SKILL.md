@@ -322,9 +322,13 @@ Polygon brkt_2 (CCW): `(0,off2)→(d1,off2)→(reach, Ht−e15)→(reach, Ht)→
 
 ### 5b. Phát hiện vị trí "End 30mm" + chọn bracket vs snipe
 
-1. Đầu mút HP (`ClassifyUtil.Endpoints`) cách 1 Web (`PartType.Web`, `|cos góc trục| ≤ 0.70` → chấp
-   nhận Web XIÊN) một khoảng `|nearFace − 30| ≤ 16` dọc trục HP (hiệu chỉnh xiên). → "End 30". (HP xuyên
-   QUA web = lỗ CO — xem [[web-hp-cutout]]. Case này HP DỪNG trước Web.)
+1. Đầu mút HP (`ClassifyUtil.Endpoints`) cách 1 **member ngang** một khoảng `|nearFace − 30| ≤ 16` dọc
+   trục HP (hiệu chỉnh xiên), `|cos góc trục| ≤ 0.70` → chấp nhận member XIÊN. → "End 30". (HP xuyên QUA
+   web = lỗ CO — xem [[web-hp-cutout]]. Case này HP DỪNG trước member.)
+   **"Member ngang" = `PartType.Web` + `GirderEnd` + `ClosedPlate`** (`HpEndBracketBuilder.TRANSVERSE_TYPES`,
+   sửa 2026-09-04): vài bản vẽ (vd **4D-03P**) vẽ vách/cột biên — nơi HP dừng lại 30mm — thành cụm **tấm
+   kín**, `PlateDetector` xếp `ClosedPlate` chứ không phải `Web`. Chỉ xét `Web` thì đầu HP đó bị coi "tự
+   do" → Sniped End thay vì bracket B (kỹ sư báo: HP end `(1696.78, 1823.82)` / `(12886.79, 1823.82)`).
 2. Tính `dKnee` = khoảng cách từ đầu-bám-HP của bracket **OB/IB** gần nhất (ngồi trên HP đó) tới đầu HP.
 3. `dKnee ≥ reach` → **bracket "B"**. `dKnee < reach` → **Sniped End** (HpBuilder). Không có OB/IB →
    `dKnee = ∞` → luôn bracket "B".

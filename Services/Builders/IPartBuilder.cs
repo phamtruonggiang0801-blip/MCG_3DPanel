@@ -22,6 +22,20 @@ namespace MCG_3DPanel.Services.Builders
 
         /// <summary>Dòng chẩn đoán (builder tự thêm). PanelCommands quyết định có ghi ra file hay không.</summary>
         public List<string> Report { get; } = new List<string>();
+
+        /// <summary>Solid PHỤ builder sinh kèm part đang dựng (vd flange GE/GB) — đã đặt đúng chỗ + Layer/Color.
+        /// Build3DService gom vào block ngay sau part đó rồi xoá danh sách.</summary>
+        public List<ExtraSolid> Extras { get; } = new List<ExtraSolid>();
+    }
+
+    /// <summary>1 solid phụ độc lập (không union vào solid chính).</summary>
+    public class ExtraSolid
+    {
+        public Solid3d Solid { get; set; }
+        /// <summary>Loại cho tab Result/report, vd "GirderFlange".</summary>
+        public string Type { get; set; }
+        /// <summary>Code của part sinh ra nó, vd "GE-HP" / "GB-FB".</summary>
+        public string Code { get; set; }
     }
 
     /// <summary>

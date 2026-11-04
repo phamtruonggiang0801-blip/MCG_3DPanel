@@ -69,7 +69,36 @@ namespace MCG_3DPanel.Services.Builders
         {
             if (!ZParams(part.Type, ctx.Input, out double extrude, out double moveZ)) return null;
             if (Math.Abs(extrude) < 1e-6) return null;
+            if (part.FromVertices) return ExtrudeVertices(part, extrude, moveZ, ctx.Report);
             return Extrude(ctx.Tr, part, extrude, moveZ, ctx.Report);
+        }
+
+        /// <summary>Đoạn con do splitter cắt: dựng Region từ <see cref="PanelPart.Vertices"/> (WCS) → extrude.</summary>
+        public static Solid3d ExtrudeVertices(PanelPart part, double extrude, double moveZ,
+            System.Collections.Generic.List<string> report)
+        {
+            Polyline pl = null; Region reg = null;
+            try
+            {
+                pl = new Polyline();
+                for (int i = 0; i < part.Vertices.Length; i++)
+                    pl.AddVertexAt(i, new Point2d(part.Vertices[i].X, part.Vertices[i].Y), 0, 0, 0);
+                pl.Closed = true;
+                var regions = Region.CreateFromCurves(new DBObjectCollection { pl });
+                if (regions.Count == 0) { report?.Add($"{LOG} {part.Type} {part.Id.Handle}: đoạn con → 0 region."); return null; }
+                reg = (Region)regions[0];
+                for (int i = 1; i < regions.Count; i++) ((Region)regions[i]).Dispose();
+                var sol = new Solid3d();
+                sol.CreateExtrudedSolid(reg, new Vector3d(0, 0, extrude), new SweepOptionsBuilder().ToSweepOptions());
+                if (Math.Abs(moveZ) > 1e-6) sol.TransformBy(Matrix3d.Displacement(new Vector3d(0, 0, moveZ)));
+                return sol;
+            }
+            catch (System.Exception ex)
+            {
+                report?.Add($"{LOG} {part.Type} {part.Id.Handle} (đoạn con): {ex.Message}");
+                return null;
+            }
+            finally { reg?.Dispose(); pl?.Dispose(); }
         }
 
         /// <summary>Clone polyline gốc về WCS → Region → extrude dz → dịch moveZ. null nếu lỗi.

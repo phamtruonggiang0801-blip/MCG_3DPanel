@@ -85,26 +85,37 @@ namespace MCG_3DPanel.Commands
             }
         }
 
-        /// <summary>Zoom viewport hiện tại vào bbox (WCS, plan-view) + lề để giữ ngữ cảnh.</summary>
+        /// <summary>Zoom viewport hiện tại vào bbox WCS + lề để giữ ngữ cảnh. Chiếu bbox sang DCS của view
+        /// hiện tại ⇒ đúng cả plan-view (2D) lẫn view 3D/isometric (solid sau Build).</summary>
         private static void ZoomTo(Editor ed, Extents3d ext)
         {
             try
             {
-                double w = ext.MaxPoint.X - ext.MinPoint.X;
-                double h = ext.MaxPoint.Y - ext.MinPoint.Y;
-                if (w <= 0 && h <= 0) return;
-
-                double cx = (ext.MinPoint.X + ext.MaxPoint.X) / 2.0;
-                double cy = (ext.MinPoint.Y + ext.MaxPoint.Y) / 2.0;
-                const double margin = 4.0;   // hiện cả phần xung quanh để định vị
-                double vw = Math.Max(w * margin, 200.0);
-                double vh = Math.Max(h * margin, 200.0);
-
                 using (ViewTableRecord view = ed.GetCurrentView())
                 {
-                    view.CenterPoint = new Point2d(cx, cy);
-                    view.Width = vw;
-                    view.Height = vh;
+                    Matrix3d wcsToDcs = (Matrix3d.Rotation(-view.ViewTwist, view.ViewDirection, view.Target)
+                                         * Matrix3d.Displacement(view.Target - Point3d.Origin)
+                                         * Matrix3d.PlaneToWorld(view.ViewDirection)).Inverse();
+
+                    // Bbox trong DCS = bao 8 góc bbox WCS đã chiếu. Khởi tạo bằng góc đầu — Extents3d
+                    // mặc định là (0,0,0) nên AddPoint sẽ kéo cả gốc toạ độ vào.
+                    Point3d a = ext.MinPoint, b = ext.MaxPoint;
+                    Point3d first = a.TransformBy(wcsToDcs);
+                    var dcs = new Extents3d(first, first);
+                    foreach (double x in new[] { a.X, b.X })
+                    foreach (double y in new[] { a.Y, b.Y })
+                    foreach (double z in new[] { a.Z, b.Z })
+                        dcs.AddPoint(new Point3d(x, y, z).TransformBy(wcsToDcs));
+
+                    double w = dcs.MaxPoint.X - dcs.MinPoint.X;
+                    double h = dcs.MaxPoint.Y - dcs.MinPoint.Y;
+                    if (w <= 0 && h <= 0) return;
+
+                    const double margin = 4.0;   // hiện cả phần xung quanh để định vị
+                    view.CenterPoint = new Point2d((dcs.MinPoint.X + dcs.MaxPoint.X) / 2.0,
+                                                   (dcs.MinPoint.Y + dcs.MaxPoint.Y) / 2.0);
+                    view.Width = Math.Max(w * margin, 200.0);
+                    view.Height = Math.Max(h * margin, 200.0);
                     ed.SetCurrentView(view);
                 }
             }

@@ -23,6 +23,10 @@ namespace MCG_3DPanel.Services
 
         /// <summary>Đoạn free-edge (mép dưới, để dựng flange 50×10): tiếp điểm trên (gần HP) → toe đáy.</summary>
         void FreeEdge(bool flanged, double L, double H, double Lb, double dend, out Point2d top, out Point2d bot);
+
+        /// <summary>Outline web GIRDER BRACKET (GB): mặt đầu cao dend (=member−30) → cung R30 (tiếp tuyến mặt đầu, ledge=0)
+        /// → free-edge thẳng → toe đáy SẮC tại (Lb,−H) (không R50) → đáy. Hệ local như <see cref="GeOutline"/>.</summary>
+        List<VertexBulge> GbOutline(double L, double H, double Lb, double dend, out Point2d freeTop, out Point2d freeBot);
     }
 
     public class GeProfileService : IGeProfileService
@@ -118,6 +122,44 @@ namespace MCG_3DPanel.Services
             }
             o.Add(new VertexBulge(0, -H, 0));                              // flange leg → web (tự đóng)
             return o;
+        }
+
+        private const double GbRHead = 30.0;
+
+        /// <summary>GB: toe đáy SẮC tại (Lb,−H) — vị trí theo HP (Lb = GB_TOE_PAD), KHÔNG bo R50 (kỹ sư xác nhận
+        /// 2026-11-04: GE/GB có flange ⇒ chân sát, flange 80×10 bám free-edge từ đúng góc chân lên).</summary>
+        public List<VertexBulge> GbOutline(double L, double H, double Lb, double dend, out Point2d freeTop, out Point2d freeBot)
+        {
+            freeTop = new Point2d(L, -dend); freeBot = new Point2d(Lb, -H);
+            if (L <= Lb + 120 || H <= dend + 1 || Lb < 1.0) return Rect(L, H);
+
+            var tc = new Point2d(Lb, -H);                       // góc toe (giao free-edge ∩ đáy)
+            var dirIn = new Vector2d(-1, 0);                    // mặt đầu → ledge → hướng về web
+            double px = L;
+            Vector2d u = new Vector2d(0, -1); double off1 = 0;
+            for (int i = 0; i < 8; i++)                         // P phụ thuộc off1, off1 phụ thuộc P → lặp
+            {
+                var p = new Point2d(px, -dend);
+                u = (tc - p).GetNormal();
+                double delta = Math.Acos(Math.Max(-1, Math.Min(1, dirIn.DotProduct(u))));
+                off1 = GbRHead * Math.Tan(delta / 2.0);
+                px = L - off1;                                  // ledge = 0: tiếp điểm R30 đúng tại mặt đầu
+            }
+            var P = new Point2d(px, -dend);
+            double d1 = Math.Acos(Math.Max(-1, Math.Min(1, dirIn.DotProduct(u))));
+            double b1 = Math.Tan(d1 / 4.0);                     // rẽ trái (CCW) → bulge dương
+            var t2 = P + u * off1;                              // R30 → free-edge
+            freeTop = t2; freeBot = tc;                         // flange chạy tới ĐÚNG góc toe
+
+            return new List<VertexBulge>(6)
+            {
+                new VertexBulge(0, 0, 0),
+                new VertexBulge(L, 0, 0),
+                new VertexBulge(L, -dend, b1),                  // mặt đầu → R30
+                new VertexBulge(t2.X, t2.Y, 0),                 // R30 → free-edge
+                new VertexBulge(tc.X, tc.Y, 0),                 // free-edge → toe SẮC
+                new VertexBulge(0, -H, 0),
+            };
         }
 
         public void FreeEdge(bool flanged, double L, double H, double Lb, double dend, out Point2d top, out Point2d bot)

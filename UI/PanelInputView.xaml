@@ -1,0 +1,78 @@
+<UserControl x:Class="MCG_3DPanel.UI.PanelInputView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="#FFF2F2F2"
+             FontSize="11">
+    <!-- Tab "Input" của PaletteSet. Ngoại quan theo MCG_FittingManagement — style ở PanelStyles.xaml. -->
+    <UserControl.Resources>
+        <ResourceDictionary Source="PanelStyles.xaml"/>
+    </UserControl.Resources>
+
+    <Grid Margin="4">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,5,0,0">
+            <StackPanel TextElement.FontWeight="Normal">
+
+                <GroupBox Header="BUILD 3D PANEL (MM)">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource HelperTextStyle}"
+                                   Text="Pick the panel, then choose Yes/No at the command line to keep or discard the 3D model. Kept solids are listed in the Result tab."/>
+
+                        <!-- Lưới 2 cột nhãn | giá trị, như pane Properties của Fitting. -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" MinWidth="90"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Vẫn cần cho Build: quyết định chiều đổ / mã OB-IB của bracket. -->
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Panel position" Style="{StaticResource ParamLabelStyle}"
+                                       ToolTip="Sets the OB/IB bracket direction"/>
+                            <ComboBox Grid.Row="0" Grid.Column="1" x:Name="CmbPanelPos" SelectedIndex="0"
+                                      ToolTip="Sets the OB/IB bracket direction">
+                                <ComboBoxItem Content="Center"/>
+                                <ComboBoxItem Content="Port Side"/>
+                                <ComboBoxItem Content="Starboard Side"/>
+                            </ComboBox>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Top Plate thk" Style="{StaticResource ParamLabelStyle}"/>
+                            <TextBox Grid.Row="1" Grid.Column="1" x:Name="TxtTopPlateThk" Text="6"/>
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Web height (H)" Style="{StaticResource ParamLabelStyle}"/>
+                            <TextBox Grid.Row="2" Grid.Column="1" x:Name="TxtWebHeight" Text="374"/>
+
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Flange thk" Style="{StaticResource ParamLabelStyle}"/>
+                            <TextBox Grid.Row="3" Grid.Column="1" x:Name="TxtFlangeThk" Text="20"/>
+
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Flat Bar spec" Style="{StaticResource ParamLabelStyle}"
+                                       ToolTip="height*thickness, e.g. 120*6"/>
+                            <TextBox Grid.Row="4" Grid.Column="1" x:Name="TxtFlatBarSpec" Text="120*6"
+                                     ToolTip="height*thickness, e.g. 120*6"/>
+
+                            <TextBlock Grid.Row="5" Grid.Column="0" Text="HP size" Style="{StaticResource ParamLabelStyle}"
+                                       ToolTip="Standard HP table. Thickness is read from the plan geometry; this only sets the profile height (b)."/>
+                            <ComboBox Grid.Row="5" Grid.Column="1" x:Name="CmbHpSpec"
+                                      ToolTip="Standard HP table. Thickness is read from the plan geometry; this only sets the profile height (b)."/>
+                        </Grid>
+
+                        <Button x:Name="BtnBuild" Content="Build 3D" Style="{StaticResource PrimaryButtonStyle}"
+                                Click="BtnBuild_Click" Margin="0,4,0,0"
+                                ToolTip="Pick the panel block and build its 3D solid model"/>
+                    </StackPanel>
+                </GroupBox>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- ===== Trạng thái ===== -->
+        <TextBlock Grid.Row="1" x:Name="TxtStatus" Style="{StaticResource StatusTextStyle}" Text="Ready."/>
+    </Grid>
+</UserControl>

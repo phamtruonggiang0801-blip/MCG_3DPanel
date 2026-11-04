@@ -11,7 +11,7 @@ Quy tắc nhận diện / thông số / định vị: xem skill **`.claude/skill
 | Thư mục | Nội dung |
 |---|---|
 | `Commands/` | `PanelCommands.cs` — IExtensionApplication + lệnh `MCG_Build3DPanel`, `MCG_InspectPanel` |
-| `UI/` | `PaletteManager.cs` (Singleton PaletteSet), `PanelBuilderControl.xaml(.cs)` (WPF) |
+| `UI/` | `PaletteManager.cs` (Singleton PaletteSet), `PanelInputView` / `PanelResultView` (2 tab WPF), `PanelStyles.xaml` (style đồng bộ Fitting) |
 | `Services/` | `IInspectorService`/`InspectorService` (duyệt đệ quy block → JSON). Sắp có `ClassificationService`, `Build3DService` |
 | `Models/` | POCO (sắp có: `PartType`, `PanelPart`, `PanelInput`) |
 | `Utilities/` | `Json.cs` — `JsonWriter` + `JsonObject` (serializer tối giản, không NuGet) |
