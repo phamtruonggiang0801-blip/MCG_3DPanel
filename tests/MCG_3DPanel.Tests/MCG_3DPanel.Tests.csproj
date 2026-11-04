@@ -17,6 +17,7 @@
     <Compile Include="..\..\Services\Corrections\SourceMeta.cs" Link="SourceMeta.cs" />
     <Compile Include="..\..\Models\PanelInput.cs" Link="PanelInput.cs" />
     <Compile Include="..\..\Models\PanelPosition.cs" Link="PanelPosition.cs" />
+    <Compile Include="..\..\Services\Builders\HpEndAtHpGeometry.cs" Link="HpEndAtHpGeometry.cs" />
   </ItemGroup>
 
   <ItemGroup>
