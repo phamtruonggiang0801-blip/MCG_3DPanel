@@ -117,14 +117,33 @@ namespace MCG_3DPanel.Services.Builders
             double side = (otherEnd.X - m.Foot.X) * perp.X + (otherEnd.Y - m.Foot.Y) * perp.Y;
             m.Normal = side >= 0 ? perp : (-perp.X, -perp.Y);
             m.Inside = runBelly.X * m.Normal.X + runBelly.Y * m.Normal.Y > 0;
+            m.Gap = (end.X - m.Foot.X) * m.Normal.X + (end.Y - m.Foot.Y) * m.Normal.Y - tRun / 2.0;
             m.CosTheta = Math.Abs(hx * ax + hy * ay);
 
             double p = m.Inside ? BulbProtrusion(c, r, tRun) : 0.0;
             if (m.Dist > tRun / 2.0 + p + TOL_TOUCH) return m.Fail("far");
-            if (s < END_MARGIN || s > len - END_MARGIN) return m.Fail("nearRunEnd");
+            // TOÀN BỘ footprint HP đầu (kể cả bulb, rộng ≤ c+r từ đường tâm, chiếu lên trục HP chạy /sinθ) phải
+            // nằm TRONG HP chạy — loại góc chữ L (HP chạy dừng ngang mặt ngoài HP đầu; review 2026-11-04).
+            double sinT = Math.Sqrt(Math.Max(1e-12, 1.0 - m.CosTheta * m.CosTheta));
+            double edge = Math.Max(END_MARGIN, (c + r) / sinT);
+            if (s < edge || s > len - edge) return m.Fail("nearRunEnd");
             if (m.CosTheta > MAX_COS) return m.Fail("angle");
             m.Ok = true;
             return m;
+        }
+
+        /// <summary>
+        /// Chiều dài NỐI DÀI HP đầu dọc trục chính nó (từ đầu mút về phía HP chạy) khi vẽ dừng hụt
+        /// (<paramref name="gap"/> &gt; 0.5): đưa đường tâm tới mặt tiếp xúc (<c>gap/sinθ</c>) + góc xa của mặt đầu
+        /// khi xiên (<c>(tEnd/2)·|cotθ|</c>) + <see cref="MARGIN"/> (phần thừa lấn qua mặt tiếp xúc do dao cắt xén).
+        /// 0 nếu không hụt.
+        /// </summary>
+        public static double FillLength(double gap, double tEnd, double cosTheta)
+        {
+            if (gap <= 0.5) return 0.0;
+            double cos = Math.Min(1.0, Math.Abs(cosTheta));
+            double sin = Math.Sqrt(Math.Max(1e-12, 1.0 - cos * cos));
+            return gap / sin + (tEnd / 2.0) * cos / sin + MARGIN;
         }
 
         private static double Dist((double X, double Y) a, (double X, double Y) b)
@@ -149,6 +168,9 @@ namespace MCG_3DPanel.Services.Builders
         public (double X, double Y) Normal { get; set; }
         /// <summary>Trục đơn vị runA→runB.</summary>
         public (double X, double Y) RunAxis { get; set; }
+        /// <summary>Khoảng hở (có dấu) từ mặt tiếp xúc tới đầu mút, dọc <see cref="Normal"/>: &gt; 0 = vẽ DỪNG HỤT
+        /// (cần nối dài HP đầu tới mặt web), &lt; 0 = vẽ LẤN qua (dao cắt xén).</summary>
+        public double Gap { get; set; }
 
         internal HpEndMatch Fail(string why) { Ok = false; Reject = why; return this; }
     }

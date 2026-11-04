@@ -120,6 +120,7 @@ namespace MCG_3DPanel.Services.Builders
         {
             bool wantsBracket = HpEndBracketBuilder.WantsEndBracket(ctx, hp, he, other, out bool isEnd30);
             if (isEnd30) return !wantsBracket;                          // End 30: bracket HOẶC vát
+            if (HpEndAtHpBuilder.TouchesRunningHp(ctx, hp, he, other)) return false;   // HP end tại HP → cắt R30, không vát
             return GeometryUtil.IsFreeEnd(he, hp, ctx.Cls, ClassifyUtil.FB_FREE_END_TOL);   // tự do → vát
         }
 

@@ -80,6 +80,34 @@ namespace MCG_3DPanel.Tests
             Assert.Equal(ca, m.RunAxis.X, 6); Assert.Equal(sa, m.RunAxis.Y, 6);
         }
 
+        // Review: góc chữ L HP200 (c=28 r=8 t=10) — HP chạy dừng NGANG mặt ngoài HP đầu, bụng HP đầu quay về góc ⇒
+        // đường tâm HP đầu cách đầu HP chạy c+r−t/2 = 31 (> JOINT_TOL, > END_MARGIN) — trước đây bị cắt nhầm.
+        [Fact]
+        public void Match_LCornerHp200_Rejected()
+        {
+            var m = HpEndAtHpGeometry.Match((1969, 5), (1969, 800), (0, 0), (2000, 0), 10, (0, 1), 28, 8);
+            Assert.Equal("nearRunEnd", m.Reject);
+        }
+
+        // Review: đầu HP đầu dừng HỤT mặt web (vẽ tới mép bulb) — Gap = khoảng hở dọc pháp tuyến tới mặt tiếp xúc.
+        [Fact]
+        public void Match_Gap_SignedFromContactFace()
+        {
+            Assert.Equal(21.0, Match((1000, 24), (1000, 800), (0, 1)).Gap, 6);
+            Assert.Equal(0.0, Match((1000, 3), (1000, 800), (0, 1)).Gap, 6);
+            Assert.Equal(-5.0, Match((1000, -2), (1000, 800), (0, 1)).Gap, 6);
+        }
+
+        [Fact]
+        public void FillLength_Perpendicular_Oblique_None()
+        {
+            Assert.Equal(21.0 + 2.0, HpEndAtHpGeometry.FillLength(21, 6, 0.0), 6);
+            double s = Math.Sin(Math.PI / 3), c = 0.5;
+            Assert.Equal(21.0 / s + 3.0 * c / s + 2.0, HpEndAtHpGeometry.FillLength(21, 6, c), 6);
+            Assert.Equal(0.0, HpEndAtHpGeometry.FillLength(0.3, 6, 0.0), 6);
+            Assert.Equal(0.0, HpEndAtHpGeometry.FillLength(-5, 6, 0.0), 6);
+        }
+
         [Fact]
         public void Match_NoBelly_Rejected()
             => Assert.Equal("noBelly", Match((1000, 3), (1000, 800), (0, 0)).Reject);

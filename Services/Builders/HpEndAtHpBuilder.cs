@@ -49,19 +49,8 @@ namespace MCG_3DPanel.Services.Builders
                 var (e1, e2) = ClassifyUtil.Endpoints(h);
                 foreach (var (he, ho) in new[] { (e1, e2), (e2, e1) })
                 {
-                    PanelPart run = null; HpEndMatch best = null; HpEndMatch angleSkip = null; PanelPart angleRun = null;
-                    foreach (var m in hps)
-                    {
-                        if (ReferenceEquals(m, h)) continue;
-                        var (ra, rb) = ClassifyUtil.Endpoints(m);
-                        var bd = m.BellyDir;
-                        var res = HpEndAtHpGeometry.Match((he.X, he.Y), (ho.X, ho.Y), (ra.X, ra.Y), (rb.X, rb.Y),
-                                                          m.FootprintThickness, (bd.X, bd.Y), c, r);
-                        if (res.Ok) { if (best == null || res.Dist < best.Dist) { best = res; run = m; } }
-                        else if (res.Reject == "angle" && angleSkip == null) { angleSkip = res; angleRun = m; }
-                        else if (res.Reject == "noBelly" && DistToRun(he, m) <= m.FootprintThickness / 2.0 + HpEndAtHpGeometry.TOL_TOUCH)
-                            ctx.Report.Add($"{LOG} SKIP noBelly h={h.Id.Handle} m={m.Id.Handle} — HP chạy chưa có hướng bụng.");
-                    }
+                    HpEndMatch best = FindRun(ctx, hps, h, he, ho, c, r, out PanelPart run,
+                                              out HpEndMatch angleSkip, out PanelPart angleRun, report: true);
                     if (best == null)
                     {
                         if (angleSkip != null)
@@ -73,6 +62,14 @@ namespace MCG_3DPanel.Services.Builders
                     Solid3d cutter = null;
                     try
                     {
+                        // Vẽ DỪNG HỤT mặt web (vd tới mép bulb) → nối dài HP đầu tới mặt tiếp xúc trước khi cắt
+                        // (review 2026-11-04) — phần nối là dải web t_h×b; phần dưới bị dao cắt xén lại.
+                        double fill = HpEndAtHpGeometry.FillLength(best.Gap, h.FootprintThickness, best.CosTheta);
+                        if (fill > 0)
+                        {
+                            using (var ext = BuildFill(he, ho, h.FootprintThickness, b, fill))
+                                if (ext != null) sol.BooleanOperation(BooleanOperationType.BoolUnite, ext);
+                        }
                         cutter = BuildCutter(ctx, h, run, best, b, c, r);
                         if (cutter == null)
                         {
@@ -88,6 +85,7 @@ namespace MCG_3DPanel.Services.Builders
                         double d = HpEndAtHpGeometry.BulbHeight(b, tRun, c, r);
                         ctx.Report.Add($"{LOG} HP-end-at-HP h={h.Id.Handle} m={run.Id.Handle} " +
                                        $"{(best.Inside ? "INSIDE" : "OUTSIDE")} θ={Deg(best.CosTheta):0} p={p:0.#} d={d:0.##}" +
+                                       $"{(fill > 0 ? $" nối dài={fill:0.#}" : "")}" +
                                        $"{(est ? " (c/r NỘI SUY)" : "")}");
                     }
                     catch (System.Exception ex)
@@ -99,6 +97,60 @@ namespace MCG_3DPanel.Services.Builders
                 }
             }
             return done;
+        }
+
+        /// <summary>Đầu <paramref name="he"/> của <paramref name="hp"/> có chạm THÂN 1 HP khác theo quy cách này
+        /// không (Match Ok) — <see cref="HpBuilder"/> dùng để KHÔNG vát Sniped End đầu đó (tránh vát + cắt R30
+        /// chồng nhau khi dung sai Match &gt; FB_FREE_END_TOL, HP ≥ 140; review 2026-11-04).</summary>
+        public static bool TouchesRunningHp(BuildContext ctx, PanelPart hp, Point3d he, Point3d other)
+        {
+            double b = ctx.Input.HpHeight;
+            if (b <= 0) return false;
+            var hps = ctx.Cls.OfType(PartType.HP).ToList();
+            if (hps.Count < 2) return false;
+            HpProfileService.LookupCR(b, out double c, out double r, out _);
+            return FindRun(ctx, hps, hp, he, other, c, r, out _, out _, out _, report: false) != null;
+        }
+
+        /// <summary>HP chạy hợp lệ GẦN NHẤT cho đầu <paramref name="he"/> (null nếu không có). Ghi lại 1 ứng viên bị
+        /// loại vì góc để Report.</summary>
+        private static HpEndMatch FindRun(BuildContext ctx, List<PanelPart> hps, PanelPart h, Point3d he, Point3d ho,
+                                          double c, double r, out PanelPart run,
+                                          out HpEndMatch angleSkip, out PanelPart angleRun, bool report)
+        {
+            run = null; angleSkip = null; angleRun = null;
+            HpEndMatch best = null;
+            foreach (var m in hps)
+            {
+                if (ReferenceEquals(m, h)) continue;
+                var (ra, rb) = ClassifyUtil.Endpoints(m);
+                var bd = m.BellyDir;
+                var res = HpEndAtHpGeometry.Match((he.X, he.Y), (ho.X, ho.Y), (ra.X, ra.Y), (rb.X, rb.Y),
+                                                  m.FootprintThickness, (bd.X, bd.Y), c, r);
+                if (res.Ok) { if (best == null || res.Dist < best.Dist) { best = res; run = m; } }
+                else if (res.Reject == "angle" && angleSkip == null) { angleSkip = res; angleRun = m; }
+                else if (report && res.Reject == "noBelly" &&
+                         DistToRun(he, m) <= m.FootprintThickness / 2.0 + HpEndAtHpGeometry.TOL_TOUCH)
+                    ctx.Report.Add($"{LOG} SKIP noBelly h={h.Id.Handle} m={m.Id.Handle} — HP chạy chưa có hướng bụng.");
+            }
+            return best;
+        }
+
+        /// <summary>Khối nối dài: hộp (dài <paramref name="len"/> × dày web <paramref name="tEnd"/> × cao b) tâm trên
+        /// đường tâm HP đầu, từ đầu mút <paramref name="he"/> hướng về HP chạy (ngược <paramref name="ho"/>), Z ∈ [−b, 0].</summary>
+        private static Solid3d BuildFill(Point3d he, Point3d ho, double tEnd, double b, double len)
+        {
+            var dir = new Vector3d(he.X - ho.X, he.Y - ho.Y, 0);
+            if (dir.Length < 1e-9 || tEnd <= 1e-6) return null;
+            dir = dir.GetNormal();
+            Vector3d side = Vector3d.ZAxis.CrossProduct(dir);                 // hệ (dir, side, Z) thuận tay
+            var box = new Solid3d();
+            box.CreateBox(len, tEnd, b);                                       // tâm tại gốc
+            Point3d ctr = new Point3d(he.X, he.Y, 0) + dir * (len / 2.0) - Vector3d.ZAxis * (b / 2.0);
+            box.TransformBy(Matrix3d.AlignCoordinateSystem(
+                Point3d.Origin, Vector3d.XAxis, Vector3d.YAxis, Vector3d.ZAxis,
+                ctr, dir, side, Vector3d.ZAxis));
+            return box;
         }
 
         private static Solid3d BuildCutter(BuildContext ctx, PanelPart h, PanelPart run, HpEndMatch mt,

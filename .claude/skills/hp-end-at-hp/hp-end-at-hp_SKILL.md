@@ -55,7 +55,7 @@ Mỗi đầu mút `he` (`ClassifyUtil.Endpoints`) của HP đầu × mỗi HP ch
 4. Phía: `Normal` = ⟂ trục `m`, hướng về **đầu kia** của HP đầu (đầu mút vẽ lấn qua đường tâm vẫn đúng
    phía). `Inside` = `BellyDir_m · Normal > 0`.
 5. `far` — `DistToSegment > t_m/2 + p + 10` (`+p`: phía bụng người vẽ có thể dừng ở mép bulb).
-6. `nearRunEnd` — chân vuông góc cách 2 đầu `m` < 20 dọc trục.
+6. `nearRunEnd` — chân vuông góc cách 2 đầu `m` < `max(20, (c+r)/sinθ)` dọc trục (TOÀN BỘ footprint HP đầu kể cả bulb phải nằm trong HP chạy — loại góc chữ L, vd HP200 c+r−t/2 = 31 > 25).
 7. `angle` — `|axis_h · axis_m| > 0.70` (θ < ~45°) ⇒ không cắt, Report `SKIP angle`, giữ vuông.
 Nhiều `m` hợp lệ → lấy `Dist` nhỏ nhất.
 
@@ -68,6 +68,8 @@ Nhiều `m` hợp lệ → lấy `Dist` nhỏ nhất.
 - Hệ local: X → `Normal`, Y → +Z, Z → `Normal × Z` (thuận tay, ±trục `m`). Gốc = `Foot + Normal·t_m/2`
   (mặt tiếp xúc), lùi `HalfSpan` dọc trục. Extrude `2·HalfSpan` dọc trục **HP chạy** → BoolSubtract khỏi
   solid HP đầu. `HalfSpan = (c+r+t_h)/sinθ + (p+R+W)·|cotθ| + 10`.
+- **Vẽ dừng HỤT** mặt web (`Gap` > 0.5, vd dừng ở mép bulb): trước khi cắt, `BoolUnite` 1 hộp dải web `t_h × b`
+  dài `FillLength = gap/sinθ + (t_h/2)·|cotθ| + 2` từ đầu mút về phía HP chạy; phần dưới bị dao cắt xén lại.
 - Xiên: khe hở tới bulb luôn đúng 30 đo ⟂ HP chạy; trên mặt đứng HP đầu khoảng lùi dài ra (p+30)/sinθ;
   mặt đầu HP đầu bám mặt web xiên.
 
@@ -79,7 +81,7 @@ Nhiều `m` hợp lệ → lấy `Dist` nhỏ nhất.
 - `Services/HpProfileService.cs` — `IHpProfileService.HpEndAtHpCutter`.
 - `Services/Build3DService.cs` — gom `hpSolids`, gọi sau vòng dựng chính, `FillGeometry` lại.
 - Report: `[HpEndAtHp] HP-end-at-HP h=.. m=.. INSIDE|OUTSIDE θ=.. p=.. d=..` / `SKIP angle` / `SKIP noBelly`.
-- Không đổi: `HpBuilder.SnipEnd` (đầu chạm HP ⇒ `IsFreeEnd=false`, không vát), `HpEndBracketBuilder`
+- `HpBuilder.SnipEnd`: đầu `HpEndAtHpBuilder.TouchesRunningHp` ⇒ **không vát** (dung sai Match > `FB_FREE_END_TOL`=30 từ HP140 — tránh vát + cắt chồng). `HpEndBracketBuilder` không đổi
   (HP ∉ `TRANSVERSE_TYPES` ⇒ không "End 30").
 
 ## 6. Chưa test / theo dõi
