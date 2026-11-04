@@ -122,6 +122,8 @@ Tương đương hoàn toàn quy tắc cũ với HP song song trục.
 - [x] `HpCutoutSection(b,t,c,r,coR)` + `LookupCoRadius` — tiết diện LỖ KHOÉT web cho HP xuyên qua
       (polygon 6 đỉnh: khe BỤNG rộng W=(c+r)+R + foot R). Xem [[web-hp-cutout]].
 
+`d = b − dx` (chiều cao đoạn bulb) và `p = c + r − t` (bulb nhô khỏi web) dùng ở [[hp-end-at-hp]] (HP end tại HP).
+
 Liên quan: [[bracket-identification]] (bụng/lưng → OB/IB), [[parametric-profiles]] (cơ chế profile tham số),
 [[panel-parts-reference]] (HP = AM_3 màu 30), [[module-per-object]] (tách builder theo đối tượng),
 [[web-hp-cutout]] (lỗ HP xuyên Web — dùng lại tiết diện HP).

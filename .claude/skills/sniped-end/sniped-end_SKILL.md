@@ -328,6 +328,7 @@ Polygon brkt_2 (CCW): `(0,off2)→(d1,off2)→(reach, Ht−e15)→(reach, Ht)→
 - Tia phải cắt đoạn Web thật **± 20mm tuyệt đối** (`WEB_END_TOL`), không theo %.
 - Đầu HP **trùng đầu 1 HP khác** (≤ 25mm, `HP_JOINT_TOL`) = mối nối HP–HP (kỹ sư xác nhận) → **không phải End 30**:
   không bracket B; `IsFreeEnd` tính cả HP nên đầu này cũng **không vát** (giữ vuông).
+- Đầu HP chạm **THÂN** (lưng/bụng) 1 HP khác (không phải đầu-đầu) → cắt mặt hàn + R30 thoát bulb theo [[hp-end-at-hp]].
 
 ⚠️ **2026-11-04 (bug brkt_2 hàng loạt, panel 7D-16C):** 32/35 bracket B ra `overhang=0 → brkt_2` (đáy nâng 30)
 dù Flange girder `1B631` của Web ngang rộng 220 (overhang thật 107). `FlangeOverhang` cũ chỉ xét flange CHẠY
