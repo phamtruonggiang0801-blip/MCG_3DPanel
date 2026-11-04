@@ -292,6 +292,9 @@ Region→Extrude→AlignCoordinateSystem dùng chung).
 
 ## 5. Bracket đầu HP — mã "B" (`Bracket B.dwg`, đang PHÂN TÍCH 2026-09-04)
 
+> Hình tấm + selector brkt_1/2 dùng chung với **Tripping Bracket** (`TrippingBracketRules.BracketBPolygon` /
+> `SelectBracketB`, `HpEndBracketBuilder.BuildPlate`) — xem [[tripping-bracket]].
+
 Thay cho Sniped End (đã bỏ): nơi HP **kết thúc cách 1 Web ngang một khe ~30mm**, thêm 1 **gusset knee**
 nối **Web ngang + Flange** đỡ đầu HP. Nguồn: `Bracket B.dump.json` (`*Model_Space`, 4 detail) —
 2 block `hp_end_brkt_1` / `hp_end_brkt_2` + dims.
