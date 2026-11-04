@@ -7,6 +7,9 @@ namespace MCG_3DPanel.Services.Corrections
         public string Kind { get; set; }
         /// <summary>Đảo chiều đổ: HP → đảo bụng; Bracket → đảo hướng gấp lip.</summary>
         public bool FlipDir { get; set; }
+        /// <summary>Kind tool nhận diện TRƯỚC correction đầu tiên — cột DetectedKind khi Export; chọn lại đúng
+        /// Kind này ⇒ huỷ correction Kind.</summary>
+        public string OriginalKind { get; set; }
 
         public bool IsEmpty => string.IsNullOrWhiteSpace(Kind) && !FlipDir;
     }

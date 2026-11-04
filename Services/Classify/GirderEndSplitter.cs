@@ -88,7 +88,6 @@ namespace MCG_3DPanel.Services.Classify
                     {
                         if (s < 0)
                         {
-                            p.Code = "GB?";
                             result.Notes.Add($"[GirderEndSplitter] {p.Id.Handle}: đầu ({e.X:0},{e.Y:0}) chạm {kind}, L " +
                                 (t > 0 ? $"={t:0}" : "(không có Web vuông góc)") + $" ≥ Max Stiff {maxStiff:0} → GB nhưng KHÔNG có HP/FB xuyên " +
                                 "hoặc dừng ≤ 50mm để định vị toe → giữ Web chữ nhật.");

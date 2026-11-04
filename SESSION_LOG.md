@@ -11,6 +11,17 @@ Spec: `docs/superpowers/specs/2026-11-04-result-tab-corrections-design.md` · Pl
 - Cần kỹ sư kiểm: mẫu CAS (HP xuyên 643.9) vẫn cùng zone; panel HP dừng 30 → GB + Bracket B; panel FB làm mốc →
   GB; FB xuyên GB ngắt đúng bề dày; FB dừng 30 → Sniped End.
 
+**Phần 1 — Tab Result** (build OK, 30/30 unit test `ResultCatalog`, **CHƯA test trong AutoCAD**):
+- `UI/ResultCatalog.cs` (thuần, test ở `tests/MCG_3DPanel.Tests`): họ/Kind/Options/CanFlip + `ParseIntent`.
+- `PanelPart.SourceKey` = "{handle}#{i}" (gán sau WebBracketSplitter); `CorrectionStore` (bộ nhớ, theo DB+handle 2D).
+- Correction áp TRONG phân loại: đổi PartType cùng họ (`ApplyTypeCorrections`), ép Web/GE/GB (`GirderEndSplitter`),
+  đảo bụng HP + mã bracket OB/IB/BF (OB↔IB tự đảo gấp) + ⇄ (`BracketCoder`), `BendFoldSign` theo `FlipFold`.
+- Rebuild: lệnh nội bộ `MCG_Rebuild3DPanel` (1 bước Undo), mở 2D đã xoá bằng openErased, thay block giữ tên.
+- Bỏ "GB?" (chỉ còn Notes). FB có cờ `sniped`.
+- Cần kỹ sư kiểm: đổi OB→IB (mã + lip ngược, tự rebuild, giữ dòng chọn); ⇄ HP (bụng, collar/CO đổi phía,
+  bracket lân cận đổi OB/IB); Web ↔ Web+GE ↔ Web+GB (GB mờ khi không mốc); Ctrl+Z sau rebuild; build 2 panel rồi
+  rebuild 1; xoá định nghĩa 2D (PURGE) rồi sửa → báo lỗi, giữ 3D cũ; **ghi thời gian rebuild** (status "Rebuilt … in X s").
+
 ## Session 2026-09-04d — Bracket End HP không dựng ở "End 30" là ClosedPlate (test 4D-03P)
 
 Kỹ sư báo: HP `1AAB2` (ngang, Y≈1824) — 2 đầu `(1696.78, 1823.82)` / `(12886.79, 1823.82)` — không có
