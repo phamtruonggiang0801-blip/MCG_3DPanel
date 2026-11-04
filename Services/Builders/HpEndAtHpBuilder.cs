@@ -126,7 +126,7 @@ namespace MCG_3DPanel.Services.Builders
                 var (ra, rb) = ClassifyUtil.Endpoints(m);
                 var bd = m.BellyDir;
                 var res = HpEndAtHpGeometry.Match((he.X, he.Y), (ho.X, ho.Y), (ra.X, ra.Y), (rb.X, rb.Y),
-                                                  m.FootprintThickness, (bd.X, bd.Y), c, r);
+                                                  m.FootprintThickness, (bd.X, bd.Y), c, r, tEnd: h.FootprintThickness);
                 if (res.Ok) { if (best == null || res.Dist < best.Dist) { best = res; run = m; } }
                 else if (res.Reject == "angle" && angleSkip == null) { angleSkip = res; angleRun = m; }
                 else if (report && res.Reject == "noBelly" &&

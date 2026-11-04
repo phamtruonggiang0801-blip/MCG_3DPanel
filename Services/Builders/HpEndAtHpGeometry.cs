@@ -78,9 +78,11 @@ namespace MCG_3DPanel.Services.Builders
 
         /// <summary>Dung sai chạm thêm ngoài mặt web (+ p phía bụng — người vẽ có thể dừng HP đầu ở mép bulb).</summary>
         public const double TOL_TOUCH = 10.0;
-        /// <summary>Đầu HP đầu phải cách 2 đầu mút HP chạy ≥ margin này DỌC TRỤC (= FB_SPLIT_MARGIN).</summary>
-        public const double END_MARGIN = 20.0;
-        /// <summary>Đầu trùng đầu mút HP khác ≤ 25mm = mối nối đầu-đầu (= HpEndBracketBuilder.HP_JOINT_TOL).</summary>
+        /// <summary>HP chạy phải THÒ qua MẶT WEB HP đầu (±t/2, không tính bulb) ≥ giá trị này ở CẢ 2 phía
+        /// dọc trục — dưới mức này là góc chữ L / mối nối (kỹ sư 2026-11-04: thò 15mm vẫn là HP end tại HP).</summary>
+        public const double OVERHANG_MIN = 5.0;
+        /// <summary>Đầu trùng đầu mút HP khác ≤ 25mm = mối nối đầu-đầu (= HpEndBracketBuilder.HP_JOINT_TOL) —
+        /// TRỪ KHI HP chạy vẫn thò qua mặt web HP đầu ≥ <see cref="OVERHANG_MIN"/> ở đầu đó (chữ T sát đầu).</summary>
         public const double JOINT_TOL = 25.0;
         /// <summary>Ngưỡng góc: |axis_h·axis_m| ≤ 0.70 (θ ≥ ~45°, cùng ngưỡng "End 30").</summary>
         public const double MAX_COS = 0.70;
@@ -89,12 +91,15 @@ namespace MCG_3DPanel.Services.Builders
         /// Xét đầu mút <paramref name="end"/> của HP đầu (đầu kia <paramref name="otherEnd"/>) có chạm THÂN HP
         /// chạy (đường tâm <paramref name="runA"/>→<paramref name="runB"/>, dày <paramref name="tRun"/>, hướng
         /// bụng <paramref name="runBelly"/>) không. Thứ tự kiểm (dừng ở lý do đầu tiên): degenerate → joint →
-        /// noBelly → (xác định phía) → far → nearRunEnd → angle → Ok. Phía HP đầu lấy theo
-        /// <paramref name="otherEnd"/> nên đầu mút vẽ lấn qua đường tâm vẫn đúng phía.
+        /// noBelly → far → nearRunEnd → angle → Ok. Phía HP đầu lấy theo <paramref name="otherEnd"/> nên đầu mút
+        /// vẽ lấn qua đường tâm vẫn đúng phía. <paramref name="tEnd"/> = dày web HP đầu (≤ 0 ⇒ = tRun).
+        /// "Thò" (overhang) = phần HP chạy vượt quá MẶT WEB HP đầu (±tEnd/2/sinθ dọc trục HP chạy, KHÔNG tính
+        /// bulb — kỹ sư 2026-11-04) tới mỗi đầu mút HP chạy.
         /// </summary>
         public static HpEndMatch Match((double X, double Y) end, (double X, double Y) otherEnd,
                                        (double X, double Y) runA, (double X, double Y) runB,
-                                       double tRun, (double X, double Y) runBelly, double c, double r)
+                                       double tRun, (double X, double Y) runBelly, double c, double r,
+                                       double tEnd = 0)
         {
             var m = new HpEndMatch();
             double ax = runB.X - runA.X, ay = runB.Y - runA.Y, len = Math.Sqrt(ax * ax + ay * ay);
@@ -102,11 +107,6 @@ namespace MCG_3DPanel.Services.Builders
             if (len < 1e-6 || hLen < 1e-6 || tRun <= 0) return m.Fail("degenerate");
             ax /= len; ay /= len; hx /= hLen; hy /= hLen;
             m.RunAxis = (ax, ay);
-
-            if (Dist(end, runA) <= JOINT_TOL || Dist(end, runB) <= JOINT_TOL) return m.Fail("joint");
-
-            double bLen = Math.Sqrt(runBelly.X * runBelly.X + runBelly.Y * runBelly.Y);
-            if (bLen < 1e-9) return m.Fail("noBelly");
 
             double s = (end.X - runA.X) * ax + (end.Y - runA.Y) * ay;          // dọc trục từ runA
             m.Foot = (runA.X + ax * s, runA.Y + ay * s);
@@ -116,17 +116,26 @@ namespace MCG_3DPanel.Services.Builders
             (double X, double Y) perp = (-ay, ax);
             double side = (otherEnd.X - m.Foot.X) * perp.X + (otherEnd.Y - m.Foot.Y) * perp.Y;
             m.Normal = side >= 0 ? perp : (-perp.X, -perp.Y);
-            m.Inside = runBelly.X * m.Normal.X + runBelly.Y * m.Normal.Y > 0;
             m.Gap = (end.X - m.Foot.X) * m.Normal.X + (end.Y - m.Foot.Y) * m.Normal.Y - tRun / 2.0;
             m.CosTheta = Math.Abs(hx * ax + hy * ay);
 
+            // 2 mặt web HP đầu chiếu lên trục HP chạy (±t/2/sinθ) → phần HP chạy THÒ qua mỗi phía.
+            double sinT = Math.Sqrt(Math.Max(1e-12, 1.0 - m.CosTheta * m.CosTheta));
+            double halfW = (tEnd > 0 ? tEnd : tRun) / 2.0 / sinT;
+            double ovA = s - halfW, ovB = len - (s + halfW);
+
+            bool nearA = Dist(end, runA) <= JOINT_TOL, nearB = Dist(end, runB) <= JOINT_TOL;
+            if ((nearA && (ovA < OVERHANG_MIN || m.CosTheta > MAX_COS)) ||
+                (nearB && (ovB < OVERHANG_MIN || m.CosTheta > MAX_COS))) return m.Fail("joint");
+
+            double bLen = Math.Sqrt(runBelly.X * runBelly.X + runBelly.Y * runBelly.Y);
+            if (bLen < 1e-9) return m.Fail("noBelly");
+            m.Inside = runBelly.X * m.Normal.X + runBelly.Y * m.Normal.Y > 0;
+
             double p = m.Inside ? BulbProtrusion(c, r, tRun) : 0.0;
             if (m.Dist > tRun / 2.0 + p + TOL_TOUCH) return m.Fail("far");
-            // TOÀN BỘ footprint HP đầu (kể cả bulb, rộng ≤ c+r từ đường tâm, chiếu lên trục HP chạy /sinθ) phải
-            // nằm TRONG HP chạy — loại góc chữ L (HP chạy dừng ngang mặt ngoài HP đầu; review 2026-11-04).
-            double sinT = Math.Sqrt(Math.Max(1e-12, 1.0 - m.CosTheta * m.CosTheta));
-            double edge = Math.Max(END_MARGIN, (c + r) / sinT);
-            if (s < edge || s > len - edge) return m.Fail("nearRunEnd");
+            // HP chạy phải thò qua CẢ 2 mặt web HP đầu ≥ OVERHANG_MIN — loại góc chữ L (chạy dừng ngang mặt web).
+            if (ovA < OVERHANG_MIN || ovB < OVERHANG_MIN) return m.Fail("nearRunEnd");
             if (m.CosTheta > MAX_COS) return m.Fail("angle");
             m.Ok = true;
             return m;

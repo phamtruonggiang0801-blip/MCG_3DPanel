@@ -50,12 +50,19 @@ KHÔNG đưa vào 3D. Khe 1.31mm trong `1F247` (1431 vs 1429.69) = **lỗi vẽ*
 
 Mỗi đầu mút `he` (`ClassifyUtil.Endpoints`) của HP đầu × mỗi HP chạy `m`. Dừng ở lý do đầu tiên:
 1. `degenerate` — trục ~0.
-2. `joint` — `he` ≤ 25 (`JOINT_TOL` = `HP_JOINT_TOL`) tới 1 đầu mút `m` ⇒ mối nối đầu-đầu (sniped-end §5b).
+   **"Thò" (overhang)** = phần HP chạy vượt quá **MẶT WEB** HP đầu (±t_h/2/sinθ dọc trục `m`, KHÔNG tính
+   bulb) tới mỗi đầu mút `m`. `OVERHANG_MIN = 5`.
+2. `joint` — `he` ≤ 25 (`JOINT_TOL` = `HP_JOINT_TOL`) tới 1 đầu mút `m` **VÀ** (thò ở đầu đó < 5 HOẶC
+   thẳng hàng `|cos| > 0.70`) ⇒ mối nối đầu-đầu / góc L khít (sniped-end §5b).
+   ⚠️ **Kỹ sư 2026-11-04 (panel 7D-16C, khung HP nhỏ `1B63E`/`1B640`/`1B641`/`1B645`/`1B648`/`1B610`):**
+   HP chạy **thò ~15mm** qua mặt web HP đầu = **HP end tại HP, CẮT R30** — kể cả khi bulb HP đầu quay về
+   đầu HP chạy (bulb gần ngang/nhô ~1mm qua đầu HP chạy). Bản đầu loại hết các đầu này vì đầu mút chỉ cách
+   đầu HP chạy ~18mm (≤ 25 ⇒ "joint").
 3. `noBelly` — `m` thiếu `BellyDir`.
 4. Phía: `Normal` = ⟂ trục `m`, hướng về **đầu kia** của HP đầu (đầu mút vẽ lấn qua đường tâm vẫn đúng
    phía). `Inside` = `BellyDir_m · Normal > 0`.
 5. `far` — `DistToSegment > t_m/2 + p + 10` (`+p`: phía bụng người vẽ có thể dừng ở mép bulb).
-6. `nearRunEnd` — chân vuông góc cách 2 đầu `m` < `max(20, (c+r)/sinθ)` dọc trục (TOÀN BỘ footprint HP đầu kể cả bulb phải nằm trong HP chạy — loại góc chữ L, vd HP200 c+r−t/2 = 31 > 25).
+6. `nearRunEnd` — thò < 5 ở 1 trong 2 phía (HP chạy dừng ngang mặt web HP đầu = góc chữ L thật).
 7. `angle` — `|axis_h · axis_m| > 0.70` (θ < ~45°) ⇒ không cắt, Report `SKIP angle`, giữ vuông.
 Nhiều `m` hợp lệ → lấy `Dist` nhỏ nhất.
 
