@@ -61,6 +61,18 @@ namespace MCG_3DPanel.Services.Builders
             var runs = ctx.Cls.WebRuns().Where(r => r != null && r.Count > 0).ToList();
             if (runs.Count == 0) return outSolids;
 
+            // GB là đầu của CÙNG tấm web (JoinWithWeb) → nối vào run của web đó, để HP xuyên vùng GB cũng
+            // có collar theo đúng quy tắc junction như web thường (kỹ sư 2026-11-04).
+            // GB phủ cả tấm (JoinWithWeb null): vào run cùng GroupId, không có thì thành run riêng.
+            foreach (var gb in ctx.Cls.OfType(PartType.GirderEnd).Where(Build3DService.IsGbZone))
+            {
+                var run = gb.JoinWithWeb != null
+                    ? runs.FirstOrDefault(r => r.Contains(gb.JoinWithWeb))
+                    : gb.GroupId >= 0 ? runs.FirstOrDefault(r => r.Any(x => x.GroupId == gb.GroupId)) : null;
+                if (run != null) run.Add(gb);
+                else runs.Add(new List<PanelPart> { gb });
+            }
+
             var hps = ctx.Cls.OfType(PartType.HP).ToList();
             if (hps.Count == 0) return outSolids;
 

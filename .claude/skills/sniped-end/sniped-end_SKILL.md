@@ -322,6 +322,19 @@ Polygon brkt_2 (CCW): `(0,off2)→(d1,off2)→(reach, Ht−e15)→(reach, Ht)→
 
 ### 5b. Phát hiện vị trí "End 30mm" + chọn bracket vs snipe
 
+⚠️ **2026-11-04 (bug bracket B `209FE`, panel 7D-16C):** HP xiên `1B61D` nối tiếp đầu HP ngang `1B610`
+(tuyến HP gãy khúc), đầu nối nằm VƯỢT đầu Web `1B6A5` ~400mm nhưng vẫn bị nhận "End 30" vì tia chỉ cần cắt
+đoạn Web ±**5% chiều dài Web** (Web 9.6m → ~480mm). Đã sửa:
+- Tia phải cắt đoạn Web thật **± 20mm tuyệt đối** (`WEB_END_TOL`), không theo %.
+- Đầu HP **trùng đầu 1 HP khác** (≤ 25mm, `HP_JOINT_TOL`) = mối nối HP–HP (kỹ sư xác nhận) → **không phải End 30**:
+  không bracket B; `IsFreeEnd` tính cả HP nên đầu này cũng **không vát** (giữ vuông).
+
+⚠️ **2026-11-04 (bug brkt_2 hàng loạt, panel 7D-16C):** 32/35 bracket B ra `overhang=0 → brkt_2` (đáy nâng 30)
+dù Flange girder `1B631` của Web ngang rộng 220 (overhang thật 107). `FlangeOverhang` cũ chỉ xét flange CHẠY
+DỌC HP (|fAxis·hpAxis| ≥ 0.7) ⇒ loại đúng tấm Flange ⟂ HP mà bracket B đứng lên. Đã sửa: overhang = **ray-cast**
+(`BracketBuilder.RayUnionHit`) từ mặt gần Web ngang theo tuyến tâm HP vào khoang, trên Flange + FacePlate —
+cùng phép đo với OB/IB.
+
 1. Đầu mút HP (`ClassifyUtil.Endpoints`) cách 1 **member ngang** một khoảng `|nearFace − 30| ≤ 16` dọc
    trục HP (hiệu chỉnh xiên), `|cos góc trục| ≤ 0.70` → chấp nhận member XIÊN. → "End 30". (HP xuyên QUA
    web = lỗ CO — xem [[web-hp-cutout]]. Case này HP DỪNG trước member.)

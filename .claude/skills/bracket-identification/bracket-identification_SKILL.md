@@ -47,6 +47,12 @@ Bracket OB = tấm knee đứng hình thang, 3 cạnh:
 
 → overhang tính theo hình học thật (anchor=đầu chạm Web, memberDir=hướng ra HP/mép). Xem [[parametric-profiles]].
 
+⚠️ **2026-11-04 — đo tại 2 MẶT bản thép, lấy MIN** (`BracketBuilder.FaceMinHit`): flange có mép **XIÊN** so với
+trục member thì mép tại 1 mặt bản thép gần hơn tại đường tâm ~`lệch / tan(góc)` (flange 24°: ×2.2) ⇒ đo chỉ đường
+tâm làm toe không lùi đủ 15, thậm chí lòi ra ngoài mép (bracket B `20E72` trên flange xiên `1B637`). Áp dụng:
+OB/IB/GE (`OverhangProj`: tia tại −t/2, 0, +t/2) và bracket B (`FlangeOverhang`: tại 2 mặt thật — sym `[−t/2,+t/2]`,
+không sym `[+t/2,+3t/2]` theo bụng HP). Flange ⟂ trục member: kết quả không đổi.
+
 **Điều kiện GẤP LIP (free-edge — ĐÃ SỬA):**
 `free-edge = √((S−F)² + (Huse−105)²)` — khoảng cách **toe-tới-toe**: toe-HP ở `(S,−105)`
 (đáy vùng flange đầu span, Z=−105 **cố định** theo template — KHÔNG phải Z=0), toe-flange ở `(F,−Huse)`.

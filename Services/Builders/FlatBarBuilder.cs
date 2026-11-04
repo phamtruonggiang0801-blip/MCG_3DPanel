@@ -64,6 +64,7 @@ namespace MCG_3DPanel.Services.Builders
                 double run = rise * RUN_FACTOR;
                 bool clamped = false;
                 int freeCount = lengthOk ? ((free1 ? 1 : 0) + (free2 ? 1 : 0)) : 0;
+                part.Sniped = freeCount > 0;   // cờ "sniped" trên tab Result (vát khi đầu tự do && lengthOk)
                 if (run * freeCount > L)
                 {
                     // Đoạn quá ngắn so với vát (2 đầu vát chồng nhau, hoặc 1 đầu vát dài hơn cả đoạn) —

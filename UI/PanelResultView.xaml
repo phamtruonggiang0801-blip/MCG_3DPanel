@@ -3,14 +3,17 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Background="#FFF2F2F2"
              FontSize="11">
-    <!-- Tab "Result" của PaletteSet. Bố cục theo tab Fitting Table: thanh công cụ → bảng → trạng thái. -->
+    <!-- Tab "Result" của PaletteSet. Bố cục theo tab Fitting Table: thanh công cụ → bảng → trạng thái.
+         Cột theo họ kết cấu (spec 2026-11-04): Family · Kind (dropdown) · Size · Dir (⇄) · Flags. -->
     <UserControl.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="PanelStyles.xaml"/>
             </ResourceDictionary.MergedDictionaries>
 
-            <!-- Dòng user đã sửa "Correct type" → chữ XANH SemiBold, như dòng user chủ động sửa bên Fitting. -->
+            <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+            <!-- Dòng có correction → chữ XANH SemiBold, như dòng user chủ động sửa bên Fitting. -->
             <Style x:Key="ResultRowStyle" TargetType="DataGridRow">
                 <Style.Triggers>
                     <DataTrigger Binding="{Binding IsCorrected}" Value="True">
@@ -18,6 +21,13 @@
                         <Setter Property="FontWeight" Value="SemiBold"/>
                     </DataTrigger>
                 </Style.Triggers>
+            </Style>
+
+            <!-- Mục dropdown Kind: mờ + tooltip khi không áp được (vd không có mốc toe GB). -->
+            <Style x:Key="KindItemStyle" TargetType="ComboBoxItem">
+                <Setter Property="IsEnabled" Value="{Binding Enabled}"/>
+                <Setter Property="ToolTip" Value="{Binding Tooltip}"/>
+                <Setter Property="ToolTipService.ShowOnDisabled" Value="True"/>
             </Style>
         </ResourceDictionary>
     </UserControl.Resources>
@@ -33,13 +43,13 @@
         <!-- ===== Row 0: Thanh công cụ ===== -->
         <WrapPanel Grid.Row="0" Margin="1,0,1,2">
             <Button x:Name="BtnExport" Content="Export CSV" Style="{StaticResource ToolbarPrimaryButtonStyle}"
-                    Click="BtnExport_Click" ToolTip="Export the table (incl. corrected types) to a CSV file"/>
+                    Click="BtnExport_Click" ToolTip="Export the table (incl. corrections) to a CSV file"/>
             <Button x:Name="BtnCopy" Content="Copy" Style="{StaticResource ToolbarButtonStyle}"
                     Click="BtnCopy_Click" ToolTip="Copy the table to the clipboard (paste straight into Excel)"/>
         </WrapPanel>
 
         <TextBlock Grid.Row="1" Style="{StaticResource HelperTextStyle}" Margin="2,2,2,6"
-                   Text="Solids of the last kept 3D build. Select a row (or press ⌖) to highlight &amp; zoom the solid. Type in Correct type to fix a wrong type, then Export."/>
+                   Text="Select a row to highlight. Change Kind or press ⇄ to correct; the panel rebuilds automatically."/>
 
         <!-- ===== Row 2: Bảng kết quả ===== -->
         <DataGrid x:Name="GridResult" Grid.Row="2" Style="{StaticResource PanelDataGridStyle}"
@@ -50,7 +60,7 @@
                 <ContextMenu>
                     <MenuItem Header="Zoom to Object" Click="MnuZoomTo_Click"/>
                     <MenuItem Header="Clear Correction" Click="MnuClearCorrection_Click"
-                              ToolTip="Empty Correct type for the selected row"/>
+                              ToolTip="Remove the Kind and direction correction of the selected row, then rebuild"/>
                     <Separator/>
                     <MenuItem Header="Copy Table" Click="BtnCopy_Click"
                               ToolTip="Copy the table to the clipboard (paste straight into Excel)"/>
@@ -62,19 +72,58 @@
                 <!-- Chỉ hiện khi Build nhiều panel 1 lúc (PanelResultView.Load bật/tắt). -->
                 <DataGridTextColumn x:Name="ColPanel" Header="Panel" Binding="{Binding Panel}" Width="Auto" IsReadOnly="True" Visibility="Collapsed"/>
                 <DataGridTextColumn Header="Handle" Binding="{Binding Handle}" Width="Auto" IsReadOnly="True"/>
-                <!-- Chủng loại GB/GE/OB/IB/BF/B — đậm, màu primary để quét mắt nhanh giữa danh sách dài. -->
-                <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="Auto" MinWidth="40" IsReadOnly="True">
+                <DataGridTextColumn Header="Family" Binding="{Binding Family}" Width="Auto" IsReadOnly="True">
                     <DataGridTextColumn.ElementStyle>
                         <Style TargetType="TextBlock">
-                            <Setter Property="TextAlignment" Value="Center"/>
                             <Setter Property="FontWeight" Value="SemiBold"/>
                             <Setter Property="Foreground" Value="#FF005E9E"/>
                         </Style>
                     </DataGridTextColumn.ElementStyle>
                 </DataGridTextColumn>
-                <DataGridTextColumn Header="Type" Binding="{Binding DetectedType}" Width="*" IsReadOnly="True"/>
-                <!-- Cột DUY NHẤT cho sửa tay. -->
-                <DataGridTextColumn Header="Correct type" Binding="{Binding CorrectedType, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
+
+                <!-- Kind: dropdown (cùng họ) khi sửa được, chữ thường khi chỉ đọc. -->
+                <DataGridTemplateColumn Header="Kind" Width="*" MinWidth="90">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <TextBlock x:Name="KindText" Text="{Binding Kind}" VerticalAlignment="Center" Margin="2,0"/>
+                                <ComboBox x:Name="KindCombo" ItemsSource="{Binding Options}"
+                                          SelectedValuePath="Text" DisplayMemberPath="Text"
+                                          SelectedValue="{Binding Kind, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          ItemContainerStyle="{StaticResource KindItemStyle}"
+                                          Padding="2,0" Height="18" FontSize="11"/>
+                            </Grid>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding KindEditable}" Value="True">
+                                    <Setter TargetName="KindText" Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding KindEditable}" Value="False">
+                                    <Setter TargetName="KindCombo" Property="Visibility" Value="Collapsed"/>
+                                    <Setter TargetName="KindText" Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <DataGridTextColumn Header="Size" Binding="{Binding Size}" Width="Auto" IsReadOnly="True"/>
+
+                <!-- Dir: ⇄ đảo bụng HP / hướng gấp Bracket — chỉ hiện ở dòng CanFlip. -->
+                <DataGridTemplateColumn Header="Dir" Width="Auto">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal"
+                                        Visibility="{Binding CanFlip, Converter={StaticResource BoolToVis}}">
+                                <Button Content="⇄" Width="20" Height="18" Margin="0" Padding="0" FontSize="11"
+                                        ToolTip="Flip direction (HP belly / bracket fold) and rebuild" Click="BtnFlip_Click"/>
+                                <TextBlock Text="{Binding DirText}" Margin="3,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <DataGridTextColumn Header="Flags" Binding="{Binding Flags}" Width="Auto" IsReadOnly="True"/>
+
                 <DataGridTemplateColumn Header="" Width="26">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>

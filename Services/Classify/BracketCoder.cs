@@ -4,6 +4,8 @@ using System.Linq;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using MCG_3DPanel.Models;
+using MCG_3DPanel.Services.Corrections;
+using MCG_3DPanel.UI;
 
 namespace MCG_3DPanel.Services.Classify
 {
@@ -24,9 +26,16 @@ namespace MCG_3DPanel.Services.Classify
             { 6, "" }, { 10, "1" }, { 15, "2" }, { 20, "3" },
         };
 
+        /// <param name="corrections">Correction tab Result theo SourceKey: HP FlipDir → đảo bụng (TRƯỚC khi tính
+        /// OB/IB, nên bracket lân cận theo hướng mới); Bracket Kind OB/IB/BF → thay mã gốc (giữ hậu tố dày),
+        /// OB↔IB tự đảo hướng gấp; Bracket FlipDir → đảo hướng gấp thêm 1 lần (kỹ sư chốt 2026-11-04).</param>
         public static void Apply(ClassificationResult result, List<PanelPart> hpParts,
-            List<PanelPart> fbParts, PanelPosition position, Point3d center)
+            List<PanelPart> fbParts, PanelPosition position, Point3d center,
+            IReadOnlyDictionary<string, PartCorrection> corrections = null)
         {
+            PartCorrection Corr(PanelPart p) =>
+                corrections != null && p.SourceKey != null && corrections.TryGetValue(p.SourceKey, out var c) ? c : null;
+
             // HP đủ dài mới xét; lấy biên NGOÀI CÙNG cho quy tắc "HP ngoài cùng đổ ra ngoài".
             var hpLong = hpParts.Where(h => h.MemberLength > ClassifyUtil.HP_MIN_LEN).ToList();
             var vert = hpLong.Where(h => !h.IsHorizontal).ToList();
@@ -42,7 +51,14 @@ namespace MCG_3DPanel.Services.Classify
             // HP_MIN_LEN chỉ dùng cho biên ngoài cùng (vMinX…) và ghép bracket.
             Point3d[] topVerts = result.TopPlate?.Vertices;
             foreach (var h in hpParts)
+            {
                 h.BellyDir = BellyDir(h, position, center, vMinX, vMaxX, hMinY, hMaxY, topVerts);
+                if (Corr(h)?.FlipDir == true)
+                {
+                    h.BellyDir = -h.BellyDir;
+                    result.Notes.Add($"[Correction] {h.SourceKey}: đảo bụng HP.");
+                }
+            }
 
             var webs = result.OfType(PartType.Web)
                              .Where(w => w.MemberLength > ClassifyUtil.WEB_MIN_LEN).ToList();
@@ -62,6 +78,27 @@ namespace MCG_3DPanel.Services.Classify
                     baseCode = ObOrIb(brk, hp);
                 else
                     baseCode = "OB";
+
+                var corr = Corr(brk);
+                string want = null;
+                switch (ResultCatalog.ParseIntent(corr?.Kind))
+                {
+                    case CorrectionIntent.BracketOB: want = "OB"; break;
+                    case CorrectionIntent.BracketIB: want = "IB"; break;
+                    case CorrectionIntent.BracketBF: want = "BF"; break;
+                }
+                if (want != null && want != baseCode)
+                {
+                    bool swapObIb = (baseCode == "OB" && want == "IB") || (baseCode == "IB" && want == "OB");
+                    if (swapObIb) brk.FlipFold = !brk.FlipFold;
+                    result.Notes.Add($"[Correction] {brk.SourceKey}: bracket {baseCode} → {want}" + (swapObIb ? " (đảo hướng gấp)." : "."));
+                    baseCode = want;
+                }
+                if (corr?.FlipDir == true)
+                {
+                    brk.FlipFold = !brk.FlipFold;
+                    result.Notes.Add($"[Correction] {brk.SourceKey}: đảo hướng gấp bracket.");
+                }
 
                 brk.Code = baseCode + SuffixFor(brk.FootprintThickness);
             }

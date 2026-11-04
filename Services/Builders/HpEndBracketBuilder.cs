@@ -36,6 +36,12 @@ namespace MCG_3DPanel.Services.Builders
         private const double MIN_REACH = 180.0;
         private const double B90 = 0.41421356;    // |bulge| cung 90°
         private const double KNEE_ON_HP_TOL = 25.0;   // 1 đầu bracket OB/IB coi là "ngồi trên HP" nếu cách HP ≤ ngưỡng
+        // Tia từ đầu HP phải cắt ĐOẠN Web thật (± ngưỡng TUYỆT ĐỐI) — trước đây ±5% chiều dài Web: Web 9.6m
+        // → nới ~480mm, nhận nhầm đầu HP nằm VƯỢT đầu Web ~400mm là "End 30" (bracket B 209FE, 2026-11-04).
+        private const double WEB_END_TOL = 20.0;
+        // Đầu HP trùng đầu 1 HP KHÁC (mối nối/gãy khúc tuyến HP, vd 1B610 → 1B61D xiên) ⇒ không phải đầu
+        // kết thúc: không bracket B. < 2·GAP + dày Web (~66) để không nhầm 2 đầu HP 2 bên 1 Web.
+        private const double HP_JOINT_TOL = 25.0;
 
         /// <summary>Chiều cao "reach" (= vươn dọc trục) của bracket B theo chiều cao HP.</summary>
         public static double Reach(double b) => Math.Max(MIN_REACH, 30.0 + 1.5 * b);
@@ -71,6 +77,7 @@ namespace MCG_3DPanel.Services.Builders
             if (outward.Length < 1e-6) return false;
             outward = new Vector3d(outward.X, outward.Y, 0).GetNormal();
 
+            if (JoinsOtherHp(ctx, hp, he)) return false;   // mối nối HP–HP: không End 30
             if (!FindTransverseWeb(webs, he, outward, axis, out _, out _, out double nearFace)) return false;
             if (Math.Abs(nearFace - GAP) > GAP_TOL) return false;
             isEnd30 = true;
@@ -78,6 +85,22 @@ namespace MCG_3DPanel.Services.Builders
             double reach = Reach(ctx.Input.HpHeight);
             return NearestKneeBracketDist(ctx, hp, he) >= reach;   // đủ chỗ → bracket B; chật → snipe
         }
+
+        /// <summary>Đầu <paramref name="he"/> trùng (≤ <see cref="HP_JOINT_TOL"/>) 1 đầu của HP KHÁC — mối nối /
+        /// gãy khúc tuyến HP, không phải đầu kết thúc.</summary>
+        private static bool JoinsOtherHp(BuildContext ctx, PanelPart hp, Point3d he)
+        {
+            foreach (var o in ctx.Cls.OfType(PartType.HP))
+            {
+                if (ReferenceEquals(o, hp)) continue;
+                var (o1, o2) = ClassifyUtil.Endpoints(o);
+                if (Flat(o1).DistanceTo(Flat(he)) <= HP_JOINT_TOL || Flat(o2).DistanceTo(Flat(he)) <= HP_JOINT_TOL)
+                    return true;
+            }
+            return false;
+        }
+
+        private static Point3d Flat(Point3d p) => new Point3d(p.X, p.Y, 0);
 
         /// <summary>Khoảng cách từ đầu-bám-HP của bracket OB/IB gần nhất (ngồi trên <paramref name="hp"/>)
         /// tới đầu HP <paramref name="he"/>. MaxValue nếu không có bracket nào → luôn đủ chỗ.</summary>
@@ -106,7 +129,7 @@ namespace MCG_3DPanel.Services.Builders
             if (hps.Count == 0) return outSolids;
             var webs = TransverseMembers(ctx);   // Web + GirderEnd + ClosedPlate (xem TRANSVERSE_TYPES)
             if (webs.Count == 0) return outSolids;
-            var flanges = ctx.Cls.OfType(PartType.Flange).ToList();
+            var supports = ctx.Cls.OfType(PartType.Flange).Concat(ctx.Cls.OfType(PartType.FacePlate)).ToList();   // tấm đỡ chân bracket B
 
             double b = ctx.Input.HpHeight;
             double H = ctx.Input.WebHeight;
@@ -141,6 +164,11 @@ namespace MCG_3DPanel.Services.Builders
                     if (outward.Length < 1e-6) continue;
                     outward = new Vector3d(outward.X, outward.Y, 0).GetNormal();
 
+                    if (JoinsOtherHp(ctx, hp, he))
+                    {
+                        ctx.Report.Add($"{LOG} HP {hp.Id.Handle} end@({he.X:0},{he.Y:0}): nối tiếp đầu HP khác → không bracket B.");
+                        continue;
+                    }
                     if (!FindTransverseWeb(webs, he, outward, axis, out PanelPart web, out Point3d ixWeb, out double nearFace))
                         continue;
                     if (Math.Abs(nearFace - GAP) > GAP_TOL) continue;   // không phải "End 30"
@@ -156,12 +184,15 @@ namespace MCG_3DPanel.Services.Builders
                     // Gốc dọc trục = điểm mặt gần Web ngang, trên tuyến tâm HP.
                     Point3d P = new Point3d(he.X + outward.X * nearFace, he.Y + outward.Y * nearFace, 0.0);
 
-                    double overhang = FlangeOverhang(flanges, P, outward, axis, out bool haveFlange);
+                    // sym quyết định MẶT bản thép (Build: sym → [−t/2, +t/2] quanh tuyến HP; không → [+t/2, +3t/2]
+                    // về phía bụng) — phải biết TRƯỚC để đo overhang đúng tại 2 mặt đó.
+                    bool sym = HasOppositeTermination(ctx, hp, ixWeb, outward, axis, web);
+                    double[] faces = sym ? new[] { -t / 2.0, t / 2.0 } : new[] { t / 2.0, 1.5 * t };
+
+                    double overhang = FlangeOverhang(supports, P, outward, belly, faces, out bool haveFlange);
                     bool big = haveFlange && overhang >= 50.0;
                     double d1 = big ? Math.Min(Math.Max(15.0, overhang - 15.0), reach - E15) : 15.0;
                     double baseY = big ? 0.0 : OFF2;
-
-                    bool sym = HasOppositeTermination(ctx, hp, ixWeb, outward, axis, web);
 
                     string tag = $"HP {hp.Id.Handle} end@({he.X:0},{he.Y:0}) × {web.Type} {web.Id.Handle} · " +
                                  $"{(big ? "brkt_1" : "brkt_2")} overhang={overhang:0} d1={d1:0} sym={sym}";
@@ -208,7 +239,9 @@ namespace MCG_3DPanel.Services.Builders
                 if (Math.Abs(wAxis.DotProduct(axis)) > PERP_COS) continue;   // ~song song → loại
 
                 if (!LineSegX(he, outward, w1, w2, out Point3d p, out double tW)) continue;
-                if (tW < -0.05 || tW > 1.05) continue;
+                double segLen = (w2 - w1).Length;
+                double tolT = WEB_END_TOL / Math.Max(segLen, 1.0);              // nới TUYỆT ĐỐI, không theo %
+                if (tW < -tolT || tW > 1.0 + tolT) continue;
                 double dCenter = (p - he).DotProduct(outward);
                 if (dCenter <= 1.0) continue;                                 // Web ở sau đầu HP
                 if (dCenter >= bestCenter) continue;
@@ -220,34 +253,22 @@ namespace MCG_3DPanel.Services.Builders
             return web != null;
         }
 
-        /// <summary>Flange (CHẠY DỌC theo trục HP, |flangeAxis·hpAxis| ≥ 0.7) vươn xa nhất vào khoang
-        /// (−<paramref name="outward"/>) tính từ mặt Web ngang <paramref name="p"/>. 0 nếu không có
-        /// flange ∥ HP gần đó → brkt_2 (đáy không hàn flange). Bỏ flange chạy DỌC Web ngang (⟂ HP) —
-        /// bbox nó trải hết bề rộng panel, chiếu ra số vô lý (bug overhang=1500).</summary>
-        private static double FlangeOverhang(List<PanelPart> flanges, Point3d p, Vector3d outward, Vector3d hpAxis, out bool have)
+        /// <summary>
+        /// Overhang của tấm đỡ (Flange + FacePlate) dưới bracket B: ray-cast từ <paramref name="p"/> (mặt gần Web
+        /// ngang, trên tuyến tâm HP) theo hướng VÀO khoang (−<paramref name="outward"/>), lấy mép ngoài của dải tấm
+        /// đỡ liền nhau chứa gốc tia — CÙNG phép đo với OB/IB (<see cref="BracketBuilder.RayUnionHit"/>).
+        /// ⚠️ Bản cũ chỉ xét flange CHẠY DỌC HP (|fAxis·hpAxis| ≥ 0.7) nên LOẠI chính Flange girder của Web ngang
+        /// (⟂ HP) mà bracket B đứng lên ⇒ overhang=0 → brkt_2 nâng 30 oan (Flange 1B631 rộng 220, 32/35 bracket B
+        /// panel 7D-16C, 2026-11-04). Ray-cast đo đúng dọc tuyến HP nên không tái lỗi bbox "overhang=1500".
+        /// Đo tại 2 MẶT thật của bản thép (lệch <paramref name="faces"/> theo <paramref name="belly"/>), lấy MIN —
+        /// flange XIÊN: mép tại mặt bản thép gần hơn tại tuyến tâm HP (bracket B 20E72 toe sát mép, 2026-11-04).
+        /// </summary>
+        private static double FlangeOverhang(List<PanelPart> supports, Point3d p, Vector3d outward, Vector3d belly,
+                                             double[] faces, out bool have)
         {
-            have = false;
-            Vector3d into = -outward;
-            double max = 0.0;
-            foreach (var f in flanges)
-            {
-                var (a, bpt) = ClassifyUtil.Endpoints(f);
-                Vector3d fAxis = bpt - a;
-                if (fAxis.Length < 1e-6) continue;
-                fAxis = new Vector3d(fAxis.X, fAxis.Y, 0).GetNormal();
-                if (Math.Abs(fAxis.DotProduct(hpAxis)) < 0.7) continue;      // flange KHÔNG chạy dọc HP → bỏ
-                if (ClassifyUtil.DistToPart(p, f) > 120.0) continue;          // không nằm gần tuyến HP tại Web
-
-                have = true;
-                var vs = f.Vertices;
-                if (vs != null)
-                    foreach (var v in vs)
-                    {
-                        double s = (v - p).DotProduct(into);
-                        if (s > max) max = s;
-                    }
-            }
-            return have ? max : 0.0;
+            double hit = BracketBuilder.FaceMinHit(p, -outward, belly, faces, supports);
+            have = hit > 1e-6;
+            return have ? hit : 0.0;
         }
 
         /// <summary>Có 1 HP/FlatBar/Web/Bracket/GE khác KẾT THÚC ở MẶT ĐỐI DIỆN của <paramref name="web"/>

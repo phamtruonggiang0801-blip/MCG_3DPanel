@@ -60,6 +60,19 @@ namespace MCG_3DPanel.Services
         // polyline gốc theo Id (1 Id ứng với nhiều đoạn).
         public bool FromVertices { get; set; }
 
+        // ─── Tab Result / correction (2026-11-04) ─────────────────────────
+        // Khoá ỔN ĐỊNH của part 2D giữa các lần phân loại cùng 1 bản 2D: "{handle}#{i}" (i = thứ tự trong nhóm
+        // cùng Id). Gán sau WebBracketSplitter; đoạn con GirderEndSplitter copy từ part nguồn.
+        public string SourceKey { get; set; }
+        // Bracket: đảo hướng gấp lip (BracketBuilder.BendFoldSign nhân −1).
+        public bool FlipFold { get; set; }
+        // Web: loại member ở các đầu chạm HP/FB ("HP"/"FB") + có thể ép GE (có Web ⊥) / GB (có mốc toe).
+        public List<string> EndTouchKinds { get; set; } = new List<string>();
+        public bool GeAvailable { get; set; }
+        public bool GbAvailable { get; set; }
+        // FB: FlatBarBuilder đã vát Sniped End (hiện cờ "sniped" trên tab Result).
+        public bool Sniped { get; set; }
+
         // GE tách từ 1 tấm Web liền: trỏ tới phần Web còn lại để Build3DService HỢP NHẤT lại thành 1 solid
         // (GE chỉ là cách gọi tên đầu girder, thực tế là 1 tấm liền mạch — kỹ sư xác nhận 2026-11-03).
         public PanelPart JoinWithWeb { get; set; }

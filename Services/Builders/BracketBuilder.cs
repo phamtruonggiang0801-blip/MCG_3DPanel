@@ -296,7 +296,8 @@ namespace MCG_3DPanel.Services.Builders
                     dozY = (cy - part.Centroid.Y) >= 0 ? 1.0 : -1.0;
                     break;
             }
-            return normal.DotProduct(new Vector3d(1.0, dozY, 0)) >= 0 ? 1 : -1;
+            int sign = normal.DotProduct(new Vector3d(1.0, dozY, 0)) >= 0 ? 1 : -1;
+            return part.FlipFold ? -sign : sign;   // correction tab Result (OB↔IB hoặc ⇄) — xem BracketCoder
         }
 
         // ─── Đặt vào mặt đứng ─────────────────────────────────────────────
@@ -359,14 +360,6 @@ namespace MCG_3DPanel.Services.Builders
         }
 
         /// <summary>
-        /// Overhang = TẤM ĐỠ (Flange HOẶC Face Plate) vươn xa nhất theo memberDir tính từ anchor.
-        /// Chọn tấm đỡ = Flange/FacePlate gần bracket nhất (bracket nằm TRÊN tấm nào).
-        ///  - Flange (chữ nhật): chiếu 4 góc bbox (xử lý cả flange lệch).
-        ///  - Face Plate (loe, nv&gt;5): RAY-CAST dọc memberDir từ anchor → mép FacePlate xa nhất TẠI dải bracket
-        ///    (bbox không đại diện vì loe không đều). Xem skill panel-parts-reference (Face Plate).
-        /// Fallback (không tấm đỡ): đối xứng.
-        /// </summary>
-        /// <summary>
         /// Tấm đỡ (Flange girder) mà <paramref name="part"/> đứng lên — gần điểm neo nhất (2D, tới bbox).
         /// Ưu tiên Flange; không có thì FacePlate; không có cả hai → null. Dùng để flange GE/GB mượn Layer/Color.
         /// </summary>
@@ -390,9 +383,18 @@ namespace MCG_3DPanel.Services.Builders
             return best;
         }
 
+        /// <summary>
+        /// Overhang = TẤM ĐỠ (Flange HOẶC Face Plate) vươn xa nhất theo memberDir tính từ anchor — ray-cast
+        /// qua hợp các tấm đỡ liền nhau (<see cref="RayUnionHit"/>). Fallback: bbox tấm gần nhất / đối xứng.
+        /// Đo tại CẢ 2 MẶT bản thép (±thk/2 quanh đường tâm — bracket/GE dựng căn giữa) + đường tâm, lấy MIN
+        /// (<see cref="FaceMinHit"/>): flange có mép XIÊN so với trục member thì mép tại 1 mặt gần hơn tại đường
+        /// tâm ~ (thk/2)/tan(góc) — đo chỉ đường tâm làm toe không lùi đủ 15 (bracket B 20E72, 2026-11-04).
+        /// </summary>
         public static double OverhangProj(PanelPart part, ClassificationResult cls)
         {
             AnchorDir(part, cls, out Point3d anchor, out Vector3d dir, out _);
+            var lateral = new Vector3d(-dir.Y, dir.X, 0);                       // ⟂ trục member, trong mặt bằng
+            double half = part.FootprintThickness / 2.0;
 
             // Tấm đỡ gần nhất: xét cả Flange lẫn FacePlate.
             // Gom TẤT CẢ Flange+FacePlate (không chỉ 1 tấm gần nhất): nhiều tấm kề nhau (chung mép,
@@ -407,7 +409,7 @@ namespace MCG_3DPanel.Services.Builders
             if (supports.Count == 0)
                 return (NearestFlangeWidth(part, cls) - part.FootprintThickness) / 2.0;
 
-            double union = RayUnionHit(anchor, dir, supports);
+            double union = FaceMinHit(anchor, dir, lateral, new[] { -half, 0.0, half }, supports);
             if (union > 0) return union;
 
             // Fallback bbox tấm gần nhất — chỉ khi không tấm nào ray cắt được (hiếm, sai số biên).
@@ -437,7 +439,24 @@ namespace MCG_3DPanel.Services.Builders
         /// LỒI, có thể vào/ra nhiều lần), nối các khoảng CHỒNG/KỀ NHAU (dung sai nhỏ), trả về mép NGOÀI
         /// của khoảng liên tục chứa gốc tia (t≈0). 0 nếu gốc không nằm trong tấm đỡ nào.
         /// </summary>
-        private static double RayUnionHit(Point3d o, Vector3d dir, List<PanelPart> supports)
+        /// <summary>
+        /// <see cref="RayUnionHit"/> tại nhiều tia SONG SONG (gốc <paramref name="o"/> + <paramref name="lateral"/>·offset,
+        /// thường = 2 mặt bản thép) → overhang NHỎ NHẤT ⇒ mọi điểm trên toe đều lùi đủ so với mép tấm đỡ.
+        /// Tia trả 0 (gốc rơi ngoài tấm đỡ — sát đầu tấm) bị bỏ qua; mọi tia 0 → 0.
+        /// </summary>
+        internal static double FaceMinHit(Point3d o, Vector3d dir, Vector3d lateral, double[] offsets, List<PanelPart> supports)
+        {
+            if (lateral.Length > 1e-9) lateral = lateral.GetNormal();
+            double best = double.MaxValue;
+            foreach (double off in offsets)
+            {
+                double h = RayUnionHit(o + lateral * off, dir, supports);
+                if (h > 1e-6 && h < best) best = h;
+            }
+            return best < double.MaxValue ? best : 0.0;
+        }
+
+        internal static double RayUnionHit(Point3d o, Vector3d dir, List<PanelPart> supports)
         {
             const double GAP_TOL = 5.0;   // 2 tấm cách nhau ≤ GAP_TOL coi như liền (sai số vẽ/đo).
 

@@ -60,8 +60,11 @@ namespace MCG_3DPanel.Commands
             {
                 { "panel", r.Panel ?? "" },
                 { "handle", r.Handle },
+                { "family", r.Family.ToString() },
                 { "kind", r.Kind ?? "" },
-                { "type", r.DetectedType ?? "" },
+                { "size", r.Size ?? "" },
+                { "flags", r.Flags ?? "" },
+                { "sourceKey", r.SourceKey ?? "" },
                 { "source2DHandle", r.Solid?.Part != null ? r.Solid.Part.Id.Handle.ToString() : "" },
                 { "mergedCodes", (r.Solid?.MergedCodes ?? new List<string>()).Select(c => (object)c).ToList() },
                 { "minX", Round(r.Bounds.MinPoint.X) }, { "minY", Round(r.Bounds.MinPoint.Y) }, { "minZ", Round(r.Bounds.MinPoint.Z) },
