@@ -15,6 +15,13 @@ Dump: 2 mẫu GB giống nhau, `DETAIL TITLE` = `GIRDER BRACKET (GB)`, 4 NOTE r�
   Không có Web vuông góc trong Max Stiff ⇒ cũng là GB.
 - ⚠️ **"775" KHÔNG phải hằng số** — chỉ là Max Stiff của panel mẫu 7D-17C (DIM "L<775mm"). 7D-16C có `hpSpan=918`.
   Code hiện dùng `ClassifyUtil.GE_MAX_L = 775` (cố định) ⇒ **SAI cho panel khác**, cần đổi sang `HpMaxSpan` (fallback 775 khi =0).
+- **Mốc toe** (kỹ sư 2026-11-04): HP **hoặc FB**, **xuyên** qua web HOẶC **dừng** cách mặt web ≤ `GB_ANCHOR_GAP` = 50mm
+  (`GirderEndSplitter.NearestToeAnchor`). Toe luôn = đường tâm mốc + 100 (+60). Không có mốc ⇒ giữ Web chữ nhật, ghi Notes.
+- Chi tiết đi kèm trong vùng GB (kỹ sư 2026-11-04):
+  · HP xuyên GB ⇒ lỗ CO + Collar Plate như HP xuyên web (đã cài 2026-11-04: GB được khoét TRƯỚC khi hợp nhất + nối vào web run của collar).
+  · HP dừng cách 30 ⇒ Bracket B dưới HP như HP end (`HpEndBracketBuilder` coi GirderEnd là vách) — CHƯA kiểm trực quan.
+  · FB xuyên GB ⇒ ngắt theo bề dày GB (`FlatBarSplitter`, sẵn có) — CHƯA kiểm trực quan.
+  · FB dừng cách 30 ⇒ Sniped End (`FlatBarBuilder`, sẵn có) — CHƯA kiểm trực quan.
 - HP xuyên qua web trong đoạn GB ⇒ **lỗ CO** (`WebHpCutoutBuilder`) + **Collar Plate** theo [[web-hp-cutout]] §7. Note gốc "web < 300" KHÔNG
   phải gate hiện tại (xem §7a: rule chính luôn áp dụng 2 lỗ quanh junction; web<300 → collar MỌI lỗ chỉ khi có H riêng từng web — chưa làm).
 
@@ -39,7 +46,7 @@ Mẫu: FB cách web 863.9 (≥ Max Stiff 775), HP cắt giữa cách web 643.9.
 - **Flange GB LUÔN có** (không theo ngưỡng D).
 - **GB dày 10/20**: Dend/R/flange theo GE (không đổi theo thk).
 - **Toe đáy**: tâm GB toe cách đường tâm HP xuyên gần nhất **100** (dim "100" CAS.dump.json, đo 1124.7−1024.7=100.0) — suy từ dump, kỹ sư chưa xác nhận lời.
-- **Cài đặt** (build OK, CHƯA test trực quan): `GirderEndSplitter` (Max Stiff = `HpMaxSpan`, GE nếu L<MaxStiff, GB nếu ≥ hoặc không có Web ⊥; vùng GB = s_HP+100+60 từ đầu end), `GeProfileService.GbOutline` (Dend=member−30, R30 đầu ledge=0, toe SẮC, Lb=60), `GirderEndBuilder.BuildGb` + `AddFlangeSnip`. GB không có HP xuyên → giữ Web, Code `GB?`.
+- **Cài đặt** (build OK, CHƯA test trực quan): `GirderEndSplitter` (Max Stiff = `HpMaxSpan`, GE nếu L<MaxStiff, GB nếu ≥ hoặc không có Web ⊥; vùng GB = s_HP+100+60 từ đầu end), `GeProfileService.GbOutline` (Dend=member−30, R30 đầu ledge=0, toe SẮC, Lb=60), `GirderEndBuilder.BuildGb` + `AddFlangeSnip`. Không có mốc toe (HP/FB xuyên hoặc dừng ≤ 50) → giữ Web, ghi Notes.
 - **2026-11-04**: GE/GB có flange ⇒ chân KHÔNG thụt 15 / KHÔNG bo — với GB: **giữ vị trí chân theo HP**, chỉ bỏ R50 thành góc sắc;
   flange 80×10 dừng đúng góc chân, cắt vuông; snip đầu cao 60°–20–60° giữ nguyên. Xem [[girder-end]] §3–4.
 - **2026-11-04**: flange 80×10 là **SOLID ĐỘC LẬP** (không union vào GB), Layer/Color theo Flange girder gốc — như GE ([[girder-end]] §4).

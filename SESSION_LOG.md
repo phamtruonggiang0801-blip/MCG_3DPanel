@@ -1,5 +1,16 @@
 # SESSION LOG — MCG_3DPanel
 
+## Session 2026-11-04 — GB mốc toe + Result tab corrections (nhánh `feat/gb-anchor-result-tab`)
+
+Spec: `docs/superpowers/specs/2026-11-04-result-tab-corrections-design.md` · Plan: `docs/superpowers/plans/2026-11-04-gb-anchor-and-result-tab.md`.
+
+**Phần 0 — GB** (build OK, **CHƯA test trực quan**):
+- `GirderEndSplitter.NearestToeAnchor` thay `NearestCrossingHp`: mốc toe = HP/FB xuyên HOẶC dừng ≤ `GB_ANCHOR_GAP`=50mm;
+  Notes ghi `(mốc toe <handle> HP xuyên | HP dừng 30mm | FB …)`.
+- Vùng GB được khoét lỗ CO (Build3DService `cutSolids`, trước khi hợp nhất) + nối vào web run của Collar.
+- Cần kỹ sư kiểm: mẫu CAS (HP xuyên 643.9) vẫn cùng zone; panel HP dừng 30 → GB + Bracket B; panel FB làm mốc →
+  GB; FB xuyên GB ngắt đúng bề dày; FB dừng 30 → Sniped End.
+
 ## Session 2026-09-04d — Bracket End HP không dựng ở "End 30" là ClosedPlate (test 4D-03P)
 
 Kỹ sư báo: HP `1AAB2` (ngang, Y≈1824) — 2 đầu `(1696.78, 1823.82)` / `(12886.79, 1823.82)` — không có
