@@ -131,6 +131,27 @@ namespace MCG_3DPanel.UI
             Rebuild(row);
         }
 
+        // ─── Sniped End từng đầu ──────────────────────────────────────────
+
+        private void BtnSnip_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is FrameworkElement fe) || !(fe.DataContext is ResultRow row) || !row.CanSnip) return;
+            bool lo = (fe.Tag as string) == "lo";
+            var c = CorrectionStore.Get(row.PanelKey, row.SourceKey) ?? new PartCorrection { OriginalKind = row.DetectedKind };
+            // Ép NGƯỢC trạng thái thực tế; giữ override tới khi Clear Correction (plan Part 2, Task 8).
+            if (lo) c.SnipLo = !row.SnipLoOn; else c.SnipHi = !row.SnipHiOn;
+            CorrectionStore.Set(row.PanelKey, row.SourceKey, c);
+            Rebuild(row);
+        }
+
+        private void BtnSnip_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+        {
+            if (sender is FrameworkElement fe && fe.DataContext is ResultRow row && row.CanSnip)
+                EntityHighlighter.ShowPoint((fe.Tag as string) == "lo" ? row.EndLo : row.EndHi);
+        }
+
+        private void BtnSnip_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e) => EntityHighlighter.ClearPoint();
+
         private void MnuClearCorrection_Click(object sender, RoutedEventArgs e)
         {
             if (!(GridResult.SelectedItem is ResultRow row)) return;

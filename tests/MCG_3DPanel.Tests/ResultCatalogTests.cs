@@ -165,6 +165,10 @@ namespace MCG_3DPanel.Tests
             Assert.Equal("Topplate", d.Kind);
         }
 
+        [Fact] public void EndLabels_Horizontal_LR() => Assert.Equal(("L", "R"), ResultCatalog.EndLabels(10, 1));
+        [Fact] public void EndLabels_Vertical_BT() => Assert.Equal(("B", "T"), ResultCatalog.EndLabels(1, -10));
+        [Fact] public void EndLabels_Diagonal45_LR() => Assert.Equal(("L", "R"), ResultCatalog.EndLabels(5, 5));
+
         [Theory]
         [InlineData("Web", CorrectionIntent.ForceWeb)]
         [InlineData("Web + GE-HP", CorrectionIntent.ForceGE)]

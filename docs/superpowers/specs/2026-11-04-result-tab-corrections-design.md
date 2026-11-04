@@ -135,3 +135,61 @@ Cập nhật skill `girder-bracket` (dòng "GB không có HP xuyên → GB?" và
 
 - Tách chỉ số đoạn sao cho ổn định giữa các lần phân loại (cùng bản 2D → cùng thứ tự đoạn).
 - Size/Info lấy từ đâu cho từng loại (FootprintThickness, bảng HP/FB, mã bracket).
+
+---
+
+# Phần 2 (bổ sung 2026-11-04, sau vòng 1)
+
+Kỹ sư chốt sau khi xem bản đầu. Thay thế điểm "correction chỉ nhớ trong phiên" ở mục 2 và mục 7.1.
+
+## 11. Sniped End theo từng đầu (HP + FB)
+
+- Cột **Sniped End** (thay cột Flags) hiện 2 nút bật/tắt theo hướng thanh:
+  - thanh ngang: `◀ L` / `R ▶`;
+  - thanh đứng: `▼ B` / `T ▲`;
+  - thanh chéo: xếp theo X (L = đầu X nhỏ).
+- Nút sáng = đầu đó đang vát. Rê chuột lên nút ⇒ highlight đầu đó trên bản vẽ. Bấm ⇒ đổi vát/không vát rồi tự
+  rebuild (như mục 9).
+- Áp cho **cả HP lẫn FB**, theo cả hai chiều: **bỏ** vát ở đầu tool vát, **thêm** vát ở đầu tool không vát.
+- Bỏ vát ở đầu HP "End 30" ⇒ **để vuông, không thêm gì** (không ép Bracket B) — kỹ sư 2026-11-04.
+- Builder: `HpBuilder.SnipEnd` / `FlatBarBuilder` (`free1`/`free2`) tôn trọng override từng đầu. Override thắng
+  quyết định tự động. Ghi lại đầu nào thực sự vát lên part để bảng hiển thị.
+
+## 12. Delete / Restore solid
+
+- Chuột phải → **Delete**: chỉ xoá đúng solid đó, **không nhận diện lại** gì, không có hiệu ứng dây chuyền.
+  Ghi thành correction, nên rebuild sau không làm nó quay lại, và Export STEP không có nó.
+- Dòng bị xoá vẫn hiện trên bảng (gạch ngang, mờ). Chuột phải → **Restore** ⇒ rebuild có lại solid.
+- Áp được cho cả solid sinh thêm (Collar Plate, Bracket B, Flange GE/GB). Khoá = SourceKey của part sinh ra nó +
+  loại chi tiết + thứ tự (vd `393B9#0/CollarPlate#1`).
+- Cài đặt: Build3DService bỏ solid có khoá nằm trong danh sách xoá, **sau** mọi bước boolean/hợp nhất.
+
+## 13. Lưu correction trong DWG (không cần file ngoài)
+
+- Mỗi lần sửa ⇒ correction của panel được ghi ngay vào **định nghĩa block 2D** (XRecord trong ExtensionDictionary
+  của BlockTableRecord 2D). Lưu bản vẽ bình thường (Ctrl+S) là lưu luôn correction. Copy block sang bản vẽ khác thì
+  correction đi theo.
+- Build 3D block đó (lần sau, sau khi mở lại) ⇒ tự đọc correction và áp ngay từ lần build đầu.
+- Correction gắn với **định nghĩa block**: mọi lần chèn của cùng block 2D dùng chung correction (kỹ sư chấp nhận;
+  nếu sau này cần riêng từng lần chèn thì báo lại).
+- Kho trong bộ nhớ (`CorrectionStore`) đổi khoá thành định nghĩa block 2D; DWG là nguồn gốc, bộ nhớ chỉ là cache.
+- Không lưu được XRecord (bản vẽ chỉ đọc, block bị khoá…) ⇒ báo trên thanh trạng thái, correction vẫn áp trong phiên.
+
+## 14. Rebuild sau khi đóng và mở lại bản vẽ
+
+- Block 3D ghi kèm (XData hoặc XRecord) **handle định nghĩa block 2D + ma trận chèn + PanelInput + PanelPosition**.
+- Mở lại bản vẽ, block reference 2D đã xoá khi Keep không còn ⇒ rebuild **chèn tạm** block 2D bằng ma trận đã lưu,
+  phân loại, build, rồi xoá block tạm. Người dùng không thấy bước này. Vẫn là một bước Undo.
+- Tab Result cần nút/cách nạp lại block 3D đã có (sau khi mở lại, bảng trống): **chọn block 3D trên bản vẽ ⇒ nạp
+  lên bảng** (lựa chọn của Claude: nút "Load 3D…" trên thanh công cụ tab Result).
+- Định nghĩa block 2D đã bị PURGE ⇒ báo "Source 2D block no longer exists — cannot rebuild." như cũ.
+
+## 15. Export STEP
+
+- Nút **Export STEP…** trên thanh công cụ tab Result. Xuất **mỗi panel ra một file riêng**, tên theo panel
+  (`P101.stp`, `P102.stp`…), vào thư mục người dùng chọn một lần (mặc định thư mục của bản vẽ).
+- Nội dung = các solid hiện có trong block 3D (đã sửa, đã xoá solid).
+- Dùng lệnh `STEPOUT` của AutoCAD Mechanical (`Acadm/atf_step_out.arx` có trên máy, kiểm 2026-11-04). Cách chạy cụ
+  thể (FILEDIA, chọn đối tượng, xuất từ block hay explode tạm) để người làm thử trong AutoCAD.
+- Không có `STEPOUT` (AutoCAD thường, không phải profile Mechanical) ⇒ nút mờ, tooltip "Requires AutoCAD Mechanical
+  (STEPOUT)".

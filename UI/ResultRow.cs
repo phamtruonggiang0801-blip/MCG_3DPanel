@@ -52,6 +52,16 @@ namespace MCG_3DPanel.UI
         }
         public string DirText => CanFlip ? (Flipped ? "flipped" : "") : "";
 
+        // ─── Sniped End từng đầu (HP/FB) — nút bật/tắt trên grid ───
+        public bool CanSnip { get; set; }
+        public string SnipLoLabel { get; set; }
+        public string SnipHiLabel { get; set; }
+        /// <summary>Đầu lo/hi THỰC SỰ đã vát ở lần build này.</summary>
+        public bool SnipLoOn { get; set; }
+        public bool SnipHiOn { get; set; }
+        internal Autodesk.AutoCAD.Geometry.Point3d EndLo { get; set; }
+        internal Autodesk.AutoCAD.Geometry.Point3d EndHi { get; set; }
+
         /// <summary>Có correction cho part này ⇒ grid tô chữ xanh (ResultRowStyle).</summary>
         public bool IsCorrected { get; set; }
 
@@ -98,7 +108,7 @@ namespace MCG_3DPanel.UI
                 Options = d.Options,
                 CanFlip = d.CanFlip && p != null,
                 Size = SizeOf(build.Input, p, d.Family),
-                Flags = p != null && p.Sniped ? "sniped" : "",
+                Flags = SnipFlags(p),
                 IsCorrected = corr != null,
                 Path = new[] { build.BlockRefId, s.SolidId },
                 Bounds = s.Bounds,
@@ -109,6 +119,20 @@ namespace MCG_3DPanel.UI
             };
             row.Kind = d.Kind;
             row.Flipped = corr?.FlipDir == true;
+            if (p != null && (p.Type == PartType.HP || p.Type == PartType.FlatBar))
+            {
+                var (a, b) = Services.Classify.ClassifyUtil.Endpoints(p);
+                var (lo, hi) = ResultCatalog.EndLabels(b.X - a.X, b.Y - a.Y);
+                bool horiz = lo == "L";
+                bool aIsLo = horiz ? a.X <= b.X : a.Y <= b.Y;
+                row.CanSnip = true;
+                row.SnipLoLabel = horiz ? "◀ L" : "▼ B";
+                row.SnipHiLabel = horiz ? "R ▶" : "T ▲";
+                row.SnipLoOn = p.SnipLo;
+                row.SnipHiOn = p.SnipHi;
+                row.EndLo = aIsLo ? a : b;
+                row.EndHi = aIsLo ? b : a;
+            }
             row.EndLoad();
             return row;
         }
@@ -137,5 +161,14 @@ namespace MCG_3DPanel.UI
         }
 
         private static string Fmt(double v) => Math.Round(v).ToString("0");
+
+        /// <summary>"sniped L" / "sniped L+R" / "sniped B+T" … cho Export/Copy; rỗng nếu không vát đầu nào.</summary>
+        private static string SnipFlags(PanelPart p)
+        {
+            if (p == null || !(p.SnipLo || p.SnipHi)) return "";
+            var (a, b) = Services.Classify.ClassifyUtil.Endpoints(p);
+            var (lo, hi) = ResultCatalog.EndLabels(b.X - a.X, b.Y - a.Y);
+            return "sniped " + (p.SnipLo && p.SnipHi ? lo + "+" + hi : p.SnipLo ? lo : hi);
+        }
     }
 }

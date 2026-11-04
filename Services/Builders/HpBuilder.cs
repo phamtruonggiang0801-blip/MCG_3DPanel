@@ -86,8 +86,8 @@ namespace MCG_3DPanel.Services.Builders
                 // Sniped End: (a) đầu "End 30" mà bracket OB/IB quá gần (không có chỗ cho bracket B);
                 //             (b) đầu KHÔNG phải "End 30" nhưng thực sự TỰ DO (không chạm member nào).
                 var (e1, e2) = ClassifyUtil.Endpoints(part);           // e1 ở s=0 (đầu 'o'), e2 ở s=len
-                bool snip1 = SnipEnd(ctx, part, e1, e2);
-                bool snip2 = SnipEnd(ctx, part, e2, e1);
+                bool snip1 = SnipOverride.Decide(ctx.Cls, part, e1, SnipEnd(ctx, part, e1, e2));   // override tab Result thắng
+                bool snip2 = SnipOverride.Decide(ctx.Cls, part, e2, SnipEnd(ctx, part, e2, e1));
                 int snipCount = (snip1 ? 1 : 0) + (snip2 ? 1 : 0);
                 double run = Math.Max(0.0, b - SNIP_FLAT) * SNIP_RUN_FACTOR;
                 if (snipCount > 0 && run * snipCount > len) run = len / 2.0;   // HP quá ngắn → kẹp an toàn

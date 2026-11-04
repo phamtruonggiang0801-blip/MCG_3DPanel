@@ -26,7 +26,7 @@ namespace MCG_3DPanel.Services
         public ClassificationResult Classify(ObjectId blockRefId, PanelPosition position,
             IReadOnlyDictionary<string, PartCorrection> corrections = null)
         {
-            var result = new ClassificationResult();
+            var result = new ClassificationResult { Corrections = corrections };
             Database db = blockRefId.Database;
 
             using (Transaction tr = db.TransactionManager.StartTransaction())

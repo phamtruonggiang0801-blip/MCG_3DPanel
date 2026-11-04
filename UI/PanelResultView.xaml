@@ -122,7 +122,25 @@
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
 
-                <DataGridTextColumn Header="Flags" Binding="{Binding Flags}" Width="Auto" IsReadOnly="True"/>
+                <!-- Sniped End từng đầu (HP/FB): nút sáng = đầu đó đang vát. Rê chuột ⇒ đánh dấu đầu trên bản vẽ;
+                     bấm ⇒ đổi vát/không vát rồi tự rebuild. -->
+                <DataGridTemplateColumn Header="Sniped End" Width="Auto">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal"
+                                        Visibility="{Binding CanSnip, Converter={StaticResource BoolToVis}}">
+                                <ToggleButton Content="{Binding SnipLoLabel}" IsChecked="{Binding SnipLoOn, Mode=OneWay}"
+                                              Tag="lo" Height="18" MinWidth="34" Padding="2,0" FontSize="10" Margin="0,0,2,0"
+                                              ToolTip="Sniped End at this end (on = sniped). Click to toggle and rebuild."
+                                              Click="BtnSnip_Click" MouseEnter="BtnSnip_MouseEnter" MouseLeave="BtnSnip_MouseLeave"/>
+                                <ToggleButton Content="{Binding SnipHiLabel}" IsChecked="{Binding SnipHiOn, Mode=OneWay}"
+                                              Tag="hi" Height="18" MinWidth="34" Padding="2,0" FontSize="10"
+                                              ToolTip="Sniped End at this end (on = sniped). Click to toggle and rebuild."
+                                              Click="BtnSnip_Click" MouseEnter="BtnSnip_MouseEnter" MouseLeave="BtnSnip_MouseLeave"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
 
                 <DataGridTemplateColumn Header="" Width="26">
                     <DataGridTemplateColumn.CellTemplate>

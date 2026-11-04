@@ -70,8 +70,9 @@ namespace MCG_3DPanel.Services
         public List<string> EndTouchKinds { get; set; } = new List<string>();
         public bool GeAvailable { get; set; }
         public bool GbAvailable { get; set; }
-        // FB: FlatBarBuilder đã vát Sniped End (hiện cờ "sniped" trên tab Result).
-        public bool Sniped { get; set; }
+        // HP/FB: đầu nào THỰC SỰ đã vát Sniped End (builder ghi, tab Result hiện) — lo/hi theo ResultCatalog.EndLabels.
+        public bool SnipLo { get; set; }
+        public bool SnipHi { get; set; }
 
         // GE tách từ 1 tấm Web liền: trỏ tới phần Web còn lại để Build3DService HỢP NHẤT lại thành 1 solid
         // (GE chỉ là cách gọi tên đầu girder, thực tế là 1 tấm liền mạch — kỹ sư xác nhận 2026-11-03).
@@ -93,6 +94,10 @@ namespace MCG_3DPanel.Services
         /// <summary>Ghi chú chẩn đoán khi phân loại (part bị bỏ vì phi lý, nhận nhập nhằng…) — surface
         /// lên cả classify report lẫn build report để kỹ sư thấy.</summary>
         public List<string> Notes { get; } = new List<string>();
+
+        /// <summary>Correction tab Result đã áp khi phân loại (theo SourceKey) — builder đọc phần không thuộc
+        /// phân loại (Sniped End từng đầu, solid bị xoá).</summary>
+        public IReadOnlyDictionary<string, Corrections.PartCorrection> Corrections { get; set; }
 
         public IEnumerable<PanelPart> OfType(PartType t) => Parts.Where(p => p.Type == t);
 

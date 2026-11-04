@@ -63,8 +63,10 @@ namespace MCG_3DPanel.Services.Builders
                 double rise = Math.Max(0.0, hfb - FLAT_TOP);
                 double run = rise * RUN_FACTOR;
                 bool clamped = false;
-                int freeCount = lengthOk ? ((free1 ? 1 : 0) + (free2 ? 1 : 0)) : 0;
-                part.Sniped = freeCount > 0;   // cờ "sniped" trên tab Result (vát khi đầu tự do && lengthOk)
+                // Override Sniped End từng đầu (tab Result) thắng quyết định tự động (tự do && đủ dài).
+                bool snip1 = SnipOverride.Decide(ctx.Cls, part, e1, free1 && lengthOk);
+                bool snip2 = SnipOverride.Decide(ctx.Cls, part, e2, free2 && lengthOk);
+                int freeCount = (snip1 ? 1 : 0) + (snip2 ? 1 : 0);
                 if (run * freeCount > L)
                 {
                     // Đoạn quá ngắn so với vát (2 đầu vát chồng nhau, hoặc 1 đầu vát dài hơn cả đoạn) —
@@ -81,7 +83,7 @@ namespace MCG_3DPanel.Services.Builders
                 // rise=hfb−15) — đó là đoạn "sát cạnh hàn" còn nguyên; RỒI mới vát chéo (rise, run) xuống
                 // gặp cạnh dưới (tự do, Z=−hfb). Nhầm 2 giá trị này (từng vẽ tụt xuống −(hfb−15) trước
                 // khi vát) khiến hình vát sai hẳn — xem skill sniped-end mục 1 (đối chiếu pentagon `1F851`).
-                if (free2 && lengthOk)
+                if (snip2)
                 {
                     outline.Add(new VertexBulge(L, -FLAT_TOP, 0));
                     outline.Add(new VertexBulge(L - run, -hfb, 0));
@@ -90,7 +92,7 @@ namespace MCG_3DPanel.Services.Builders
                 {
                     outline.Add(new VertexBulge(L, -hfb, 0));
                 }
-                if (free1 && lengthOk)
+                if (snip1)
                 {
                     outline.Add(new VertexBulge(run, -hfb, 0));
                     outline.Add(new VertexBulge(0, -FLAT_TOP, 0));

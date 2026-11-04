@@ -112,6 +112,11 @@ namespace MCG_3DPanel.UI
             }
         }
 
+        /// <summary>Nhãn 2 đầu thanh theo hướng trục (dx, dy): ngang/chéo ≤45° ⇒ ("L","R"), đứng ⇒ ("B","T").
+        /// "lo" = đầu X nhỏ (ngang) / Y nhỏ (đứng) — correction Sniped End lưu theo lo/hi, không theo thứ tự đỉnh.</summary>
+        public static (string lo, string hi) EndLabels(double dx, double dy) =>
+            Math.Abs(dx) >= Math.Abs(dy) ? ("L", "R") : ("B", "T");
+
         /// <summary>Kind người dùng chọn → việc ClassificationService phải làm.</summary>
         public static CorrectionIntent ParseIntent(string kind)
         {

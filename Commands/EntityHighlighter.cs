@@ -41,6 +41,40 @@ namespace MCG_3DPanel.Commands
             }
         }
 
+        // ─── Đánh dấu 1 ĐIỂM (đầu thanh HP/FB khi rê chuột lên nút Sniped End) — vòng tròn transient ───
+        private static Circle _marker;
+        private const double MARKER_R = 80.0;   // mm — đủ thấy ở zoom panel, không che chi tiết
+
+        public static void ShowPoint(Point3d pt)
+        {
+            Document doc = AcadApp.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            try
+            {
+                ClearPoint();
+                _marker = new Circle(pt, Vector3d.ZAxis, MARKER_R) { ColorIndex = 1 };
+                Autodesk.AutoCAD.GraphicsInterface.TransientManager.CurrentTransientManager.AddTransient(
+                    _marker, Autodesk.AutoCAD.GraphicsInterface.TransientDrawingMode.DirectTopmost, 128,
+                    new IntegerCollection());
+                doc.Editor.UpdateScreen();
+            }
+            catch (System.Exception ex) { Debug.WriteLine($"{LOG} ShowPoint lỗi: {ex.Message}"); }
+        }
+
+        public static void ClearPoint()
+        {
+            if (_marker == null) return;
+            try
+            {
+                Autodesk.AutoCAD.GraphicsInterface.TransientManager.CurrentTransientManager.EraseTransient(
+                    _marker, new IntegerCollection());
+                _marker.Dispose();
+                AcadApp.DocumentManager.MdiActiveDocument?.Editor.UpdateScreen();
+            }
+            catch (System.Exception ex) { Debug.WriteLine($"{LOG} ClearPoint lỗi: {ex.Message}"); }
+            _marker = null;
+        }
+
         /// <summary>Tắt highlight hiện tại (nếu có).</summary>
         public static void Clear()
         {

@@ -164,6 +164,14 @@ namespace MCG_3DPanel.Services.Builders
                     if (outward.Length < 1e-6) continue;
                     outward = new Vector3d(outward.X, outward.Y, 0).GetNormal();
 
+                    // Tab Result ÉP VÁT đầu này ⇒ không bracket B ("End 30: bracket HOẶC vát"). Ép VUÔNG không đổi
+                    // gì ở đây: đầu End 30 bị vát tự động vốn đã không có bracket B ⇒ để vuông (kỹ sư 2026-11-04).
+                    if (SnipOverride.Forced(ctx.Cls, hp, he) == true)
+                    {
+                        ctx.Report.Add($"{LOG} HP {hp.Id.Handle} end@({he.X:0},{he.Y:0}): Sniped End ép tay (tab Result) → không bracket B.");
+                        continue;
+                    }
+
                     if (JoinsOtherHp(ctx, hp, he))
                     {
                         ctx.Report.Add($"{LOG} HP {hp.Id.Handle} end@({he.X:0},{he.Y:0}): nối tiếp đầu HP khác → không bracket B.");

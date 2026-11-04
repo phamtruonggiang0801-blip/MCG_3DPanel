@@ -1,5 +1,7 @@
 namespace MCG_3DPanel.Services.Corrections
 {
+    // ⚠️ File THUẦN C# — KHÔNG using Autodesk.* (link sang tests để test tuần tự hoá JSON).
+
     /// <summary>Correction người dùng đặt cho 1 part 2D trên tab Result.</summary>
     public sealed class PartCorrection
     {
@@ -10,7 +12,11 @@ namespace MCG_3DPanel.Services.Corrections
         /// <summary>Kind tool nhận diện TRƯỚC correction đầu tiên — cột DetectedKind khi Export; chọn lại đúng
         /// Kind này ⇒ huỷ correction Kind.</summary>
         public string OriginalKind { get; set; }
+        /// <summary>Sniped End ép theo từng đầu (HP/FB): lo = đầu L (ngang) / B (đứng), hi = R / T.
+        /// null = để tool tự quyết; true = vát; false = để vuông (End 30 cũng không ép bracket B).</summary>
+        public bool? SnipLo { get; set; }
+        public bool? SnipHi { get; set; }
 
-        public bool IsEmpty => string.IsNullOrWhiteSpace(Kind) && !FlipDir;
+        public bool IsEmpty => string.IsNullOrWhiteSpace(Kind) && !FlipDir && SnipLo == null && SnipHi == null;
     }
 }
