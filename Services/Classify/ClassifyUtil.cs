@@ -32,6 +32,7 @@ namespace MCG_3DPanel.Services.Classify
         public const double GE_MIN_THK = 10.0;          // …và dày ≥ ngưỡng, KHÔNG collinear web dài
         public const double GB_TOE_PAST_HP = 100.0;     // GB: toe đáy cách đường tâm HP xuyên gần nhất 100mm (dim "100" trong CAS.dump.json)
         public const double GB_TOE_PAD = 60.0;          // GB: đoạn đáy thẳng thêm sau toe (chỗ R50 tiếp tuyến) — kẹp trong vùng GB
+        public const double GB_ANCHOR_GAP = 50.0;       // GB: HP/FB DỪNG cách mặt web ≤ 50 vẫn làm mốc toe (như HP xuyên) — kỹ sư 2026-11-04
         public const double GE_MAX_L = 775.0;           // FALLBACK Max Stiff khi GirderEndDetector.HpMaxSpan=0 (775 = Max Stiff panel mẫu 7D-17C, DIM "L<775mm"); GE: L < Max Stiff, ≥ ⇒ GB
         public const double HP_MIN_LEN = 500.0;         // HP đủ dài mới xét bụng/lưng
         public const double EDGE_TOL = 50.0;            // dung sai xác định HP "ngoài cùng" (so member dài khác)
