@@ -120,12 +120,16 @@ namespace MCG_3DPanel.Services
 
                 // Lỗ khoét trên Web cho HP xuyên qua (CO B) — trừ boolean thẳng vào solid Web đã dựng,
                 // KHÔNG phải part riêng (giống CutOut ↔ Top Plate). Xem WebHpCutoutBuilder / skill web-hp-cutout.
-                if (webSolids.Count > 0)
+                // Vùng GB (đầu của cùng tấm web) cũng được khoét — TRƯỚC khi hợp nhất vào Web (kỹ sư 2026-11-04).
+                var cutSolids = webSolids
+                    .Concat(builtMap.Where(k => IsGbJoined(k.Key)).Select(k => (part: k.Key, sol: k.Value.sol, info: k.Value.info)))
+                    .ToList();
+                if (cutSolids.Count > 0)
                 {
                     var webCutOk = WebHpCutoutBuilder.ApplyWebCutouts(
-                        ctx, webSolids.Select(w => (w.part, w.sol)).ToList());
+                        ctx, cutSolids.Select(w => (w.part, w.sol)).ToList());
                     if (webCutOk.Count > 0)
-                        foreach (var w in webSolids) FillGeometry(w.info, w.sol); // cập nhật bbox/thể tích SAU khi khoét
+                        foreach (var w in cutSolids) FillGeometry(w.info, w.sol); // cập nhật bbox/thể tích SAU khi khoét
                 }
 
                 // GE + Web còn lại vốn là 1 tấm liền (GE chỉ là cách gọi tên đầu girder) — GirderEndSplitter
@@ -225,6 +229,10 @@ namespace MCG_3DPanel.Services
         /// <summary>Đọc bbox WCS + thể tích thật của solid vào <paramref name="info"/> — im lặng bỏ qua
         /// nếu AutoCAD không tính được (không làm hỏng build). Dùng để chẩn đoán "built=true nhưng thực
         /// ra rỗng/lệch chỗ" (VD Top Plate bị CutOut khoét lố mất gần hết).</summary>
+        /// <summary>Part GB tách từ 1 tấm Web (sẽ hợp nhất lại) — được khoét lỗ CO + dựng collar như Web.</summary>
+        internal static bool IsGbJoined(PanelPart p) =>
+            p.Type == PartType.GirderEnd && p.JoinWithWeb != null && (p.Code ?? "").StartsWith("GB");
+
         private static void FillGeometry(BuiltPartInfo info, Solid3d sol)
         {
             try
