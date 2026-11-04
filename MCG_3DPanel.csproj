@@ -62,6 +62,12 @@
     <Message Text="[Deploy] MCG_3DPanel (net8, full folder) → C:\CustomTools\Autocad\MCG_3DPanel" Importance="High" />
   </Target>
 
+  <!-- Test project (tests/) là project riêng — không biên dịch vào plugin. -->
+  <ItemGroup>
+    <Compile Remove="tests/**" />
+    <None Remove="tests/**" />
+  </ItemGroup>
+
   <!-- Tham chiếu AutoCAD 2026 .NET API. Private=false => KHÔNG copy vào bin -->
   <ItemGroup>
     <Reference Include="AcCoreMgd">
