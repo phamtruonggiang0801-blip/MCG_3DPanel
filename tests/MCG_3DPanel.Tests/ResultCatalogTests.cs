@@ -81,6 +81,24 @@ namespace MCG_3DPanel.Tests
         }
 
         [Fact]
+        public void Describe_StandaloneGe_NoGbAnchor_DisablesGb()
+        {
+            var d = ResultCatalog.Describe("GirderEnd", "GE-HP", null, None, None, true, false);
+            var gb = d.Options.Single(o => o.Text == "GB-HP");
+            Assert.False(gb.Enabled);
+            Assert.Equal(ResultCatalog.NoGbAnchorTip, gb.Tooltip);
+        }
+
+        [Fact]
+        public void Describe_StandaloneGb_NoGeZone_DisablesGe()
+        {
+            var d = ResultCatalog.Describe("GirderEnd", "GB-FB", null, None, None, false, true);
+            var ge = d.Options.Single(o => o.Text == "GE-FB");
+            Assert.False(ge.Enabled);
+            Assert.Equal(ResultCatalog.NoGeZoneTip, ge.Tooltip);
+        }
+
+        [Fact]
         public void Describe_StandaloneGe_IsWebFamily()
         {
             Assert.Equal(ResultFamily.Web, ResultCatalog.Describe("GirderEnd", "GE-HP", null, None, None, true, true).Family);

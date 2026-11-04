@@ -122,7 +122,7 @@ namespace MCG_3DPanel.Services
                 // KHÔNG phải part riêng (giống CutOut ↔ Top Plate). Xem WebHpCutoutBuilder / skill web-hp-cutout.
                 // Vùng GB (đầu của cùng tấm web) cũng được khoét — TRƯỚC khi hợp nhất vào Web (kỹ sư 2026-11-04).
                 var cutSolids = webSolids
-                    .Concat(builtMap.Where(k => IsGbJoined(k.Key)).Select(k => (part: k.Key, sol: k.Value.sol, info: k.Value.info)))
+                    .Concat(builtMap.Where(k => IsGbZone(k.Key)).Select(k => (part: k.Key, sol: k.Value.sol, info: k.Value.info)))
                     .ToList();
                 if (cutSolids.Count > 0)
                 {
@@ -226,13 +226,14 @@ namespace MCG_3DPanel.Services
             return result;
         }
 
+        /// <summary>Part GB (GirderEndSplitter) — tách từ 1 tấm Web HOẶC phủ cả tấm (JoinWithWeb null) — được
+        /// khoét lỗ CO + dựng collar như Web (spec 2026-11-04 §8.2). Chỉ GirderEndSplitter sinh mã "GB".</summary>
+        internal static bool IsGbZone(PanelPart p) =>
+            p.Type == PartType.GirderEnd && (p.Code ?? "").StartsWith("GB");
+
         /// <summary>Đọc bbox WCS + thể tích thật của solid vào <paramref name="info"/> — im lặng bỏ qua
         /// nếu AutoCAD không tính được (không làm hỏng build). Dùng để chẩn đoán "built=true nhưng thực
         /// ra rỗng/lệch chỗ" (VD Top Plate bị CutOut khoét lố mất gần hết).</summary>
-        /// <summary>Part GB tách từ 1 tấm Web (sẽ hợp nhất lại) — được khoét lỗ CO + dựng collar như Web.</summary>
-        internal static bool IsGbJoined(PanelPart p) =>
-            p.Type == PartType.GirderEnd && p.JoinWithWeb != null && (p.Code ?? "").StartsWith("GB");
-
         private static void FillGeometry(BuiltPartInfo info, Solid3d sol)
         {
             try

@@ -47,6 +47,15 @@ namespace MCG_3DPanel.UI
                 };
                 // Rebuild 1 panel từ tab Result (sửa Kind / ⇄) → thay đúng panel đó trong danh sách, nạp lại bảng.
                 MCG_3DPanel.Commands.PanelCommands.Rebuilt += _result.OnRebuilt;
+                // Đóng bản vẽ → bỏ dòng / correction / yêu cầu rebuild của nó TRƯỚC khi Database bị giải phóng
+                // (ObjectId cũ trỏ vào bộ nhớ đã free — chạm vào có thể làm AutoCAD crash).
+                Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.DocumentToBeDestroyed += (s, e) =>
+                {
+                    var db = e.Document?.Database;
+                    MCG_3DPanel.Commands.PanelCommands.ForgetDatabase(db);
+                    MCG_3DPanel.Services.Corrections.CorrectionStore.ClearDatabase(db);
+                    _result.OnDocumentClosing(db);
+                };
                 _ps.AddVisual("Input", _input);
                 _ps.AddVisual("Result", _result);
                 _ps.Activate(TabInput);

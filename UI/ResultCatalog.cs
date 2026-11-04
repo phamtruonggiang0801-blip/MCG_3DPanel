@@ -85,8 +85,15 @@ namespace MCG_3DPanel.UI
                     string k = Suffix(code, "HP");
                     bool isGb = code.StartsWith("GB");
                     var d = new RowDescriptor { Family = isGb ? ResultFamily.Bracket : ResultFamily.Web, Kind = isGb ? "GB-" + k : "GE-" + k };
-                    d.Options.Add(new KindOption { Text = "GE-" + k });
-                    d.Options.Add(new KindOption { Text = "GB-" + k });
+                    // Lựa chọn KHÁC loại hiện tại mờ khi không áp được (cùng quy tắc với WebRow) — spec §9.
+                    d.Options.Add(new KindOption
+                    {
+                        Text = "GE-" + k, Enabled = !isGb || geAvailable, Tooltip = !isGb || geAvailable ? null : NoGeZoneTip,
+                    });
+                    d.Options.Add(new KindOption
+                    {
+                        Text = "GB-" + k, Enabled = isGb || gbAvailable, Tooltip = isGb || gbAvailable ? null : NoGbAnchorTip,
+                    });
                     d.Options.Add(new KindOption { Text = "Web" });
                     return d;
                 }

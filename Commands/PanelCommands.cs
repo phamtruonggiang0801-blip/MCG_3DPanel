@@ -161,11 +161,15 @@ namespace MCG_3DPanel.Commands
         /// <summary>Báo tab Result: (bản cũ, bản mới — null nếu rebuild thất bại, thông báo).</summary>
         public static event System.Action<BuildResult, BuildResult, string> Rebuilt;
 
-        private static BuildResult _pendingRebuild;
+        // Hàng đợi rebuild: sửa 2 panel liên tiếp trước khi lệnh kịp chạy KHÔNG được mất yêu cầu nào.
+        // Mỗi panel (SourceRefId) chỉ giữ bản build mới nhất mà palette đang hiển thị.
+        private static readonly List<BuildResult> _pending = new List<BuildResult>();
+        private static bool _sendScheduled;
 
         /// <summary>
-        /// Gọi từ Palette (modeless): đẩy yêu cầu rồi chạy lệnh nội bộ <c>MCG_Rebuild3DPanel</c> — chạy như 1 LỆNH
-        /// nên cả lần rebuild là 1 bước Undo, và AutoCAD tự khoá document.
+        /// Gọi từ Palette (modeless): xếp yêu cầu rồi chạy lệnh nội bộ <c>MCG_Rebuild3DPanel</c> — chạy như 1 LỆNH
+        /// nên cả lần rebuild là 1 bước Undo, và AutoCAD tự khoá document. Đang có lệnh khác chạy ⇒ chờ
+        /// Application.Idle rồi mới gửi (gửi ngay sẽ gõ chữ vào prompt của lệnh đang chạy).
         /// </summary>
         public static void RequestRebuild(BuildResult current)
         {
@@ -176,18 +180,37 @@ namespace MCG_3DPanel.Commands
                 Rebuilt?.Invoke(current, null, "Switch to the drawing of this panel to rebuild it.");
                 return;
             }
-            _pendingRebuild = current;
+            _pending.RemoveAll(b => b.SourceRefId == current.SourceRefId);
+            _pending.Add(current);
+            if (_sendScheduled) return;
+            _sendScheduled = true;
+            Application.Idle += SendWhenIdle;
+        }
+
+        /// <summary>Bản vẽ sắp đóng: bỏ yêu cầu rebuild còn treo của nó (ObjectId sắp không còn hợp lệ).</summary>
+        internal static void ForgetDatabase(Database db) => _pending.RemoveAll(b => b.SourceRefId.Database == db);
+
+        private static void SendWhenIdle(object sender, System.EventArgs e)
+        {
+            Document doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            if (!string.IsNullOrEmpty(doc.CommandInProgress)) return;   // còn lệnh khác → chờ Idle sau
+            Application.Idle -= SendWhenIdle;
+            _sendScheduled = false;
             doc.SendStringToExecute("MCG_Rebuild3DPanel ", true, false, false);
         }
 
         [CommandMethod("MCG_Rebuild3DPanel", CommandFlags.NoHistory)]
         public void RebuildCommand()
         {
-            BuildResult old = _pendingRebuild;
-            _pendingRebuild = null;
-            if (old == null) return;
-
             Document doc = Application.DocumentManager.MdiActiveDocument;
+            var batch = _pending.Where(b => b.SourceRefId.Database == doc.Database).ToList();
+            _pending.RemoveAll(batch.Contains);
+            foreach (var old in batch) RebuildOne(doc, old);
+        }
+
+        private static void RebuildOne(Document doc, BuildResult old)
+        {
             Database db = doc.Database;
             if (!SourceStillExists(db, old.SourceRefId))
             {
@@ -212,13 +235,31 @@ namespace MCG_3DPanel.Commands
                 return;
             }
 
-            // Thay bản cũ: xoá block 3D cũ, đặt tên block mới về tên cũ (cột Panel / tên block giữ nguyên).
+            // Thay bản cũ: xoá block 3D ĐANG SỐNG của panel — tìm theo TÊN, không tin id đã lưu (sau Ctrl+Z
+            // undo 1 lần rebuild, id palette giữ đã bị xoá còn block gốc sống lại). Rồi đặt tên block mới về tên cũ.
+            string replaceError = null;
             using (Transaction tr = db.TransactionManager.StartTransaction())
             {
                 try
                 {
-                    if (!old.BlockRefId.IsErased) ((Entity)tr.GetObject(old.BlockRefId, OpenMode.ForWrite)).Erase();
-                    if (!old.BtrId.IsErased) ((BlockTableRecord)tr.GetObject(old.BtrId, OpenMode.ForWrite)).Erase();
+                    var toErase = new List<ObjectId>();
+                    if (!old.BtrId.IsNull && !old.BtrId.IsErased) toErase.Add(old.BtrId);
+                    var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                    if (!string.IsNullOrEmpty(old.BlockName) && bt.Has(old.BlockName))
+                    {
+                        ObjectId live = bt[old.BlockName];
+                        if (live != neu.BtrId && !toErase.Contains(live)) toErase.Add(live);
+                    }
+                    foreach (ObjectId btrId in toErase)
+                    {
+                        var btr = (BlockTableRecord)tr.GetObject(btrId, OpenMode.ForWrite);
+                        foreach (ObjectId refId in btr.GetBlockReferenceIds(true, false))
+                            tr.GetObject(refId, OpenMode.ForWrite).Erase();
+                        btr.Erase();
+                    }
+                    if (!old.BlockRefId.IsNull && !old.BlockRefId.IsErased)
+                        tr.GetObject(old.BlockRefId, OpenMode.ForWrite).Erase();
+
                     if (!string.IsNullOrEmpty(old.BlockName))
                     {
                         ((BlockTableRecord)tr.GetObject(neu.BtrId, OpenMode.ForWrite)).Name = old.BlockName;
@@ -227,14 +268,16 @@ namespace MCG_3DPanel.Commands
                 }
                 catch (System.Exception ex)
                 {
+                    replaceError = ex.Message;
                     doc.Editor.WriteMessage($"\n{LOG_PREFIX} Rebuild: không thay được block cũ ({ex.Message}).\n");
                 }
                 tr.Commit();
             }
             neu.Kept = true;
-            neu.ReportPath = old.ReportPath;
             doc.Editor.Regen();
-            Rebuilt?.Invoke(old, neu, $"Rebuilt {neu.PanelBlockName} in {neu.BuildSeconds:0.0} s.");
+            Rebuilt?.Invoke(old, neu, replaceError == null
+                ? $"Rebuilt {neu.PanelBlockName} in {neu.BuildSeconds:0.0} s."
+                : $"Rebuilt {neu.PanelBlockName}, but the previous 3D block could not be replaced: {replaceError}");
         }
 
         /// <summary>Block reference 2D nguồn còn đọc được (kể cả đã xoá khi Keep) và định nghĩa block chưa bị PURGE.</summary>

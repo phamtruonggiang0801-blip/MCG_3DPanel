@@ -32,6 +32,15 @@ namespace MCG_3DPanel.Services.Corrections
             d[sourceKey] = c;
         }
 
+        /// <summary>Bản vẽ sắp đóng: bỏ mọi correction của Database đó (con trỏ có thể bị DB mới dùng lại).</summary>
+        public static void ClearDatabase(Database db)
+        {
+            if (db == null) return;
+            string prefix = $"{db.UnmanagedObject.ToInt64():X}:";
+            foreach (var k in new List<string>(_store.Keys))
+                if (k.StartsWith(prefix)) _store.Remove(k);
+        }
+
         public static void Clear(string panelKey, string sourceKey)
         {
             if (panelKey != null && sourceKey != null && _store.TryGetValue(panelKey, out var d)) d.Remove(sourceKey);

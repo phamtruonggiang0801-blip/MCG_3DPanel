@@ -43,6 +43,23 @@ namespace MCG_3DPanel.UI
             SetStatus(message, error: neu == null);
         }
 
+        /// <summary>Bản vẽ sắp đóng: bỏ build của nó khỏi bảng (ObjectId sắp không còn hợp lệ).</summary>
+        public void OnDocumentClosing(Autodesk.AutoCAD.DatabaseServices.Database db)
+        {
+            if (db == null || _builds.Count == 0) return;
+            int before = _builds.Count;
+            var left = _builds.Where(b => b.BlockRefId.IsNull || b.BlockRefId.Database != db).ToList();
+            if (left.Count == before) return;
+            if (left.Count == 0)
+            {
+                _builds = left;
+                GridResult.ItemsSource = null;
+                SetStatus("Drawing closed — Build 3D again to list solids.");
+                return;
+            }
+            Load(left);
+        }
+
         /// <summary>Nạp solid của MỌI panel vừa build (giữ nguyên thứ tự chọn panel). Có
         /// <paramref name="keepPanelKey"/>/<paramref name="keepSourceKey"/> ⇒ chọn lại + cuộn tới + highlight dòng đó.</summary>
         public void Load(List<BuildResult> builds, string keepPanelKey = null, string keepSourceKey = null)

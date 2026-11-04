@@ -114,6 +114,12 @@ namespace MCG_3DPanel.Services.Classify
                     ge.GroupId = -1;
                     ge.JoinWithWeb = rest;
 
+                    // p có thể là phần còn lại của LẦN TÁCH TRƯỚC (đầu kia) — GE/GB trước đó đang trỏ JoinWithWeb vào p,
+                    // nhưng p sắp bị thay khỏi Parts ⇒ trỏ sang `rest` (đoạn kề GE/GB đó), nếu không GE/GB đầu kia
+                    // không hợp nhất / không vào web run của collar (review 2026-11-04).
+                    foreach (var prev in result.Parts.Where(x => ReferenceEquals(x.JoinWithWeb, p)))
+                        prev.JoinWithWeb = rest;
+
                     int idx = result.Parts.IndexOf(p);
                     if (idx >= 0) result.Parts[idx] = ge; else result.Parts.Add(ge);
                     result.Parts.Add(rest);
