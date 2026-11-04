@@ -52,7 +52,10 @@ namespace MCG_3DPanel.Services.Builders
             var supports = flanges.Concat(ctx.Cls.OfType(PartType.FacePlate)).ToList();
 
             var spans = ctx.Cls.WebRuns().Where(r => r != null && r.Count > 0).Select(MakeSpan).Where(s => s != null).ToList();
-            var flanged = spans.Where(s => FlangeAt(flanges, s.Axis, s.Center)).ToList();
+            // Dầm = run có flange tại tâm 1 PART bất kỳ (KHÔNG chỉ tâm run: run gộp xuyên dầm liên tục có tâm rơi
+            // ngay dầm đó, flange dầm dừng ở mép flange CG ⇒ cả dầm bị loại âm thầm — review 2026-11-04). Từng
+            // đoạn vẫn kiểm flange tại điểm giữa đoạn; cutter kiểm flange tại giao điểm.
+            var flanged = spans.Where(s => s.Parts.Any(p => FlangeAt(flanges, s.Axis, PartMid(p)))).ToList();
             if (flanged.Count == 0) return outSolids;
 
             Point3d center = ctx.Cls.TopPlate?.Centroid ?? Point3d.Origin;
@@ -214,6 +217,12 @@ namespace MCG_3DPanel.Services.Builders
                 Parts = run, P1 = p1, Axis = ax, Len = hi - lo, Thk = spine.FootprintThickness,
                 Center = p1 + ax * ((hi - lo) / 2.0),
             };
+        }
+
+        private static Point3d PartMid(PanelPart p)
+        {
+            var (e1, e2) = ClassifyUtil.Endpoints(p);
+            return new Point3d((e1.X + e2.X) / 2.0, (e1.Y + e2.Y) / 2.0, 0);
         }
 
         private static PanelPart Spine(Span s) => s.Parts.OrderByDescending(p => p.MemberLength).First();
