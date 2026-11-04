@@ -199,6 +199,21 @@ namespace MCG_3DPanel.Services
                     ctx.Report.Add($"[BracketB] solid {ch} = {tag}");
                 }
 
+                // Tripping Bracket — bracket B dưới HP gần giữa mỗi đoạn dầm có ≥ 3 HP liên tục (kỹ sư 2026-11-04).
+                // Đảo phía trên tab Result qua FlipKey (= DeleteKey). Xem TrippingBracketBuilder / skill tripping-bracket.
+                foreach (var (tb, tag, tkey) in TrippingBracketBuilder.Build(ctx))
+                {
+                    btr.AppendEntity(tb);
+                    tr.AddNewlyCreatedDBObject(tb, true);
+                    made++;
+                    string th = tb.Handle.ToString();
+                    var tInfo = new BuiltPartInfo { Handle = th, Type = "TrippingBracket", Code = tag, Built = true };
+                    result.Parts.Add(tInfo);
+                    FillGeometry(tInfo, tb);
+                    result.Solids.Add(new BuiltSolid { SolidId = tb.ObjectId, Type = "TrippingBracket", DeleteKey = tkey, FlipKey = tkey });
+                    ctx.Report.Add($"[TrippingBracket] solid {th} = {tag}");
+                }
+
                 // CutOut = lỗ khoét — trừ (boolean) thẳng vào solid Top Plate đã dựng, không phải part riêng.
                 if (topPlateSolid != null)
                 {
