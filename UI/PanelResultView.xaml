@@ -52,6 +52,9 @@
                     Click="BtnLoad3D_Click" ToolTip="Pick existing MCG3D_* blocks (e.g. after reopening the drawing) and list them here"/>
             <Button x:Name="BtnExport" Content="Export CSV" Style="{StaticResource ToolbarPrimaryButtonStyle}"
                     Click="BtnExport_Click" ToolTip="Export the table (incl. corrections) to a CSV file"/>
+            <Button x:Name="BtnStep" Content="Export STEP…" Style="{StaticResource ToolbarButtonStyle}"
+                    Click="BtnStep_Click" ToolTipService.ShowOnDisabled="True"
+                    ToolTip="Export each panel to its own STEP file (&lt;Panel&gt;.stp)"/>
             <Button x:Name="BtnCopy" Content="Copy" Style="{StaticResource ToolbarButtonStyle}"
                     Click="BtnCopy_Click" ToolTip="Copy the table to the clipboard (paste straight into Excel)"/>
         </WrapPanel>

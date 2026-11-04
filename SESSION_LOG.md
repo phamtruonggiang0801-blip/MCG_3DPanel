@@ -1,5 +1,23 @@
 # SESSION LOG — MCG_3DPanel
 
+## Session 2026-11-04b — Result tab Phần 2 (trên `main`)
+
+Plan: `docs/superpowers/plans/2026-11-04-result-tab-part2.md` · spec §11–15. Build OK, 45/45 unit test, **CHƯA test trong AutoCAD**.
+
+- **Sniped End từng đầu (HP + FB)**: cột "Sniped End" 2 nút `◀ L`/`R ▶` (`▼ B`/`T ▲`), rê chuột ⇒ vòng đỏ tại đầu đó.
+  Override lưu `PartCorrection.SnipLo/SnipHi`; `SnipOverride.Decide` trong HpBuilder/FlatBarBuilder; ép VÁT ⇒ bỏ bracket B
+  ở đầu đó; ép VUÔNG ở End 30 ⇒ để vuông.
+- **Delete/Restore** (chuột phải): `BuiltSolid.DeleteKey`; Build3DService xoá SAU mọi boolean; dòng xám nghiêng "deleted".
+- **Correction lưu trong DWG**: XRecord `MCG3D_CORRECTIONS` trên ĐỊNH NGHĨA block 2D (JSON, khúc 250 ký tự), ghi trong
+  lệnh rebuild (cùng bước Undo). Build lại block đó ⇒ tự áp.
+- **Rebuild sau mở lại**: XRecord `MCG3D_SOURCE` trên BTR 3D (handle BTR 2D + ma trận + PanelInput + Position) ⇒ chèn
+  tạm block 2D, build, xoá. Nút **Load 3D…** (`MCG_Load3DPanel`) chọn block MCG3D_* có sẵn ⇒ rebuild + nạp lên bảng.
+- **Export STEP…** (`MCG_ExportStep`): mỗi panel `<Panel>.stp`; explode tạm bản sao block 3D → `STEPOUT` (FILEDIA=0,
+  `ed.Command("_.STEPOUT", ss, "", path)`) → xoá bản sao. ⚠️ **Chuỗi prompt STEPOUT là PHỎNG ĐOÁN** — cần kỹ sư chạy
+  trong AutoCAD Mechanical; nếu STEPOUT xuất cả bản vẽ / hỏi khác, báo lại để sửa.
+- Kỹ sư cần kiểm: bật/tắt vát từng đầu HP/FB (+ bracket B khi ép vát End 30); Delete Collar/Bracket B/Flange GE rồi
+  sửa dòng khác (không quay lại); Ctrl+S → đóng → mở → Load 3D… (correction còn, rebuild được); Export STEP 2 panel.
+
 ## Session 2026-11-04 — GB mốc toe + Result tab corrections (nhánh `feat/gb-anchor-result-tab`)
 
 Spec: `docs/superpowers/specs/2026-11-04-result-tab-corrections-design.md` · Plan: `docs/superpowers/plans/2026-11-04-gb-anchor-and-result-tab.md`.

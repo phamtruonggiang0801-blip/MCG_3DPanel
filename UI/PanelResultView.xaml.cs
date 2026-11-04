@@ -20,6 +20,14 @@ namespace MCG_3DPanel.UI
         public PanelResultView()
         {
             InitializeComponent();
+            StepExport.Finished += (msg, err) => SetStatus(msg, err);
+            Loaded += (s, e) =>
+            {
+                // STEPOUT chỉ có khi chạy AutoCAD Mechanical — không có thì nút mờ + tooltip giải thích.
+                bool ok = StepExport.IsAvailable();
+                BtnStep.IsEnabled = ok;
+                if (!ok) BtnStep.ToolTip = "Requires AutoCAD Mechanical (STEPOUT)";
+            };
         }
 
         /// <summary>Danh sách build đang hiển thị — rebuild thay đúng 1 phần tử.</summary>
@@ -231,6 +239,32 @@ namespace MCG_3DPanel.UI
             if (doc == null) return;
             SetStatus("Select the MCG3D_* blocks to load…");
             doc.SendStringToExecute("MCG_Load3DPanel ", true, false, false);
+        }
+
+        // ─── Export STEP (mỗi panel 1 file) ───────────────────────────────
+
+        private void BtnStep_Click(object sender, RoutedEventArgs e)
+        {
+            if (!StepExport.IsAvailable())
+            {
+                SetStatus("Requires AutoCAD Mechanical (STEPOUT).", error: true);
+                return;
+            }
+            var kept = _builds.Where(b => b.Kept).ToList();
+            if (kept.Count == 0) { SetStatus("Nothing to export — build a panel first.", error: true); return; }
+
+            var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+            string dwgDir = null;
+            try { dwgDir = Path.GetDirectoryName(doc?.Name); } catch { }
+            var dlg = new Microsoft.Win32.OpenFolderDialog
+            {
+                Title = "Folder for the STEP files (one file per panel)",
+                InitialDirectory = Directory.Exists(dwgDir) ? dwgDir
+                    : System.Environment.GetFolderPath(System.Environment.SpecialFolder.DesktopDirectory),
+            };
+            if (dlg.ShowDialog() != true) return;
+            SetStatus($"Exporting {kept.Count} panel(s) to STEP…");
+            StepExport.Request(kept, dlg.FolderName);
         }
 
         // ─── Copy / Export ────────────────────────────────────────────────
