@@ -40,8 +40,14 @@ namespace MCG_3DPanel.Services.Builders
         /// null nếu tham số vô lý hoặc không còn mặt hàn (<c>b − d − R ≤ 0</c>).
         /// </summary>
         public static List<(double X, double Y, double Bulge)> CutterOutline(double b, double tRun, double c, double r, bool inside)
+            => CutterOutline(b, tRun, c, r, inside, runIsFb: false);
+
+        /// <summary><paramref name="runIsFb"/> = member chạy là FB (p=0): bỏ guard <c>c ≤ tRun</c> (chỉ có nghĩa với
+        /// bulb của HP chạy) — FB dày ≥ c vẫn hợp lệ (review 2026-11-04).</summary>
+        private static List<(double X, double Y, double Bulge)> CutterOutline(double b, double tRun, double c, double r,
+                                                                               bool inside, bool runIsFb)
         {
-            if (b <= 0 || tRun <= 0 || c <= 0 || r <= 0 || c <= tRun) return null;
+            if (b <= 0 || tRun <= 0 || c <= 0 || r <= 0 || (!runIsFb && c <= tRun)) return null;
             double d = BulbHeight(b, tRun, c, r);
             if (d <= 0 || b - d - R <= 0) return null;
 
@@ -99,7 +105,7 @@ namespace MCG_3DPanel.Services.Builders
             if (b <= 0 || tFb <= 0 || c <= 0 || r <= 0) return null;
             double weld = hFb - FB_WELD_CLEAR;
             if (weld <= 0) return null;
-            if (weld >= b) return CutterOutline(b, tFb, c, r, inside: false);
+            if (weld >= b) return CutterOutline(b, tFb, c, r, inside: false, runIsFb: true);
 
             double w = tFb + c + r + MARGIN, yB = -b - MARGIN;
             double xB = (b + MARGIN - weld) * Tan60;

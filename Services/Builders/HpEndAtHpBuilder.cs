@@ -62,20 +62,22 @@ namespace MCG_3DPanel.Services.Builders
                     Solid3d cutter = null;
                     try
                     {
-                        // Vẽ DỪNG HỤT mặt web (vd tới mép bulb) → nối dài HP đầu tới mặt tiếp xúc trước khi cắt
-                        // (review 2026-11-04) — phần nối là dải web t_h×b; phần dưới bị dao cắt xén lại.
-                        double fill = HpEndAtHpGeometry.FillLength(best.Gap, h.FootprintThickness, best.CosTheta);
-                        if (fill > 0)
-                        {
-                            using (var ext = BuildFill(he, ho, h.FootprintThickness, b, fill))
-                                if (ext != null) sol.BooleanOperation(BooleanOperationType.BoolUnite, ext);
-                        }
+                        // Dựng dao cắt TRƯỚC — không có dao thì KHÔNG nối dài (khối nối thừa sẽ không được xén;
+                        // review 2026-11-04).
                         cutter = BuildCutter(ctx, h, run, best, b, c, r);
                         if (cutter == null)
                         {
                             ctx.Report.Add($"{LOG} Không dựng được dao cắt h={h.Id.Handle} m={run.Id.Handle} " +
                                            $"(tiết diện lỗi / không còn mặt hàn) → HP giữ nguyên.");
                             continue;
+                        }
+                        // Vẽ DỪNG HỤT mặt web (vd tới mép bulb) → nối dài HP đầu tới mặt tiếp xúc trước khi cắt
+                        // — phần nối là dải web t_h×b; phần lấn qua mặt tiếp xúc + phần dưới bị dao cắt xén lại.
+                        double fill = HpEndAtHpGeometry.FillLength(best.Gap, h.FootprintThickness, best.CosTheta);
+                        if (fill > 0)
+                        {
+                            using (var ext = BuildFill(he, ho, h.FootprintThickness, b, fill))
+                                if (ext != null) sol.BooleanOperation(BooleanOperationType.BoolUnite, ext);
                         }
                         sol.BooleanOperation(BooleanOperationType.BoolSubtract, cutter);
                         cutter = null;   // BoolSubtract đã tiêu thụ cutter

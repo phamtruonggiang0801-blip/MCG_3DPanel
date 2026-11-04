@@ -41,6 +41,15 @@ namespace MCG_3DPanel.Tests
             }
         }
 
+        // Review: FB cao + dày ≥ c (HP80 c=14 r=4, FB 100×15) — guard c ≤ tRun của HP chạy không áp cho FB (p=0).
+        [Fact]
+        public void FbCutterOutline_TallThickFb_NotNull()
+        {
+            var o = HpEndAtHpGeometry.FbCutterOutline(80, 100, 15, 14, 4);
+            Assert.NotNull(o);
+            Assert.Equal(6, o.Count);   // biên dạng R30 OUTSIDE
+        }
+
         [Fact]
         public void FbCutterOutline_TooShortFb_Null()
             => Assert.Null(HpEndAtHpGeometry.FbCutterOutline(120, 15, 6, 17, 5));
