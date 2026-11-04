@@ -12,6 +12,8 @@
 
   <ItemGroup>
     <Compile Include="..\..\UI\ResultCatalog.cs" Link="ResultCatalog.cs" />
+    <Compile Include="..\..\Services\Corrections\PartCorrection.cs" Link="PartCorrection.cs" />
+    <Compile Include="..\..\Services\Corrections\CorrectionJson.cs" Link="CorrectionJson.cs" />
   </ItemGroup>
 
   <ItemGroup>

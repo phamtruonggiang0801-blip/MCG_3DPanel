@@ -4,19 +4,51 @@ using Autodesk.AutoCAD.DatabaseServices;
 namespace MCG_3DPanel.Services.Corrections
 {
     /// <summary>
-    /// Kho correction trong BỘ NHỚ (chỉ sống trong phiên mở bản vẽ — kỹ sư chốt 2026-11-04).
-    /// Khoá: panelKey (block reference 2D nguồn, xem <see cref="PanelKey"/>) → SourceKey của part 2D.
+    /// Kho correction. NGUỒN GỐC = XRecord <see cref="CorrectionXRecord.CorrectionsKey"/> trên ĐỊNH NGHĨA block 2D
+    /// (lưu theo bản vẽ, Ctrl+S là lưu — spec 2026-11-04 §13); bộ nhớ chỉ là cache trong phiên.
+    /// Khoá: panelKey (Database + BTR 2D, xem <see cref="PanelKey"/>) → SourceKey của part 2D.
+    /// Mọi lần chèn của cùng block 2D dùng chung correction.
     /// </summary>
     public static class CorrectionStore
     {
         private static readonly Dictionary<string, Dictionary<string, PartCorrection>> _store =
             new Dictionary<string, Dictionary<string, PartCorrection>>();
+        private static readonly HashSet<string> _loaded = new HashSet<string>();
 
         private static readonly IReadOnlyDictionary<string, PartCorrection> Empty = new Dictionary<string, PartCorrection>();
 
-        /// <summary>Khoá panel = Database đang mở + handle block reference 2D (handle trùng được giữa 2 bản vẽ).</summary>
-        public static string PanelKey(ObjectId src2D) =>
-            src2D.IsNull ? "" : $"{src2D.Database.UnmanagedObject.ToInt64():X}:{src2D.Handle}";
+        /// <summary>Khoá panel = Database đang mở + handle ĐỊNH NGHĨA block 2D (handle trùng được giữa 2 bản vẽ).</summary>
+        public static string PanelKey(ObjectId btr2D) =>
+            btr2D.IsNull ? "" : $"{btr2D.Database.UnmanagedObject.ToInt64():X}:{btr2D.Handle}";
+
+        /// <summary>Lần đầu gặp panel trong phiên: nạp correction từ XRecord của BTR 2D vào cache.</summary>
+        public static void EnsureLoaded(Transaction tr, ObjectId btr2D)
+        {
+            string key = PanelKey(btr2D);
+            if (key == "" || !_loaded.Add(key)) return;
+            CorrectionJson.Deserialize(CorrectionXRecord.Read(tr, btr2D, CorrectionXRecord.CorrectionsKey),
+                out var parts, out var deleted);
+            if (parts.Count > 0) _store[key] = parts;
+            if (deleted.Count > 0) _deleted[key] = deleted;
+        }
+
+        /// <summary>Ghi cache của panel xuống XRecord BTR 2D. Trả thông báo lỗi (null nếu OK) — không ném.</summary>
+        public static string Save(Transaction tr, ObjectId btr2D)
+        {
+            string key = PanelKey(btr2D);
+            if (key == "") return null;
+            try
+            {
+                bool any = For(key).Count > 0 || Deleted(key).Count > 0;
+                CorrectionXRecord.Write(tr, btr2D, CorrectionXRecord.CorrectionsKey,
+                    any ? CorrectionJson.Serialize(For(key), Deleted(key)) : null);
+                return null;
+            }
+            catch (System.Exception ex)
+            {
+                return "Corrections could not be saved in the drawing (" + ex.Message + ").";
+            }
+        }
 
         public static IReadOnlyDictionary<string, PartCorrection> For(string panelKey) =>
             panelKey != null && _store.TryGetValue(panelKey, out var d) ? d : Empty;
@@ -52,6 +84,7 @@ namespace MCG_3DPanel.Services.Corrections
             string prefix = $"{db.UnmanagedObject.ToInt64():X}:";
             foreach (var k in new List<string>(_store.Keys))
                 if (k.StartsWith(prefix)) _store.Remove(k);
+            _loaded.RemoveWhere(k => k.StartsWith(prefix));
             foreach (var k in new List<string>(_deleted.Keys))
                 if (k.StartsWith(prefix)) _deleted.Remove(k);
         }

@@ -88,7 +88,7 @@ namespace MCG_3DPanel.UI
         public static List<ResultRow> From(BuildResult build, bool includeErased = false)
         {
             if (build == null || build.BlockRefId.IsNull) return new List<ResultRow>();
-            string panelKey = CorrectionStore.PanelKey(build.SourceRefId);
+            string panelKey = CorrectionStore.PanelKey(build.SourceBtrId);
             return build.Solids
                 .Where(s => !s.SolidId.IsNull && (includeErased || s.Deleted || !s.SolidId.IsErased))
                 .Select(s => Make(build, s, panelKey))

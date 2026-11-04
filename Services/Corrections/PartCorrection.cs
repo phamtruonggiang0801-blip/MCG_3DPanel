@@ -17,6 +17,7 @@ namespace MCG_3DPanel.Services.Corrections
         public bool? SnipLo { get; set; }
         public bool? SnipHi { get; set; }
 
+        [System.Text.Json.Serialization.JsonIgnore]
         public bool IsEmpty => string.IsNullOrWhiteSpace(Kind) && !FlipDir && SnipLo == null && SnipHi == null;
     }
 }

@@ -27,6 +27,10 @@ namespace MCG_3DPanel.Services
         // ─── Phục vụ rebuild từ tab Result (2026-11-04) ───
         /// <summary>Block reference 2D nguồn (Keep xoá nó — rebuild mở lại bằng openErased).</summary>
         public ObjectId SourceRefId { get; set; }
+        /// <summary>ĐỊNH NGHĨA block 2D nguồn — nơi lưu correction (XRecord) và dùng để chèn tạm khi rebuild sau mở lại.</summary>
+        public ObjectId SourceBtrId { get; set; }
+        /// <summary>Ma trận chèn block 2D nguồn (WCS) — chèn tạm lại đúng chỗ khi block reference 2D không còn.</summary>
+        public Autodesk.AutoCAD.Geometry.Matrix3d SourceTransform { get; set; }
         public PanelInput Input { get; set; }
         public PanelPosition Position { get; set; }
         /// <summary>Thời gian phân loại + dựng (giây) — hiện trên thanh trạng thái sau rebuild.</summary>

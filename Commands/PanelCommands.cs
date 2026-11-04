@@ -4,6 +4,7 @@ using System.Linq;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
+using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
 using MCG_3DPanel.Models;
 using MCG_3DPanel.Services;
@@ -146,11 +147,25 @@ namespace MCG_3DPanel.Commands
             out ClassificationResult cls)
         {
             var sw = Stopwatch.StartNew();
-            cls = new ClassificationService().Classify(src2D, position, CorrectionStore.For(CorrectionStore.PanelKey(src2D)));
-            cls.DeletedKeys = CorrectionStore.Deleted(CorrectionStore.PanelKey(src2D));
+            // Correction gắn với ĐỊNH NGHĨA block 2D (XRecord) — nạp vào cache lần đầu gặp trong phiên.
+            ObjectId btr2D;
+            Matrix3d xform;
+            using (Transaction tr = db.TransactionManager.StartTransaction())
+            {
+                var br = (BlockReference)tr.GetObject(src2D, OpenMode.ForRead, true);
+                btr2D = br.BlockTableRecord;
+                xform = br.BlockTransform;
+                CorrectionStore.EnsureLoaded(tr, btr2D);
+                tr.Commit();
+            }
+            string panelKey = CorrectionStore.PanelKey(btr2D);
+            cls = new ClassificationService().Classify(src2D, position, CorrectionStore.For(panelKey));
+            cls.DeletedKeys = CorrectionStore.Deleted(panelKey);
             BuildResult build = new Build3DService().Build(db, cls, input, position);
             build.PanelBlockName = cls.PanelBlockName;
             build.SourceRefId = src2D;
+            build.SourceBtrId = btr2D;
+            build.SourceTransform = xform;
             build.Input = input;
             build.Position = position;
             build.BuildSeconds = sw.Elapsed.TotalSeconds;
@@ -181,7 +196,7 @@ namespace MCG_3DPanel.Commands
                 Rebuilt?.Invoke(current, null, "Switch to the drawing of this panel to rebuild it.");
                 return;
             }
-            _pending.RemoveAll(b => b.SourceRefId == current.SourceRefId);
+            _pending.RemoveAll(b => b.SourceBtrId == current.SourceBtrId);
             _pending.Add(current);
             if (_sendScheduled) return;
             _sendScheduled = true;
@@ -217,6 +232,14 @@ namespace MCG_3DPanel.Commands
             {
                 Rebuilt?.Invoke(old, null, "Source 2D block no longer exists — cannot rebuild.");
                 return;
+            }
+
+            // Ghi correction xuống DWG (XRecord BTR 2D) TRƯỚC khi build — cùng bước Undo với lần rebuild.
+            string saveError;
+            using (Transaction tr = db.TransactionManager.StartTransaction())
+            {
+                saveError = CorrectionStore.Save(tr, old.SourceBtrId);
+                tr.Commit();
             }
 
             BuildResult neu;
@@ -276,9 +299,11 @@ namespace MCG_3DPanel.Commands
             }
             neu.Kept = true;
             doc.Editor.Regen();
-            Rebuilt?.Invoke(old, neu, replaceError == null
+            string msg = replaceError == null
                 ? $"Rebuilt {neu.PanelBlockName} in {neu.BuildSeconds:0.0} s."
-                : $"Rebuilt {neu.PanelBlockName}, but the previous 3D block could not be replaced: {replaceError}");
+                : $"Rebuilt {neu.PanelBlockName}, but the previous 3D block could not be replaced: {replaceError}";
+            if (saveError != null) msg += "  " + saveError;
+            Rebuilt?.Invoke(old, neu, msg);
         }
 
         /// <summary>Block reference 2D nguồn còn đọc được (kể cả đã xoá khi Keep) và định nghĩa block chưa bị PURGE.</summary>
