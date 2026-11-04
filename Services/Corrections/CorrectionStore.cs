@@ -39,6 +39,11 @@ namespace MCG_3DPanel.Services.Corrections
             if (key == "") return null;
             try
             {
+                // Chưa nạp (vd sau khi mở lại bản vẽ) ⇒ nạp TRƯỚC, nếu không sẽ ghi đè XRecord đã lưu bằng cache rỗng.
+                EnsureLoaded(tr, btr2D);
+                var btr = tr.GetObject(btr2D, OpenMode.ForRead) as BlockTableRecord;
+                if (btr != null && (btr.IsFromExternalReference || btr.IsDependent))
+                    return "Corrections could not be saved in the drawing (the 2D block is an xref).";
                 bool any = For(key).Count > 0 || Deleted(key).Count > 0;
                 CorrectionXRecord.Write(tr, btr2D, CorrectionXRecord.CorrectionsKey,
                     any ? CorrectionJson.Serialize(For(key), Deleted(key)) : null);

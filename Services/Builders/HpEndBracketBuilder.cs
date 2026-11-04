@@ -120,9 +120,9 @@ namespace MCG_3DPanel.Services.Builders
             return best;
         }
 
-        public static List<(Solid3d sol, string tag)> BuildHpEndBrackets(BuildContext ctx)
+        public static List<(Solid3d sol, string tag, string key)> BuildHpEndBrackets(BuildContext ctx)
         {
-            var outSolids = new List<(Solid3d, string)>();
+            var outSolids = new List<(Solid3d, string, string)>();
             if (ctx?.Cls == null) return outSolids;
 
             var hps = ctx.Cls.OfType(PartType.HP).ToList();
@@ -212,7 +212,8 @@ namespace MCG_3DPanel.Services.Builders
                         if (sol == null) { ctx.Report.Add($"{LOG} Không dựng được: {tag}."); continue; }
                         sol.Layer = web.Layer;                       // cùng Layer với Web ngang (xác nhận kỹ sư)
                         sol.ColorIndex = web.ColorIndex;
-                        outSolids.Add((sol, tag));
+                        // Khoá Delete ỔN ĐỊNH giữa các lần rebuild: HP nguồn + đầu lo/hi (không dùng overhang/d1… vốn đổi theo hình).
+                        outSolids.Add((sol, tag, $"HpEndBracketB:{hp.SourceKey}@{(SnipOverride.IsLo(hp, he) ? "lo" : "hi")}"));
                         ctx.Report.Add($"{LOG} {tag}.");
                     }
                     catch (System.Exception ex)

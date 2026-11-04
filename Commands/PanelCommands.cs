@@ -66,7 +66,9 @@ namespace MCG_3DPanel.Commands
                         sources[build] = ids[i];
 
                         ed.WriteMessage($"\n{LOG_PREFIX} {tag} {cls.PanelBlockName}: {build.SolidCount} solid ({cls.Summary()}). Block: {build.BlockName}\n");
-                        if (build.SolidCount == 0)
+                        // "Không dựng được" = không có solid nào ĐƯỢC DỰNG (kể cả solid đã Delete theo correction —
+                        // panel xoá hết solid vẫn là kết quả hợp lệ, còn Restore được).
+                        if (build.Solids.Count == 0)
                         {
                             ed.WriteMessage($"\n{LOG_PREFIX} {tag} Không dựng được solid nào — bỏ.\n");
                             EraseBuild(db, build);
@@ -79,7 +81,7 @@ namespace MCG_3DPanel.Commands
                 }
                 ed.Regen();
 
-                var withSolids = builds.Where(b => b.SolidCount > 0).ToList();
+                var withSolids = builds.Where(b => b.Solids.Count > 0).ToList();
                 if (withSolids.Count > 0)
                 {
                     bool keep = AskKeep(ed, withSolids.Count);
@@ -166,9 +168,9 @@ namespace MCG_3DPanel.Commands
             build.SourceRefId = src2D;
             build.SourceBtrId = btr2D;
             build.SourceTransform = xform;
-            WriteSourceMeta(db, build);
             build.Input = input;
             build.Position = position;
+            WriteSourceMeta(db, build);   // SAU khi có Input/Position — metadata rebuild-sau-mở-lại cần đủ cả hai
             build.BuildSeconds = sw.Elapsed.TotalSeconds;
             return build;
         }
@@ -244,12 +246,16 @@ namespace MCG_3DPanel.Commands
             }
 
             // Ghi correction xuống DWG (XRecord BTR 2D) TRƯỚC khi build — cùng bước Undo với lần rebuild.
-            string saveError;
+            // Save tự EnsureLoaded: sau khi mở lại bản vẽ cache còn trống, KHÔNG được ghi đè XRecord bằng rỗng.
+            string saveError = doc.IsReadOnly
+                ? "Corrections could not be saved in the drawing (drawing is read-only)."
+                : null;
             using (Transaction tr = db.TransactionManager.StartTransaction())
             {
-                saveError = CorrectionStore.Save(tr, old.SourceBtrId);
+                saveError = CorrectionStore.Save(tr, old.SourceBtrId) ?? saveError;
                 tr.Commit();
             }
+            string Tail(string m) => saveError == null ? m : m + "  " + saveError;
 
             BuildResult neu;
             try
@@ -258,7 +264,7 @@ namespace MCG_3DPanel.Commands
             }
             catch (System.Exception ex)
             {
-                Rebuilt?.Invoke(old, null, "Rebuild failed: " + ex.Message + " — previous 3D kept.");
+                Rebuilt?.Invoke(old, null, Tail("Rebuild failed: " + ex.Message + " — previous 3D kept."));
                 return;
             }
             finally
@@ -266,10 +272,10 @@ namespace MCG_3DPanel.Commands
                 // Block 2D chèn tạm: xoá ngay (vẫn mở lại được bằng openErased cho lần rebuild sau trong phiên).
                 if (!tempRef.IsNull) EraseObject(db, tempRef);
             }
-            if (neu.SolidCount == 0)
+            if (neu.Solids.Count == 0)   // xoá hết solid (Delete) vẫn hợp lệ — chỉ coi là lỗi khi KHÔNG dựng được gì
             {
                 EraseBuild(db, neu);
-                Rebuilt?.Invoke(old, null, "Rebuild produced no solids — previous 3D kept.");
+                Rebuilt?.Invoke(old, null, Tail("Rebuild produced no solids — previous 3D kept."));
                 return;
             }
 
@@ -316,8 +322,7 @@ namespace MCG_3DPanel.Commands
             string msg = replaceError == null
                 ? $"Rebuilt {neu.PanelBlockName} in {neu.BuildSeconds:0.0} s."
                 : $"Rebuilt {neu.PanelBlockName}, but the previous 3D block could not be replaced: {replaceError}";
-            if (saveError != null) msg += "  " + saveError;
-            Rebuilt?.Invoke(old, neu, msg);
+            Rebuilt?.Invoke(old, neu, Tail(msg));
         }
 
         // ─── Metadata rebuild-sau-mở-lại (XRecord MCG3D_SOURCE trên BTR 3D) ─────────────
@@ -336,7 +341,7 @@ namespace MCG_3DPanel.Commands
             {
                 using (Transaction tr = db.TransactionManager.StartTransaction())
                 {
-                    CorrectionXRecord.Write(tr, build.BtrId, CorrectionXRecord.SourceKey, meta.ToJson());
+                    CorrectionXRecord.Write(tr, build.BtrId, CorrectionXRecord.SourceKey, meta.ToJson(), build.SourceBtrId);
                     tr.Commit();
                 }
             }
@@ -348,8 +353,17 @@ namespace MCG_3DPanel.Commands
         {
             var meta = SourceMeta.FromJson(CorrectionXRecord.Read(tr, br3D.BlockTableRecord, CorrectionXRecord.SourceKey));
             if (meta == null) return null;
-            if (!long.TryParse(meta.SourceBtrHandle, System.Globalization.NumberStyles.HexNumber, null, out long h)) return null;
-            if (!db.TryGetObjectId(new Handle(h), out ObjectId btr2D)) return null;
+            // Ưu tiên pointer (AutoCAD dịch khi copy sang bản vẽ khác); handle chuỗi chỉ là dự phòng cho bản cũ.
+            ObjectId btr2D = CorrectionXRecord.ReadPointer(tr, br3D.BlockTableRecord, CorrectionXRecord.SourceKey);
+            if (btr2D.IsNull)
+            {
+                if (!long.TryParse(meta.SourceBtrHandle, System.Globalization.NumberStyles.HexNumber, null, out long h)) return null;
+                if (!db.TryGetObjectId(new Handle(h), out btr2D)) return null;
+            }
+            // Phải đúng là 1 ĐỊNH NGHĨA block thường (không layout / xref / đã xoá) — handle trỏ nhầm thì bỏ,
+            // tránh rebuild nhầm panel rồi xoá block 3D của người dùng.
+            if (btr2D.IsErased || !(tr.GetObject(btr2D, OpenMode.ForRead) is BlockTableRecord src)
+                || src.IsLayout || src.IsFromExternalReference || src.IsAnonymous) return null;
             var btr3D = (BlockTableRecord)tr.GetObject(br3D.BlockTableRecord, OpenMode.ForRead);
             return new BuildResult
             {
@@ -373,7 +387,7 @@ namespace MCG_3DPanel.Commands
                 using (Transaction tr = db.TransactionManager.StartTransaction())
                 {
                     var ms = (BlockTableRecord)tr.GetObject(SymbolUtilityServices.GetBlockModelSpaceId(db), OpenMode.ForWrite);
-                    var br = new BlockReference(Point3d.Origin, btr2D);
+                    var br = new BlockReference(Point3d.Origin, btr2D) { Layer = "0" };   // layer 0: layer hiện hành có thể bị khoá
                     br.TransformBy(xform);
                     ObjectId id = ms.AppendEntity(br);
                     tr.AddNewlyCreatedDBObject(br, true);
@@ -390,7 +404,7 @@ namespace MCG_3DPanel.Commands
             {
                 using (Transaction tr = db.TransactionManager.StartTransaction())
                 {
-                    var o = tr.GetObject(id, OpenMode.ForWrite, true);
+                    var o = tr.GetObject(id, OpenMode.ForWrite, true, true);   // openErased + mở cả khi layer khoá
                     if (!o.IsErased) o.Erase();
                     tr.Commit();
                 }

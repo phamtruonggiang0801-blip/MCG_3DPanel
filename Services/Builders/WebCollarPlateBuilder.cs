@@ -53,9 +53,9 @@ namespace MCG_3DPanel.Services.Builders
         /// <summary>Dựng mọi Collar Plate cần thiết. Solid đã set Layer/Color theo web dọc — Build3DService
         /// chỉ việc <c>AppendEntity</c>. <c>tag</c> = mô tả xuất xứ (web dọc × HP × web ngang × phía) để
         /// truy vết "vì sao có collar này". Lỗi ở 1 tấm không làm hỏng tấm khác (ghi Report).</summary>
-        public static List<(Solid3d sol, string tag)> BuildCollarPlates(BuildContext ctx)
+        public static List<(Solid3d sol, string tag, string key)> BuildCollarPlates(BuildContext ctx)
         {
-            var outSolids = new List<(Solid3d sol, string tag)>();
+            var outSolids = new List<(Solid3d sol, string tag, string key)>();
             if (ctx?.Cls == null) return outSolids;
 
             var runs = ctx.Cls.WebRuns().Where(r => r != null && r.Count > 0).ToList();
@@ -182,7 +182,8 @@ namespace MCG_3DPanel.Services.Builders
                             }
                             sol.Layer = k.webPart.Layer;
                             sol.ColorIndex = k.webPart.ColorIndex;
-                            outSolids.Add((sol, tag));
+                            // Khoá Delete ổn định: cặp web × HP (mỗi cặp chỉ 1 collar — xem `done`).
+                            outSolids.Add((sol, tag, $"CollarPlate:{k.webPart.SourceKey}~{k.hp.SourceKey}"));
                             ctx.Report.Add($"{LOG} Collar: {tag} · tl={k.webPart.FootprintThickness:0.#} R={coR:0}{(est ? " (c/r NỘI SUY)" : "")}.");
                         }
                         catch (System.Exception ex)

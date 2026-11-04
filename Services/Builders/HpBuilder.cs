@@ -91,8 +91,14 @@ namespace MCG_3DPanel.Services.Builders
                 int snipCount = (snip1 ? 1 : 0) + (snip2 ? 1 : 0);
                 double run = Math.Max(0.0, b - SNIP_FLAT) * SNIP_RUN_FACTOR;
                 if (snipCount > 0 && run * snipCount > len) run = len / 2.0;   // HP quá ngắn → kẹp an toàn
-                if (snip1) SnipHpEnd(sol, part.Centroid - axis * (len / 2.0),  axis, belly, b, run);
-                if (snip2) SnipHpEnd(sol, part.Centroid + axis * (len / 2.0), -axis, belly, b, run);
+                // Cắt đúng đầu ĐÃ QUYẾT ĐỊNH (e1/e2 từ Endpoints) — AxisDir có thể ngược dấu với e1→e2 (HP không 4/5
+                // đỉnh) ⇒ chọn mút solid GẦN e1 làm đầu 1, tránh bấm "L" lại vát đầu R (review 2026-11-04).
+                Point3d endA = part.Centroid - axis * (len / 2.0), endB = part.Centroid + axis * (len / 2.0);
+                bool aIsE1 = endA.DistanceTo(e1) <= endB.DistanceTo(e1);
+                Point3d at1 = aIsE1 ? endA : endB, at2 = aIsE1 ? endB : endA;
+                Vector3d in1 = aIsE1 ? axis : -axis;
+                if (snip1) SnipHpEnd(sol, at1,  in1, belly, b, run);
+                if (snip2) SnipHpEnd(sol, at2, -in1, belly, b, run);
 
                 ctx.Report.Add($"HP len={len:0} b={b:0} t={t:0} c={c:0.#} r={r:0.#}" +
                                $"{(estimated ? " (c/r NỘI SUY - ngoài bảng)" : "")} " +

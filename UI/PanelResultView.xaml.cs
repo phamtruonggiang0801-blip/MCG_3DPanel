@@ -45,7 +45,7 @@ namespace MCG_3DPanel.UI
             {
                 int i = _builds.IndexOf(old);
                 // Load 3D… nạp lại panel đã có trên bảng ⇒ thay đúng dòng cũ theo tên block (không nhân đôi).
-                if (i < 0) i = _builds.FindIndex(b => b.BlockName == neu.BlockName);
+                if (i < 0) i = _builds.FindIndex(b => b.BlockName == neu.BlockName && b.BlockRefId.Database == neu.BlockRefId.Database);
                 if (i >= 0) _builds[i] = neu; else _builds.Add(neu);
             }
             // Nạp lại cả khi thất bại: correction vẫn còn trong kho → dòng hiện đúng trạng thái đã sửa.
@@ -193,6 +193,7 @@ namespace MCG_3DPanel.UI
 
         private void Rebuild(ResultRow row)
         {
+            EntityHighlighter.ClearPoint();   // nút dưới chuột bị dựng lại ⇒ MouseLeave có thể không tới
             _reselect = (row.PanelKey, row.SourceKey ?? row.DeleteKey);
             SetStatus($"Rebuilding {row.Panel}…");
             PanelCommands.RequestRebuild(row.Build);
