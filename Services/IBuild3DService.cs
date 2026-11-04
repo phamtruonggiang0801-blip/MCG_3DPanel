@@ -24,6 +24,13 @@ namespace MCG_3DPanel.Services
         /// <summary>Tên block 2D nguồn (Build nhiều panel 1 lúc → để biết solid thuộc panel nào).</summary>
         public string PanelBlockName { get; set; }
         public bool Kept { get; set; }
+        // ─── Phục vụ rebuild từ tab Result (2026-11-04) ───
+        /// <summary>Block reference 2D nguồn (Keep xoá nó — rebuild mở lại bằng openErased).</summary>
+        public ObjectId SourceRefId { get; set; }
+        public PanelInput Input { get; set; }
+        public PanelPosition Position { get; set; }
+        /// <summary>Thời gian phân loại + dựng (giây) — hiện trên thanh trạng thái sau rebuild.</summary>
+        public double BuildSeconds { get; set; }
         /// <summary>File report JSON đã ghi sau Build (không tự mở) — null nếu ghi lỗi.</summary>
         public string ReportPath { get; set; }
         public System.Collections.Generic.List<string> Report { get; } = new System.Collections.Generic.List<string>();

@@ -19,10 +19,26 @@ namespace MCG_3DPanel.UI
             InitializeComponent();
         }
 
+        /// <summary>Danh sách build đang hiển thị — rebuild thay đúng 1 phần tử.</summary>
+        private List<MCG_3DPanel.Services.BuildResult> _builds = new List<MCG_3DPanel.Services.BuildResult>();
+
+        /// <summary>PanelCommands.Rebuilt: thay bản cũ bằng bản mới (null = thất bại, giữ nguyên) rồi nạp lại.</summary>
+        public void OnRebuilt(MCG_3DPanel.Services.BuildResult old, MCG_3DPanel.Services.BuildResult neu, string message)
+        {
+            if (neu != null)
+            {
+                int i = _builds.IndexOf(old);
+                if (i >= 0) _builds[i] = neu; else _builds.Add(neu);
+                Load(_builds);
+            }
+            SetStatus(message, error: neu == null);
+        }
+
         /// <summary>Nạp solid của MỌI panel vừa build (giữ nguyên thứ tự chọn panel).</summary>
         public void Load(List<MCG_3DPanel.Services.BuildResult> builds)
         {
-            var kept = builds.Where(b => b.Kept).ToList();
+            _builds = builds ?? new List<MCG_3DPanel.Services.BuildResult>();
+            var kept = _builds.Where(b => b.Kept).ToList();
             // Cột Panel chỉ cần khi có từ 2 panel trở lên — 1 panel thì thừa, lấn chỗ của Type.
             ColPanel.Visibility = kept.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
 

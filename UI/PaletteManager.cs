@@ -45,6 +45,8 @@ namespace MCG_3DPanel.UI
                     _result.Load(r);
                     if (r.Exists(b => b.Kept)) _ps.Activate(TabResult);   // giữ 3D → nhảy sang tab Result xem từng solid
                 };
+                // Rebuild 1 panel từ tab Result (sửa Kind / ⇄) → thay đúng panel đó trong danh sách, nạp lại bảng.
+                MCG_3DPanel.Commands.PanelCommands.Rebuilt += _result.OnRebuilt;
                 _ps.AddVisual("Input", _input);
                 _ps.AddVisual("Result", _result);
                 _ps.Activate(TabInput);
