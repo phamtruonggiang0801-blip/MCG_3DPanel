@@ -75,5 +75,81 @@ namespace MCG_3DPanel.Services.Builders
             double w = tRun + c + r + MARGIN;
             return (c + r + tEnd) / sin + (p + R + w) * cos / sin + SPAN_MARGIN;
         }
+
+        /// <summary>Dung sai chạm thêm ngoài mặt web (+ p phía bụng — người vẽ có thể dừng HP đầu ở mép bulb).</summary>
+        public const double TOL_TOUCH = 10.0;
+        /// <summary>Đầu HP đầu phải cách 2 đầu mút HP chạy ≥ margin này DỌC TRỤC (= FB_SPLIT_MARGIN).</summary>
+        public const double END_MARGIN = 20.0;
+        /// <summary>Đầu trùng đầu mút HP khác ≤ 25mm = mối nối đầu-đầu (= HpEndBracketBuilder.HP_JOINT_TOL).</summary>
+        public const double JOINT_TOL = 25.0;
+        /// <summary>Ngưỡng góc: |axis_h·axis_m| ≤ 0.70 (θ ≥ ~45°, cùng ngưỡng "End 30").</summary>
+        public const double MAX_COS = 0.70;
+
+        /// <summary>
+        /// Xét đầu mút <paramref name="end"/> của HP đầu (đầu kia <paramref name="otherEnd"/>) có chạm THÂN HP
+        /// chạy (đường tâm <paramref name="runA"/>→<paramref name="runB"/>, dày <paramref name="tRun"/>, hướng
+        /// bụng <paramref name="runBelly"/>) không. Thứ tự kiểm (dừng ở lý do đầu tiên): degenerate → joint →
+        /// noBelly → (xác định phía) → far → nearRunEnd → angle → Ok. Phía HP đầu lấy theo
+        /// <paramref name="otherEnd"/> nên đầu mút vẽ lấn qua đường tâm vẫn đúng phía.
+        /// </summary>
+        public static HpEndMatch Match((double X, double Y) end, (double X, double Y) otherEnd,
+                                       (double X, double Y) runA, (double X, double Y) runB,
+                                       double tRun, (double X, double Y) runBelly, double c, double r)
+        {
+            var m = new HpEndMatch();
+            double ax = runB.X - runA.X, ay = runB.Y - runA.Y, len = Math.Sqrt(ax * ax + ay * ay);
+            double hx = otherEnd.X - end.X, hy = otherEnd.Y - end.Y, hLen = Math.Sqrt(hx * hx + hy * hy);
+            if (len < 1e-6 || hLen < 1e-6 || tRun <= 0) return m.Fail("degenerate");
+            ax /= len; ay /= len; hx /= hLen; hy /= hLen;
+            m.RunAxis = (ax, ay);
+
+            if (Dist(end, runA) <= JOINT_TOL || Dist(end, runB) <= JOINT_TOL) return m.Fail("joint");
+
+            double bLen = Math.Sqrt(runBelly.X * runBelly.X + runBelly.Y * runBelly.Y);
+            if (bLen < 1e-9) return m.Fail("noBelly");
+
+            double s = (end.X - runA.X) * ax + (end.Y - runA.Y) * ay;          // dọc trục từ runA
+            m.Foot = (runA.X + ax * s, runA.Y + ay * s);
+            double sc = Math.Max(0, Math.Min(len, s));
+            m.Dist = Dist(end, (runA.X + ax * sc, runA.Y + ay * sc));
+
+            (double X, double Y) perp = (-ay, ax);
+            double side = (otherEnd.X - m.Foot.X) * perp.X + (otherEnd.Y - m.Foot.Y) * perp.Y;
+            m.Normal = side >= 0 ? perp : (-perp.X, -perp.Y);
+            m.Inside = runBelly.X * m.Normal.X + runBelly.Y * m.Normal.Y > 0;
+            m.CosTheta = Math.Abs(hx * ax + hy * ay);
+
+            double p = m.Inside ? BulbProtrusion(c, r, tRun) : 0.0;
+            if (m.Dist > tRun / 2.0 + p + TOL_TOUCH) return m.Fail("far");
+            if (s < END_MARGIN || s > len - END_MARGIN) return m.Fail("nearRunEnd");
+            if (m.CosTheta > MAX_COS) return m.Fail("angle");
+            m.Ok = true;
+            return m;
+        }
+
+        private static double Dist((double X, double Y) a, (double X, double Y) b)
+            => Math.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y));
+    }
+
+    /// <summary>Kết quả <see cref="HpEndAtHpGeometry.Match"/>.</summary>
+    public sealed class HpEndMatch
+    {
+        public bool Ok { get; set; }
+        /// <summary>null | "degenerate" | "joint" | "noBelly" | "far" | "nearRunEnd" | "angle".</summary>
+        public string Reject { get; set; }
+        /// <summary>Bụng (bulb) HP chạy quay về phía HP đầu.</summary>
+        public bool Inside { get; set; }
+        /// <summary>|axis_h · axis_m|.</summary>
+        public double CosTheta { get; set; }
+        /// <summary>Khoảng cách đầu mút tới đoạn tâm HP chạy.</summary>
+        public double Dist { get; set; }
+        /// <summary>Chân vuông góc của đầu mút trên ĐƯỜNG TÂM HP chạy.</summary>
+        public (double X, double Y) Foot { get; set; }
+        /// <summary>Pháp tuyến đơn vị ⟂ trục HP chạy, hướng về phía HP đầu.</summary>
+        public (double X, double Y) Normal { get; set; }
+        /// <summary>Trục đơn vị runA→runB.</summary>
+        public (double X, double Y) RunAxis { get; set; }
+
+        internal HpEndMatch Fail(string why) { Ok = false; Reject = why; return this; }
     }
 }
