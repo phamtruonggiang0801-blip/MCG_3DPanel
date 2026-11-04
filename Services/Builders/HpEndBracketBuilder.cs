@@ -30,11 +30,8 @@ namespace MCG_3DPanel.Services.Builders
         private const double GAP_TOL = 16.0;      // dung sai phát hiện "End 30" (Web XIÊN: gap dọc trục ≠ ⟂)
         private const double PERP_COS = 0.70;     // |cos góc trục| ≤ ⇒ chấp nhận (Web XIÊN tới ~45°); loại ~song song
         private const double R = 50.0;            // cung toe lõm
-        private const double TOP_L = 50.0;        // = R
         private const double E15 = 15.0;          // mép đầu tự do đứng
-        private const double OFF2 = 30.0;         // brkt_2: đáy cách Flange
         private const double MIN_REACH = 180.0;
-        private const double B90 = 0.41421356;    // |bulge| cung 90°
         private const double KNEE_ON_HP_TOL = 25.0;   // 1 đầu bracket OB/IB coi là "ngồi trên HP" nếu cách HP ≤ ngưỡng
         // Tia từ đầu HP phải cắt ĐOẠN Web thật (± ngưỡng TUYỆT ĐỐI) — trước đây ±5% chiều dài Web: Web 9.6m
         // → nới ~480mm, nhận nhầm đầu HP nằm VƯỢT đầu Web ~400mm là "End 30" (bracket B 209FE, 2026-11-04).
@@ -198,9 +195,7 @@ namespace MCG_3DPanel.Services.Builders
                     double[] faces = sym ? new[] { -t / 2.0, t / 2.0 } : new[] { t / 2.0, 1.5 * t };
 
                     double overhang = FlangeOverhang(supports, P, outward, belly, faces, out bool haveFlange);
-                    bool big = haveFlange && overhang >= 50.0;
-                    double d1 = big ? Math.Min(Math.Max(15.0, overhang - 15.0), reach - E15) : 15.0;
-                    double baseY = big ? 0.0 : OFF2;
+                    var (big, d1, baseY) = TrippingBracketRules.SelectBracketB(overhang, haveFlange, reach);
 
                     string tag = $"HP {hp.Id.Handle} end@({he.X:0},{he.Y:0}) × {web.Type} {web.Id.Handle} · " +
                                  $"{(big ? "brkt_1" : "brkt_2")} overhang={overhang:0} d1={d1:0} sym={sym}";
@@ -208,7 +203,7 @@ namespace MCG_3DPanel.Services.Builders
                     Solid3d sol = null;
                     try
                     {
-                        sol = Build(ctx, P, outward, belly, t, reach, Ht, d1, baseY, H, sym);
+                        sol = BuildPlate(P, -outward, belly, t, reach, Ht, d1, baseY, H, sym);
                         if (sol == null) { ctx.Report.Add($"{LOG} Không dựng được: {tag}."); continue; }
                         sol.Layer = web.Layer;                       // cùng Layer với Web ngang (xác nhận kỹ sư)
                         sol.ColorIndex = web.ColorIndex;
@@ -272,7 +267,7 @@ namespace MCG_3DPanel.Services.Builders
         /// Đo tại 2 MẶT thật của bản thép (lệch <paramref name="faces"/> theo <paramref name="belly"/>), lấy MIN —
         /// flange XIÊN: mép tại mặt bản thép gần hơn tại tuyến tâm HP (bracket B 20E72 toe sát mép, 2026-11-04).
         /// </summary>
-        private static double FlangeOverhang(List<PanelPart> supports, Point3d p, Vector3d outward, Vector3d belly,
+        internal static double FlangeOverhang(List<PanelPart> supports, Point3d p, Vector3d outward, Vector3d belly,
                                              double[] faces, out bool have)
         {
             double hit = BracketBuilder.FaceMinHit(p, -outward, belly, faces, supports);
@@ -311,27 +306,23 @@ namespace MCG_3DPanel.Services.Builders
             return false;
         }
 
-        private static Solid3d Build(BuildContext ctx, Point3d p, Vector3d outward, Vector3d belly,
-            double t, double reach, double Ht, double d1, double baseY, double H, bool sym)
+        /// <summary>Dựng tấm bracket B (polygon <see cref="TrippingBracketRules.BracketBPolygon"/>) — DÙNG CHUNG cho
+        /// bracket B đầu HP ("End 30") và Tripping Bracket. <paramref name="p"/> = mặt web (ngang / dầm) trên tuyến
+        /// tâm HP; <paramref name="localX"/> = dọc trục HP, RA XA web (+reach); <paramref name="thkDir"/> = bề dày
+        /// (⟂ localX, thường = bụng HP); <paramref name="centered"/> ⇒ tấm căn giữa tuyến HP, ngược lại lệch 1·t
+        /// về <paramref name="thkDir"/>. Đáy local (y=0) = mặt trên flange <c>Z = −H</c>.</summary>
+        internal static Solid3d BuildPlate(Point3d p, Vector3d localX, Vector3d thkDir,
+            double t, double reach, double Ht, double d1, double baseY, double H, bool centered)
         {
-            var poly = new List<VertexBulge>(6)
-            {
-                new VertexBulge(reach, Ht - E15, 0),
-                new VertexBulge(d1,    baseY,    0),
-                new VertexBulge(0,     baseY,    0),
-                new VertexBulge(0,     Ht - R,   B90),   // → cung ¼ R lõm lên (TOP_L, Ht)
-                new VertexBulge(TOP_L, Ht,       0),
-                new VertexBulge(reach, Ht,       0),
-            };
+            var poly = TrippingBracketRules.BracketBPolygon(reach, Ht, d1, baseY)
+                .Select(v => new VertexBulge(v.X, v.Y, v.Bulge)).ToList();
             Region reg = GeometryUtil.RegionFrom(poly);
             if (reg == null) return null;
 
             // Mặt đặt (xác nhận kỹ sư 2026-09-04): có backing mặt đối diện → tấm NẰM NGAY DƯỚI HP
             // (đồng phẳng thân HP, tâm trùng tuyến HP). Không backing → lệch 1·thk về phía BỤNG.
-            Vector3d thkDir = belly;                                     // trục bề dày = hướng bụng
-            Vector3d localX = -outward;                                  // vào khoang (dọc +reach)
-            Point3d o = p - thkDir * (t / 2.0);                          // sym: căn giữa thân HP
-            if (!sym) o = o + thkDir * t;                                // không backing: lệch 1·thk về bụng
+            Point3d o = p - thkDir * (t / 2.0);                          // centered: căn giữa thân HP
+            if (!centered) o = o + thkDir * t;                           // không backing: lệch 1·thk về bụng
             o = new Point3d(o.X, o.Y, -H);                               // mặt trên Flange = Z = −WebHeight
 
             reg.TransformBy(Matrix3d.AlignCoordinateSystem(
