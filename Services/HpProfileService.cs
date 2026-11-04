@@ -45,6 +45,13 @@ namespace MCG_3DPanel.Services
         /// </summary>
         List<VertexBulge> CollarPlateSection(double b, double t, double c, double r, double coR);
 
+        /// <summary>
+        /// Dao cắt <b>"HP TO HP END"</b> (CAS.dump.json) trong MẶT CẮT HP CHẠY — gốc = mặt tiếp xúc (mặt web
+        /// HP chạy phía HP đầu), +X → VÀO HP đầu, −Y xuống. Bọc <see cref="Builders.HpEndAtHpGeometry.CutterOutline"/>.
+        /// null nếu tham số vô lý / không còn mặt hàn. Xem skill hp-end-at-hp.
+        /// </summary>
+        List<VertexBulge> HpEndAtHpCutter(double b, double tRun, double c, double r, bool inside);
+
         /// <summary>Tra tham số theo quy cách "cao*dày" (vd "120*6"). false nếu spec sai.</summary>
         bool TryGetSection(string spec, out List<VertexBulge> section, out bool estimated);
     }
@@ -162,6 +169,16 @@ namespace MCG_3DPanel.Services
                 if (d < bestD) { bestD = d; best = k; }
             }
             b1 = B1Table[best];
+        }
+
+        /// <summary>Dao cắt "HP TO HP END" — xem <see cref="IHpProfileService.HpEndAtHpCutter"/>.</summary>
+        public List<VertexBulge> HpEndAtHpCutter(double b, double tRun, double c, double r, bool inside)
+        {
+            var o = Builders.HpEndAtHpGeometry.CutterOutline(b, tRun, c, r, inside);
+            if (o == null) return null;
+            var list = new List<VertexBulge>(o.Count);
+            foreach (var v in o) list.Add(new VertexBulge(v.X, v.Y, v.Bulge));
+            return list;
         }
 
         /// <summary>

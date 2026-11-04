@@ -66,6 +66,7 @@ namespace MCG_3DPanel.Services
                 Solid3d topPlateSolid = null;
                 BuiltPartInfo topPlateInfo = null;
                 var webSolids = new List<(PanelPart part, Solid3d sol, BuiltPartInfo info)>();
+                var hpSolids = new List<(PanelPart part, Solid3d sol, BuiltPartInfo info)>();
                 var builtMap = new Dictionary<PanelPart, (Solid3d sol, BuiltPartInfo info)>();
                 foreach (var part in cls.Parts)
                 {
@@ -117,6 +118,16 @@ namespace MCG_3DPanel.Services
 
                     if (part.Type == PartType.TopPlate) { topPlateSolid = sol; topPlateInfo = info; }
                     if (part.Type == PartType.Web) webSolids.Add((part, sol, info));
+                    if (part.Type == PartType.HP) hpSolids.Add((part, sol, info));
+                }
+
+                // HP end tại HP ("HP TO HP END", CAS.dwt) — trừ dao cắt (mặt hàn + cung R30 thoát bulb) khỏi
+                // HP đầu chạm thân HP khác. Xem HpEndAtHpBuilder / skill hp-end-at-hp.
+                if (hpSolids.Count > 1)
+                {
+                    var hpCutOk = HpEndAtHpBuilder.Apply(ctx, hpSolids.Select(x => (x.part, x.sol)).ToList());
+                    if (hpCutOk.Count > 0)
+                        foreach (var x in hpSolids) FillGeometry(x.info, x.sol);   // cập nhật bbox/thể tích SAU khi cắt
                 }
 
                 // Lỗ khoét trên Web cho HP xuyên qua (CO B) — trừ boolean thẳng vào solid Web đã dựng,

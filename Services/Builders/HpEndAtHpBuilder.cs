@@ -1,0 +1,138 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.Geometry;
+using MCG_3DPanel.Models;
+using MCG_3DPanel.Services.Classify;
+
+namespace MCG_3DPanel.Services.Builders
+{
+    /// <summary>
+    /// <b>"HP TO HP END"</b> (CAS.dwt → CAS.dump.json, xác nhận kỹ sư 2026-11-04): đầu 1 HP (<i>HP đầu</i>)
+    /// kết thúc chạm THÂN 1 HP khác (<i>HP chạy</i>). Giống <see cref="WebHpCutoutBuilder"/>: không tự dựng
+    /// solid — dựng "dao cắt" rồi TRỪ (BoolSubtract) thẳng vào solid HP đầu đã dựng. Gọi từ
+    /// <see cref="Build3DService"/> SAU vòng lặp dựng chính.
+    ///
+    /// Dao cắt định nghĩa trong MẶT CẮT HP CHẠY (phương án A): local X → pháp tuyến mặt tiếp xúc hướng về
+    /// HP đầu, local Y → +Z, local Z → trục HP chạy (= X × Y, hệ thuận tay); extrude dọc trục HP chạy
+    /// ⇒ đúng cả HP XIÊN trong mặt bằng (khe hở tới bulb luôn đúng R=30 đo ⟂ HP chạy). Biên dạng:
+    /// <see cref="HpEndAtHpGeometry.CutterOutline"/>; nhận diện: <see cref="HpEndAtHpGeometry.Match"/>.
+    /// Không vát 5×5, không override tab Result (kỹ sư). Xem skill hp-end-at-hp.
+    /// </summary>
+    internal static class HpEndAtHpBuilder
+    {
+        private const string LOG = "[HpEndAtHp]";
+
+        /// <summary>Trừ dao cắt "HP TO HP END" khỏi các solid HP đầu trong <paramref name="hpSolids"/> (sửa
+        /// TRỰC TIẾP). Lỗi 1 cặp → bỏ cặp, ghi Report. Trả khoá <c>"hpHandle~runHandle"</c> đã trừ thành công.</summary>
+        public static List<string> Apply(BuildContext ctx, IReadOnlyList<(PanelPart hp, Solid3d sol)> hpSolids)
+        {
+            var done = new List<string>();
+            if (hpSolids == null || hpSolids.Count == 0) return done;
+
+            var hps = ctx.Cls.OfType(PartType.HP).ToList();
+            if (hps.Count < 2) return done;
+
+            double b = ctx.Input.HpHeight;
+            if (b <= 0)
+            {
+                ctx.Report.Add($"{LOG} HpHeight ({b:0.#}) không hợp lệ → bỏ qua HP end tại HP.");
+                return done;
+            }
+            HpProfileService.LookupCR(b, out double c, out double r, out bool est);
+
+            foreach (var (h, sol) in hpSolids)
+            {
+                if (sol == null) continue;
+                var (e1, e2) = ClassifyUtil.Endpoints(h);
+                foreach (var (he, ho) in new[] { (e1, e2), (e2, e1) })
+                {
+                    PanelPart run = null; HpEndMatch best = null; HpEndMatch angleSkip = null; PanelPart angleRun = null;
+                    foreach (var m in hps)
+                    {
+                        if (ReferenceEquals(m, h)) continue;
+                        var (ra, rb) = ClassifyUtil.Endpoints(m);
+                        var bd = m.BellyDir;
+                        var res = HpEndAtHpGeometry.Match((he.X, he.Y), (ho.X, ho.Y), (ra.X, ra.Y), (rb.X, rb.Y),
+                                                          m.FootprintThickness, (bd.X, bd.Y), c, r);
+                        if (res.Ok) { if (best == null || res.Dist < best.Dist) { best = res; run = m; } }
+                        else if (res.Reject == "angle" && angleSkip == null) { angleSkip = res; angleRun = m; }
+                        else if (res.Reject == "noBelly" && DistToRun(he, m) <= m.FootprintThickness / 2.0 + HpEndAtHpGeometry.TOL_TOUCH)
+                            ctx.Report.Add($"{LOG} SKIP noBelly h={h.Id.Handle} m={m.Id.Handle} — HP chạy chưa có hướng bụng.");
+                    }
+                    if (best == null)
+                    {
+                        if (angleSkip != null)
+                            ctx.Report.Add($"{LOG} SKIP angle h={h.Id.Handle} m={angleRun.Id.Handle} " +
+                                           $"θ={Deg(angleSkip.CosTheta):0}° < 45° — giữ đầu vuông.");
+                        continue;
+                    }
+
+                    Solid3d cutter = null;
+                    try
+                    {
+                        cutter = BuildCutter(ctx, h, run, best, b, c, r);
+                        if (cutter == null)
+                        {
+                            ctx.Report.Add($"{LOG} Không dựng được dao cắt h={h.Id.Handle} m={run.Id.Handle} " +
+                                           $"(tiết diện lỗi / không còn mặt hàn) → HP giữ nguyên.");
+                            continue;
+                        }
+                        sol.BooleanOperation(BooleanOperationType.BoolSubtract, cutter);
+                        cutter = null;   // BoolSubtract đã tiêu thụ cutter
+                        done.Add($"{h.Id.Handle}~{run.Id.Handle}");
+                        double tRun = run.FootprintThickness;
+                        double p = best.Inside ? HpEndAtHpGeometry.BulbProtrusion(c, r, tRun) : 0.0;
+                        double d = HpEndAtHpGeometry.BulbHeight(b, tRun, c, r);
+                        ctx.Report.Add($"{LOG} HP-end-at-HP h={h.Id.Handle} m={run.Id.Handle} " +
+                                       $"{(best.Inside ? "INSIDE" : "OUTSIDE")} θ={Deg(best.CosTheta):0} p={p:0.#} d={d:0.##}" +
+                                       $"{(est ? " (c/r NỘI SUY)" : "")}");
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Debug.WriteLine($"{LOG} lỗi ({h.Id.Handle}~{run.Id.Handle}): {ex.Message}");
+                        ctx.Report.Add($"{LOG} Lỗi cắt h={h.Id.Handle} m={run.Id.Handle}: {ex.Message} → HP giữ nguyên.");
+                    }
+                    finally { cutter?.Dispose(); }
+                }
+            }
+            return done;
+        }
+
+        private static Solid3d BuildCutter(BuildContext ctx, PanelPart h, PanelPart run, HpEndMatch mt,
+                                           double b, double c, double r)
+        {
+            double tRun = run.FootprintThickness, tEnd = h.FootprintThickness;
+            if (tRun <= 1e-6 || tEnd <= 1e-6) return null;
+
+            var section = ctx.HpProfile.HpEndAtHpCutter(b, tRun, c, r, mt.Inside);
+            if (section == null) return null;
+            Region reg = GeometryUtil.RegionFrom(section);
+            if (reg == null) return null;
+
+            var n = new Vector3d(mt.Normal.X, mt.Normal.Y, 0).GetNormal();
+            Vector3d zl = n.CrossProduct(Vector3d.ZAxis);                   // ±trục HP chạy, hệ (n, Z, zl) thuận tay
+            double half = HpEndAtHpGeometry.HalfSpan(tEnd, tRun, c, r, mt.Inside, mt.CosTheta);
+
+            // Gốc = mặt tiếp xúc (đường tâm HP chạy + n·tRun/2) tại chân vuông góc đầu HP đầu, Z=0, lùi half dọc trục.
+            Point3d o = new Point3d(mt.Foot.X, mt.Foot.Y, 0) + n * (tRun / 2.0) - zl * half;
+
+            reg.TransformBy(Matrix3d.AlignCoordinateSystem(
+                Point3d.Origin, Vector3d.XAxis, Vector3d.YAxis, Vector3d.ZAxis,
+                o, n, Vector3d.ZAxis, zl));
+
+            var cutter = new Solid3d();
+            var sob = new SweepOptionsBuilder();
+            try { cutter.CreateExtrudedSolid(reg, zl * (2.0 * half), sob.ToSweepOptions()); }
+            catch { reg.Dispose(); cutter.Dispose(); return null; }
+            reg.Dispose();
+            return cutter;
+        }
+
+        private static double DistToRun(Point3d pt, PanelPart m) => ClassifyUtil.DistToSegment(pt, m);
+
+        private static double Deg(double cosTheta) => Math.Acos(Math.Min(1.0, Math.Abs(cosTheta))) * 180.0 / Math.PI;
+    }
+}
