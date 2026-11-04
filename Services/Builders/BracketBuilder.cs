@@ -296,7 +296,8 @@ namespace MCG_3DPanel.Services.Builders
                     dozY = (cy - part.Centroid.Y) >= 0 ? 1.0 : -1.0;
                     break;
             }
-            return normal.DotProduct(new Vector3d(1.0, dozY, 0)) >= 0 ? 1 : -1;
+            int sign = normal.DotProduct(new Vector3d(1.0, dozY, 0)) >= 0 ? 1 : -1;
+            return part.FlipFold ? -sign : sign;   // correction tab Result (OB↔IB hoặc ⇄) — xem BracketCoder
         }
 
         // ─── Đặt vào mặt đứng ─────────────────────────────────────────────

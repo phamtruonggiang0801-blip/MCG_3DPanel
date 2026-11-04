@@ -5,6 +5,8 @@ using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using MCG_3DPanel.Models;
 using MCG_3DPanel.Services.Classify;
+using MCG_3DPanel.Services.Corrections;
+using MCG_3DPanel.UI;
 
 namespace MCG_3DPanel.Services
 {
@@ -21,14 +23,16 @@ namespace MCG_3DPanel.Services
     {
         private const string LOG_PREFIX = "[ClassificationService]";
 
-        public ClassificationResult Classify(ObjectId blockRefId, PanelPosition position)
+        public ClassificationResult Classify(ObjectId blockRefId, PanelPosition position,
+            IReadOnlyDictionary<string, PartCorrection> corrections = null)
         {
             var result = new ClassificationResult();
             Database db = blockRefId.Database;
 
             using (Transaction tr = db.TransactionManager.StartTransaction())
             {
-                var topRef = (BlockReference)tr.GetObject(blockRefId, OpenMode.ForRead);
+                // openErased: Keep xoá block reference 2D — rebuild (tab Result) vẫn phải đọc lại được nó.
+                var topRef = (BlockReference)tr.GetObject(blockRefId, OpenMode.ForRead, true);
                 result.PanelBlockName = PartCollector.GetName(tr, topRef);
 
                 // 1. Thu thập
@@ -172,21 +176,71 @@ namespace MCG_3DPanel.Services
                 // 2. Web vs Bracket
                 WebBracketSplitter.Split(webCands, am0, hpParts, fbParts, result);
 
+                // 2-key. Khoá ổn định cho correction tab Result + đổi loại trong cùng họ (TRƯỚC khi tách GE/GB
+                //        và gán mã bracket, để các bước sau xử lý theo loại mới).
+                AssignSourceKeys(result, hpParts, fbParts);
+                ApplyTypeCorrections(result, corrections);
+
                 // 2a. Tầng Web DÀI (≥1000) có đầu chạm HP/FB → cắt GE (L<775) / GB
-                GirderEndSplitter.Apply(result, hpParts, fbParts);
+                GirderEndSplitter.Apply(result, hpParts, fbParts, corrections);
 
                 // 2b. Tách Girder End (GE) khỏi Bracket (collinear + liên tục với Web chính)
                 GirderEndDetector.Apply(result, hpParts, fbParts);
 
                 // 3. Mã bracket + hướng bụng HP
                 Point3d center = result.TopPlate?.Centroid ?? Point3d.Origin;
-                BracketCoder.Apply(result, hpParts, fbParts, position, center);
+                BracketCoder.Apply(result, hpParts, fbParts, position, center, corrections);
 
                 tr.Commit();
             }
 
             Debug.WriteLine($"{LOG_PREFIX} {result.Summary()}");
             return result;
+        }
+
+        /// <summary>
+        /// SourceKey = "{handle}#{i}", i = thứ tự xuất hiện trong nhóm part cùng Id (1 polyline tách nhiều đoạn).
+        /// Thứ tự duyệt TẤT ĐỊNH (List, không Hash) ⇒ cùng bản 2D cho cùng key giữa các lần phân loại.
+        /// </summary>
+        private static void AssignSourceKeys(ClassificationResult result, List<PanelPart> hpParts, List<PanelPart> fbParts)
+        {
+            var seen = new HashSet<PanelPart>();
+            var ordered = new List<PanelPart>();
+            foreach (var p in result.Parts.Concat(hpParts).Concat(fbParts))
+                if (seen.Add(p)) ordered.Add(p);
+            var counter = new Dictionary<ObjectId, int>();
+            foreach (var p in ordered)
+            {
+                counter.TryGetValue(p.Id, out int i);
+                p.SourceKey = $"{p.Id.Handle}#{i}";
+                counter[p.Id] = i + 1;
+            }
+        }
+
+        /// <summary>Đổi PartType trong cùng họ theo correction: Web↔Closed Plate, Flange↔Faceplate, Bracket↔Backing Plate.</summary>
+        private static void ApplyTypeCorrections(ClassificationResult result, IReadOnlyDictionary<string, PartCorrection> corrections)
+        {
+            if (corrections == null || corrections.Count == 0) return;
+            foreach (var p in result.Parts)
+            {
+                if (p.SourceKey == null || !corrections.TryGetValue(p.SourceKey, out var c)) continue;
+                PartType to = p.Type;
+                switch (ResultCatalog.ParseIntent(c.Kind))
+                {
+                    case CorrectionIntent.ClosedPlate when p.Type == PartType.Web: to = PartType.ClosedPlate; break;
+                    case CorrectionIntent.ForceWeb when p.Type == PartType.ClosedPlate: to = PartType.Web; break;
+                    case CorrectionIntent.Flange when p.Type == PartType.FacePlate: to = PartType.Flange; break;
+                    case CorrectionIntent.FacePlate when p.Type == PartType.Flange: to = PartType.FacePlate; break;
+                    case CorrectionIntent.BackingPlate when p.Type == PartType.Bracket: to = PartType.BackingPlate; break;
+                    case CorrectionIntent.BracketOB when p.Type == PartType.BackingPlate:
+                    case CorrectionIntent.BracketIB when p.Type == PartType.BackingPlate:
+                    case CorrectionIntent.BracketBF when p.Type == PartType.BackingPlate: to = PartType.Bracket; break;
+                }
+                if (to == p.Type) continue;
+                result.Notes.Add($"[Correction] {p.SourceKey}: {p.Type} → {to}.");
+                p.Type = to;
+                if (to != PartType.Bracket && to != PartType.GirderEnd) p.Code = null;
+            }
         }
 
         /// <summary>
