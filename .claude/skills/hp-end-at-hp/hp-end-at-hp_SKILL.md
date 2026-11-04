@@ -1,6 +1,6 @@
 ---
 name: hp-end-at-hp
-description: Quy cách "HP TO HP END" — đầu HP kết thúc tại lưng/bụng (thân) HP khác: mặt hàn trên + cung R30 cố định, khoảng lùi p+30 thoát bulb (BULB INSIDE p=c+r−t, OUTSIDE p=0); nhận diện + dao cắt theo mặt cắt HP chạy (đúng cả HP xiên). Đọc khi dựng/nhận diện đầu HP chạm thân HP khác.
+description: Quy cách "HP TO HP END" + "HP TO FB END" (§7: mặt hàn h_fb−15 + vát 30°, FB cao ⇒ R30) — đầu HP kết thúc tại lưng/bụng (thân) HP khác: mặt hàn trên + cung R30 cố định, khoảng lùi p+30 thoát bulb (BULB INSIDE p=c+r−t, OUTSIDE p=0); nhận diện + dao cắt theo mặt cắt HP chạy (đúng cả HP xiên). Đọc khi dựng/nhận diện đầu HP chạm thân HP hoặc FB khác.
 ---
 
 # HP End tại HP — đầu HP kết thúc tại lưng/bụng HP khác
@@ -97,3 +97,42 @@ Nhiều `m` hợp lệ → lấy `Dist` nhỏ nhất.
 - [ ] Nếu solid HP đầu bị cắt hụt/thừa ở ca xiên → xem `HalfSpan` và chiều `Normal`.
 
 Liên quan: [[hp-profile]] · [[sniped-end]] · [[web-hp-cutout]].
+
+## 7. HP end tại FB — "HP TO FB END" (kỹ sư 2026-11-04)
+
+Spec: `docs/superpowers/specs/2026-11-04-hp-end-at-fb-design.md`.
+
+**Nguồn:** `CAS.dump.json` `*Model_Space`, MText "HP TO FB END". Tấm 6 (y 1648.66–1654.66); FB chạy = polyline
+`1F20B` 6×80 (x 568.34–574.34); HP120 mặt bên, mặt đầu áp mặt FB x=574.34 từ đỉnh xuống y=1583.66 (= đáy FB
++ **15**, dim Rotated 15); line vát (574.34,1583.66)→(669.60,1528.66) dx 95.26 dy 55 = **30° so với đáy HP**
+(dim góc 0.5236).
+
+**Quy cách** (hệ mặt cắt FB chạy, như §2):
+
+```
+ Tấm ═══════════════════════════
+   ┃│ HP đầu
+ FB┃│   ← mặt hàn x'=0: 0 → −(h_fb − 15)
+   ┃ ╲    ← vát 30° so với đáy HP, tới ((b−h_fb+15)·√3, −b)
+ ──┸15 ╲________ đáy HP
+```
+
+- **15 và 30° CỐ ĐỊNH mọi cỡ FB/HP.** Vát phủ hết bề rộng HP đầu kể cả bulb (như `SnipHpEnd`).
+- **FB cao** (`h_fb − 15 ≥ b`): dùng biên dạng HP–HP **p = 0** (§2, R30, lùi 30).
+- `h_fb ≤ 15` ⇒ không dựng dao cắt (Report). `FlatBarHeight = 0` ⇒ không xét FB (Report `SKIP FB`).
+- FB không bulb ⇒ không INSIDE/OUTSIDE. `h_fb` = `ctx.Input.FlatBarHeight` (1 giá trị/panel).
+
+**Nhận diện:** y hệt §3 với `runIsFb: true` — bỏ `noBelly`, `Inside=false`, `p=0` (far = `t_fb/2 + 10`);
+thò ≥ 5 qua mặt web HP đầu, joint 25, góc ≥ 45° giữ nguyên. Ứng viên chạy = mọi HP + mọi đoạn FlatBar
+(sau `FlatBarSplitter` — chữ T HP dừng tại FB KHÔNG làm FB đứt); lấy gần nhất.
+
+**Dao cắt:** cách A (§4) trong mặt cắt FB, extrude dọc trục FB. Biên dạng
+`HpEndAtHpGeometry.FbCutterOutline` = `(−W,+M) → (0,+M) → (0,−(h_fb−15)) → ((b+M−(h_fb−15))·√3, −b−M) → (−W,−b−M)`,
+`W = t_fb + c + r + 2`. Span: `HalfSpanX(t_h, c, r, xMax, cosθ)` với `xMax` = |X| lớn nhất của dao (vát ~100mm).
+Nối dài khi vẽ hụt (Gap) + không vát Sniped End: dùng chung với HP–HP.
+
+**Cài đặt:** `HpEndAtHpGeometry.FbCutterOutline/HalfSpanX/Match(runIsFb)` (test `HpEndAtFbTests`),
+`HpProfileService.HpEndAtFbCutter`, `HpEndAtHpBuilder.Runs/FindRun/BuildCutter`; `Build3DService` gọi khi ≥ 1 HP.
+Report: `[HpEndAtHp] HP-end-at-FB h=.. m=.. θ=.. hfb=.. weld=.. mode=CHAMFER|R30`.
+
+- [ ] **Chưa test trực quan** (người dùng tự test).
