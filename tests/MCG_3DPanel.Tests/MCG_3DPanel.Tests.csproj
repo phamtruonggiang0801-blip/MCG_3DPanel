@@ -14,6 +14,9 @@
     <Compile Include="..\..\UI\ResultCatalog.cs" Link="ResultCatalog.cs" />
     <Compile Include="..\..\Services\Corrections\PartCorrection.cs" Link="PartCorrection.cs" />
     <Compile Include="..\..\Services\Corrections\CorrectionJson.cs" Link="CorrectionJson.cs" />
+    <Compile Include="..\..\Services\Corrections\SourceMeta.cs" Link="SourceMeta.cs" />
+    <Compile Include="..\..\Models\PanelInput.cs" Link="PanelInput.cs" />
+    <Compile Include="..\..\Models\PanelPosition.cs" Link="PanelPosition.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -166,6 +166,7 @@ namespace MCG_3DPanel.Commands
             build.SourceRefId = src2D;
             build.SourceBtrId = btr2D;
             build.SourceTransform = xform;
+            WriteSourceMeta(db, build);
             build.Input = input;
             build.Position = position;
             build.BuildSeconds = sw.Elapsed.TotalSeconds;
@@ -228,10 +229,18 @@ namespace MCG_3DPanel.Commands
         private static void RebuildOne(Document doc, BuildResult old)
         {
             Database db = doc.Database;
+            // Block reference 2D còn (kể cả đã xoá khi Keep, trong phiên) ⇒ dùng luôn. Không còn (đã đóng/mở lại
+            // bản vẽ) ⇒ CHÈN TẠM định nghĩa 2D bằng ma trận đã lưu, build xong xoá (spec §14).
+            ObjectId tempRef = ObjectId.Null;
             if (!SourceStillExists(db, old.SourceRefId))
             {
-                Rebuilt?.Invoke(old, null, "Source 2D block no longer exists — cannot rebuild.");
-                return;
+                tempRef = InsertTempSource(db, old.SourceBtrId, old.SourceTransform);
+                if (tempRef.IsNull)
+                {
+                    Rebuilt?.Invoke(old, null, "Source 2D block no longer exists — cannot rebuild.");
+                    return;
+                }
+                old.SourceRefId = tempRef;
             }
 
             // Ghi correction xuống DWG (XRecord BTR 2D) TRƯỚC khi build — cùng bước Undo với lần rebuild.
@@ -251,6 +260,11 @@ namespace MCG_3DPanel.Commands
             {
                 Rebuilt?.Invoke(old, null, "Rebuild failed: " + ex.Message + " — previous 3D kept.");
                 return;
+            }
+            finally
+            {
+                // Block 2D chèn tạm: xoá ngay (vẫn mở lại được bằng openErased cho lần rebuild sau trong phiên).
+                if (!tempRef.IsNull) EraseObject(db, tempRef);
             }
             if (neu.SolidCount == 0)
             {
@@ -304,6 +318,122 @@ namespace MCG_3DPanel.Commands
                 : $"Rebuilt {neu.PanelBlockName}, but the previous 3D block could not be replaced: {replaceError}";
             if (saveError != null) msg += "  " + saveError;
             Rebuilt?.Invoke(old, neu, msg);
+        }
+
+        // ─── Metadata rebuild-sau-mở-lại (XRecord MCG3D_SOURCE trên BTR 3D) ─────────────
+
+        private static void WriteSourceMeta(Database db, BuildResult build)
+        {
+            if (build.BtrId.IsNull || build.SourceBtrId.IsNull) return;
+            var meta = new SourceMeta
+            {
+                SourceBtrHandle = build.SourceBtrId.Handle.ToString(),
+                Transform = build.SourceTransform.ToArray(),
+                Input = build.Input,
+                Position = build.Position,
+            };
+            try
+            {
+                using (Transaction tr = db.TransactionManager.StartTransaction())
+                {
+                    CorrectionXRecord.Write(tr, build.BtrId, CorrectionXRecord.SourceKey, meta.ToJson());
+                    tr.Commit();
+                }
+            }
+            catch (System.Exception ex) { build.Report.Add($"[SourceMeta] không ghi được: {ex.Message}"); }
+        }
+
+        /// <summary>Đọc metadata nguồn của 1 block 3D thành BuildResult "cũ" để rebuild. null nếu thiếu/hỏng.</summary>
+        private static BuildResult StubFrom3D(Transaction tr, Database db, BlockReference br3D)
+        {
+            var meta = SourceMeta.FromJson(CorrectionXRecord.Read(tr, br3D.BlockTableRecord, CorrectionXRecord.SourceKey));
+            if (meta == null) return null;
+            if (!long.TryParse(meta.SourceBtrHandle, System.Globalization.NumberStyles.HexNumber, null, out long h)) return null;
+            if (!db.TryGetObjectId(new Handle(h), out ObjectId btr2D)) return null;
+            var btr3D = (BlockTableRecord)tr.GetObject(br3D.BlockTableRecord, OpenMode.ForRead);
+            return new BuildResult
+            {
+                BlockRefId = br3D.ObjectId,
+                BtrId = br3D.BlockTableRecord,
+                BlockName = btr3D.Name,
+                SourceBtrId = btr2D,
+                SourceTransform = new Matrix3d(meta.Transform),
+                Input = meta.Input,
+                Position = meta.Position,
+                Kept = true,
+            };
+        }
+
+        /// <summary>Chèn tạm định nghĩa block 2D vào Model Space theo ma trận đã lưu. Null nếu định nghĩa không còn.</summary>
+        private static ObjectId InsertTempSource(Database db, ObjectId btr2D, Matrix3d xform)
+        {
+            if (btr2D.IsNull || btr2D.IsErased || btr2D.Database != db) return ObjectId.Null;
+            try
+            {
+                using (Transaction tr = db.TransactionManager.StartTransaction())
+                {
+                    var ms = (BlockTableRecord)tr.GetObject(SymbolUtilityServices.GetBlockModelSpaceId(db), OpenMode.ForWrite);
+                    var br = new BlockReference(Point3d.Origin, btr2D);
+                    br.TransformBy(xform);
+                    ObjectId id = ms.AppendEntity(br);
+                    tr.AddNewlyCreatedDBObject(br, true);
+                    tr.Commit();
+                    return id;
+                }
+            }
+            catch { return ObjectId.Null; }
+        }
+
+        private static void EraseObject(Database db, ObjectId id)
+        {
+            try
+            {
+                using (Transaction tr = db.TransactionManager.StartTransaction())
+                {
+                    var o = tr.GetObject(id, OpenMode.ForWrite, true);
+                    if (!o.IsErased) o.Erase();
+                    tr.Commit();
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Nút "Load 3D…" (tab Result): chọn các block 3D MCG3D_* có sẵn (vd sau khi mở lại bản vẽ) → rebuild từng
+        /// cái từ định nghĩa 2D + correction đã lưu trong DWG để bảng có đủ thông tin part (spec §14).
+        /// </summary>
+        [CommandMethod("MCG_Load3DPanel")]
+        public void Load3DCommand()
+        {
+            Document doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            Editor ed = doc.Editor;
+            var pso = new PromptSelectionOptions { MessageForAdding = "\nChọn (các) block 3D MCG3D_* để nạp lên tab Result:" };
+            var filter = new SelectionFilter(new[]
+            {
+                new TypedValue((int)DxfCode.Start, "INSERT"),
+                new TypedValue((int)DxfCode.BlockName, "MCG3D_*"),
+            });
+            PromptSelectionResult psr = ed.GetSelection(pso, filter);
+            if (psr.Status != PromptStatus.OK) return;
+
+            Database db = doc.Database;
+            var stubs = new List<BuildResult>();
+            var missing = new List<string>();
+            using (Transaction tr = db.TransactionManager.StartTransaction())
+            {
+                foreach (ObjectId id in psr.Value.GetObjectIds())
+                {
+                    var br = (BlockReference)tr.GetObject(id, OpenMode.ForRead);
+                    var stub = StubFrom3D(tr, db, br);
+                    if (stub != null) stubs.Add(stub);
+                    else missing.Add(((BlockTableRecord)tr.GetObject(br.BlockTableRecord, OpenMode.ForRead)).Name);
+                }
+                tr.Commit();
+            }
+            if (missing.Count > 0)
+                Rebuilt?.Invoke(null, null, $"This 3D block has no source info — re-run Build 3D: {string.Join(", ", missing)}");
+            foreach (var stub in stubs) RebuildOne(doc, stub);
         }
 
         /// <summary>Block reference 2D nguồn còn đọc được (kể cả đã xoá khi Keep) và định nghĩa block chưa bị PURGE.</summary>

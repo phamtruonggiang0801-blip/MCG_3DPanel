@@ -48,6 +48,8 @@
 
         <!-- ===== Row 0: Thanh công cụ ===== -->
         <WrapPanel Grid.Row="0" Margin="1,0,1,2">
+            <Button x:Name="BtnLoad3D" Content="Load 3D…" Style="{StaticResource ToolbarButtonStyle}"
+                    Click="BtnLoad3D_Click" ToolTip="Pick existing MCG3D_* blocks (e.g. after reopening the drawing) and list them here"/>
             <Button x:Name="BtnExport" Content="Export CSV" Style="{StaticResource ToolbarPrimaryButtonStyle}"
                     Click="BtnExport_Click" ToolTip="Export the table (incl. corrections) to a CSV file"/>
             <Button x:Name="BtnCopy" Content="Copy" Style="{StaticResource ToolbarButtonStyle}"

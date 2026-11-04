@@ -36,6 +36,8 @@ namespace MCG_3DPanel.UI
             if (neu != null)
             {
                 int i = _builds.IndexOf(old);
+                // Load 3D… nạp lại panel đã có trên bảng ⇒ thay đúng dòng cũ theo tên block (không nhân đôi).
+                if (i < 0) i = _builds.FindIndex(b => b.BlockName == neu.BlockName);
                 if (i >= 0) _builds[i] = neu; else _builds.Add(neu);
             }
             // Nạp lại cả khi thất bại: correction vẫn còn trong kho → dòng hiện đúng trạng thái đã sửa.
@@ -219,6 +221,16 @@ namespace MCG_3DPanel.UI
         private void MnuZoomTo_Click(object sender, RoutedEventArgs e)
         {
             if (GridResult.SelectedItem is ResultRow row) Show(row);
+        }
+
+        // ─── Load 3D… (sau khi mở lại bản vẽ) ─────────────────────────────
+
+        private void BtnLoad3D_Click(object sender, RoutedEventArgs e)
+        {
+            var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            SetStatus("Select the MCG3D_* blocks to load…");
+            doc.SendStringToExecute("MCG_Load3DPanel ", true, false, false);
         }
 
         // ─── Copy / Export ────────────────────────────────────────────────
