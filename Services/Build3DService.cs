@@ -96,10 +96,11 @@ namespace MCG_3DPanel.Services
                     made++;
                     FillGeometry(info, sol);
                     builtMap[part] = (sol, info);
-                    result.Solids.Add(new BuiltSolid { SolidId = sol.ObjectId, Part = part, Type = part.Type.ToString() });
+                    result.Solids.Add(new BuiltSolid { SolidId = sol.ObjectId, Part = part, Type = part.Type.ToString(), DeleteKey = part.SourceKey });
 
                     // Solid phụ ĐỘC LẬP builder sinh kèm (flange GE/GB) — Layer/Color builder đã gán sẵn
                     // (theo Flange girder gốc), KHÔNG ghi đè bằng layer của part.
+                    int extraIdx = 0;   // DeleteKey solid phụ = "{SourceKey part}/{Type}#{i}"
                     foreach (var x in ctx.Extras)
                     {
                         btr.AppendEntity(x.Solid);
@@ -109,7 +110,7 @@ namespace MCG_3DPanel.Services
                         var xInfo = new BuiltPartInfo { Handle = xh, Type = x.Type, Code = x.Code, Built = true };
                         result.Parts.Add(xInfo);
                         FillGeometry(xInfo, x.Solid);
-                        result.Solids.Add(new BuiltSolid { SolidId = x.Solid.ObjectId, Type = x.Type, Code = x.Code });
+                        result.Solids.Add(new BuiltSolid { SolidId = x.Solid.ObjectId, Type = x.Type, Code = x.Code, DeleteKey = $"{part.SourceKey}/{x.Type}#{extraIdx++}" });
                         ctx.Report.Add($"[{x.Type}] solid {xh} của {part.Code} {handle} · layer={x.Solid.Layer}");
                     }
                     ctx.Extras.Clear();
@@ -168,7 +169,7 @@ namespace MCG_3DPanel.Services
                     var cInfo = new BuiltPartInfo { Handle = ch, Type = "CollarPlate", Code = tag, Built = true };
                     result.Parts.Add(cInfo);
                     FillGeometry(cInfo, collar);
-                    result.Solids.Add(new BuiltSolid { SolidId = collar.ObjectId, Type = "CollarPlate" });
+                    result.Solids.Add(new BuiltSolid { SolidId = collar.ObjectId, Type = "CollarPlate", DeleteKey = "CollarPlate:" + tag });
                     ctx.Report.Add($"[Collar] solid {ch} = {tag}");
                 }
 
@@ -183,7 +184,7 @@ namespace MCG_3DPanel.Services
                     var bInfo = new BuiltPartInfo { Handle = ch, Type = "HpEndBracketB", Code = tag, Built = true };
                     result.Parts.Add(bInfo);
                     FillGeometry(bInfo, brkt);
-                    result.Solids.Add(new BuiltSolid { SolidId = brkt.ObjectId, Type = "HpEndBracketB" });
+                    result.Solids.Add(new BuiltSolid { SolidId = brkt.ObjectId, Type = "HpEndBracketB", DeleteKey = "HpEndBracketB:" + tag });
                     ctx.Report.Add($"[BracketB] solid {ch} = {tag}");
                 }
 
@@ -213,6 +214,17 @@ namespace MCG_3DPanel.Services
                     try { s.Volume = solid.MassProperties.Volume; }
                     catch { /* để null nếu AutoCAD không tính được (hình phức tạp) */ }
                 }
+
+                // Delete (tab Result): chỉ xoá đúng solid có DeleteKey trong danh sách — SAU mọi boolean/hợp nhất,
+                // không nhận diện lại gì. Giữ dòng trong Solids (Deleted=true) để bảng hiện gạch ngang + Restore.
+                if (cls.DeletedKeys != null && cls.DeletedKeys.Count > 0)
+                    foreach (var s in result.Solids.Where(x => x.DeleteKey != null && cls.DeletedKeys.Contains(x.DeleteKey)))
+                    {
+                        tr.GetObject(s.SolidId, OpenMode.ForWrite).Erase();
+                        s.Deleted = true;
+                        made--;
+                        ctx.Report.Add($"[Delete] solid {s.SolidId.Handle} ({s.Type} {s.DeleteKey}) xoá theo tab Result.");
+                    }
 
                 result.BlockRefId = bref.ObjectId;
                 result.BtrId = btrId;

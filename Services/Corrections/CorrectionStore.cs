@@ -32,6 +32,19 @@ namespace MCG_3DPanel.Services.Corrections
             d[sourceKey] = c;
         }
 
+        // ─── Delete / Restore solid (theo DeleteKey của BuiltSolid) ───
+        private static readonly Dictionary<string, HashSet<string>> _deleted = new Dictionary<string, HashSet<string>>();
+
+        public static IReadOnlyCollection<string> Deleted(string panelKey) =>
+            panelKey != null && _deleted.TryGetValue(panelKey, out var s) ? s : (IReadOnlyCollection<string>)new string[0];
+
+        public static void SetDeleted(string panelKey, string deleteKey, bool deleted)
+        {
+            if (string.IsNullOrEmpty(panelKey) || string.IsNullOrEmpty(deleteKey)) return;
+            if (!_deleted.TryGetValue(panelKey, out var s)) _deleted[panelKey] = s = new HashSet<string>();
+            if (deleted) s.Add(deleteKey); else s.Remove(deleteKey);
+        }
+
         /// <summary>Bản vẽ sắp đóng: bỏ mọi correction của Database đó (con trỏ có thể bị DB mới dùng lại).</summary>
         public static void ClearDatabase(Database db)
         {
@@ -39,6 +52,8 @@ namespace MCG_3DPanel.Services.Corrections
             string prefix = $"{db.UnmanagedObject.ToInt64():X}:";
             foreach (var k in new List<string>(_store.Keys))
                 if (k.StartsWith(prefix)) _store.Remove(k);
+            foreach (var k in new List<string>(_deleted.Keys))
+                if (k.StartsWith(prefix)) _deleted.Remove(k);
         }
 
         public static void Clear(string panelKey, string sourceKey)

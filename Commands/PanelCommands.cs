@@ -147,6 +147,7 @@ namespace MCG_3DPanel.Commands
         {
             var sw = Stopwatch.StartNew();
             cls = new ClassificationService().Classify(src2D, position, CorrectionStore.For(CorrectionStore.PanelKey(src2D)));
+            cls.DeletedKeys = CorrectionStore.Deleted(CorrectionStore.PanelKey(src2D));
             BuildResult build = new Build3DService().Build(db, cls, input, position);
             build.PanelBlockName = cls.PanelBlockName;
             build.SourceRefId = src2D;

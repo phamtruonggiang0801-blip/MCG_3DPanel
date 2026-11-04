@@ -98,6 +98,8 @@ namespace MCG_3DPanel.Services
         /// <summary>Correction tab Result đã áp khi phân loại (theo SourceKey) — builder đọc phần không thuộc
         /// phân loại (Sniped End từng đầu, solid bị xoá).</summary>
         public IReadOnlyDictionary<string, Corrections.PartCorrection> Corrections { get; set; }
+        /// <summary>DeleteKey các solid người dùng đã Delete (Build3DService xoá sau mọi boolean).</summary>
+        public IReadOnlyCollection<string> DeletedKeys { get; set; }
 
         public IEnumerable<PanelPart> OfType(PartType t) => Parts.Where(p => p.Type == t);
 

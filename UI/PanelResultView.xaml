@@ -20,6 +20,12 @@
                         <Setter Property="Foreground" Value="#FF0050C8"/>
                         <Setter Property="FontWeight" Value="SemiBold"/>
                     </DataTrigger>
+                    <!-- Solid đã Delete: xám nghiêng (chuột phải → Restore). Đặt SAU để thắng màu xanh. -->
+                    <DataTrigger Binding="{Binding Deleted}" Value="True">
+                        <Setter Property="Foreground" Value="#FF9A9A9A"/>
+                        <Setter Property="FontStyle" Value="Italic"/>
+                        <Setter Property="FontWeight" Value="Normal"/>
+                    </DataTrigger>
                 </Style.Triggers>
             </Style>
 
@@ -57,8 +63,12 @@
                   SelectionMode="Single"
                   SelectionChanged="GridResult_SelectionChanged">
             <DataGrid.ContextMenu>
-                <ContextMenu>
+                <ContextMenu Opened="GridMenu_Opened">
                     <MenuItem Header="Zoom to Object" Click="MnuZoomTo_Click"/>
+                    <MenuItem x:Name="MnuDelete" Header="Delete" Click="MnuDelete_Click"
+                              ToolTip="Remove only this solid from the 3D block (kept across rebuilds; Restore to undo)"/>
+                    <MenuItem x:Name="MnuRestore" Header="Restore" Click="MnuRestore_Click"
+                              ToolTip="Bring this deleted solid back, then rebuild"/>
                     <MenuItem Header="Clear Correction" Click="MnuClearCorrection_Click"
                               ToolTip="Remove the Kind and direction correction of the selected row, then rebuild"/>
                     <Separator/>

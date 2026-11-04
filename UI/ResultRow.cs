@@ -24,7 +24,10 @@ namespace MCG_3DPanel.UI
         public string DetectedKind { get; set; }
         public List<KindOption> Options { get; set; } = new List<KindOption>();
         /// <summary>Có part 2D + có lựa chọn ⇒ hiện dropdown; còn lại (solid sinh thêm, HP, FB…) chỉ đọc.</summary>
-        public bool KindEditable => !string.IsNullOrEmpty(SourceKey) && Options.Count > 1;
+        public bool KindEditable => !Deleted && !string.IsNullOrEmpty(SourceKey) && Options.Count > 1;
+        /// <summary>Solid đã Delete (correction) — dòng mờ, chuột phải Restore.</summary>
+        public bool Deleted { get; set; }
+        internal string DeleteKey { get; set; }
         public string Size { get; set; }
         public bool CanFlip { get; set; }
         public string Flags { get; set; }
@@ -87,7 +90,7 @@ namespace MCG_3DPanel.UI
             if (build == null || build.BlockRefId.IsNull) return new List<ResultRow>();
             string panelKey = CorrectionStore.PanelKey(build.SourceRefId);
             return build.Solids
-                .Where(s => !s.SolidId.IsNull && (includeErased || !s.SolidId.IsErased))
+                .Where(s => !s.SolidId.IsNull && (includeErased || s.Deleted || !s.SolidId.IsErased))
                 .Select(s => Make(build, s, panelKey))
                 .OrderBy(r => r.Family).ThenBy(r => r.Kind).ThenBy(r => r.Size).ThenBy(r => r.Handle)
                 .ToList();
@@ -106,10 +109,12 @@ namespace MCG_3DPanel.UI
                 Family = d.Family,
                 DetectedKind = corr?.OriginalKind ?? d.Kind,
                 Options = d.Options,
-                CanFlip = d.CanFlip && p != null,
+                CanFlip = d.CanFlip && p != null && !s.Deleted,
                 Size = SizeOf(build.Input, p, d.Family),
-                Flags = SnipFlags(p),
-                IsCorrected = corr != null,
+                Flags = s.Deleted ? "deleted" : SnipFlags(p),
+                IsCorrected = corr != null || s.Deleted,
+                Deleted = s.Deleted,
+                DeleteKey = s.DeleteKey,
                 Path = new[] { build.BlockRefId, s.SolidId },
                 Bounds = s.Bounds,
                 Solid = s,
@@ -119,7 +124,7 @@ namespace MCG_3DPanel.UI
             };
             row.Kind = d.Kind;
             row.Flipped = corr?.FlipDir == true;
-            if (p != null && (p.Type == PartType.HP || p.Type == PartType.FlatBar))
+            if (p != null && !s.Deleted && (p.Type == PartType.HP || p.Type == PartType.FlatBar))
             {
                 var (a, b) = Services.Classify.ClassifyUtil.Endpoints(p);
                 var (lo, hi) = ResultCatalog.EndLabels(b.X - a.X, b.Y - a.Y);

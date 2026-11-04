@@ -90,7 +90,7 @@ namespace MCG_3DPanel.UI
 
             if (keepSourceKey != null)
             {
-                var row = rows.FirstOrDefault(r => r.PanelKey == keepPanelKey && r.SourceKey == keepSourceKey);
+                var row = rows.FirstOrDefault(r => r.PanelKey == keepPanelKey && (r.SourceKey ?? r.DeleteKey) == keepSourceKey);
                 if (row != null)
                 {
                     GridResult.SelectedItem = row;      // SelectionChanged → highlight
@@ -152,6 +152,27 @@ namespace MCG_3DPanel.UI
 
         private void BtnSnip_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e) => EntityHighlighter.ClearPoint();
 
+        // ─── Delete / Restore solid ───────────────────────────────────────
+
+        private void GridMenu_Opened(object sender, RoutedEventArgs e)
+        {
+            var row = GridResult.SelectedItem as ResultRow;
+            bool can = row != null && !string.IsNullOrEmpty(row.DeleteKey);
+            MnuDelete.Visibility = can && !row.Deleted ? Visibility.Visible : Visibility.Collapsed;
+            MnuRestore.Visibility = can && row.Deleted ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void MnuDelete_Click(object sender, RoutedEventArgs e) => SetDeleted(true);
+        private void MnuRestore_Click(object sender, RoutedEventArgs e) => SetDeleted(false);
+
+        private void SetDeleted(bool deleted)
+        {
+            if (!(GridResult.SelectedItem is ResultRow row) || string.IsNullOrEmpty(row.DeleteKey)) return;
+            CorrectionStore.SetDeleted(row.PanelKey, row.DeleteKey, deleted);
+            EntityHighlighter.Clear();
+            Rebuild(row);
+        }
+
         private void MnuClearCorrection_Click(object sender, RoutedEventArgs e)
         {
             if (!(GridResult.SelectedItem is ResultRow row)) return;
@@ -162,7 +183,7 @@ namespace MCG_3DPanel.UI
 
         private void Rebuild(ResultRow row)
         {
-            _reselect = (row.PanelKey, row.SourceKey);
+            _reselect = (row.PanelKey, row.SourceKey ?? row.DeleteKey);
             SetStatus($"Rebuilding {row.Panel}…");
             PanelCommands.RequestRebuild(row.Build);
         }
@@ -171,6 +192,7 @@ namespace MCG_3DPanel.UI
 
         private void Show(ResultRow row)
         {
+            if (row.Deleted) { SetStatus("Deleted — right-click Restore to bring it back."); return; }
             // Sau Ctrl+Z (undo rebuild) solid của bảng có thể đã bị xoá — không highlight, chỉ báo.
             if (row.Solid == null || row.Solid.SolidId.IsNull || row.Solid.SolidId.IsErased)
             {

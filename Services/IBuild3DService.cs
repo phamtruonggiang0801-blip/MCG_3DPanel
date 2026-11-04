@@ -58,6 +58,11 @@ namespace MCG_3DPanel.Services
         public double? Volume { get; set; }
         /// <summary>Code các GE/GB đã hợp nhất vào solid Web này (vd "GE-HP") — để tab Result vẫn ghi rõ GE/GB.</summary>
         public System.Collections.Generic.List<string> MergedCodes { get; } = new System.Collections.Generic.List<string>();
+        /// <summary>Khoá Delete/Restore (tab Result): part = SourceKey; solid phụ = "{SourceKey}/{Type}#{i}";
+        /// Collar = "CollarPlate:{tag}"; Bracket B = "HpEndBracketB:{tag}".</summary>
+        public string DeleteKey { get; set; }
+        /// <summary>Đã xoá theo correction Delete (solid erased, dòng vẫn hiện để Restore).</summary>
+        public bool Deleted { get; set; }
     }
 
     /// <summary>1 dòng trạng thái build của 1 <see cref="Services.PanelPart"/> — dùng cho report JSON.</summary>
