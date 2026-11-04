@@ -69,11 +69,44 @@ namespace MCG_3DPanel.Services.Builders
         /// </summary>
         public static double HalfSpan(double tEnd, double tRun, double c, double r, bool inside, double cosTheta)
         {
-            double cos = Math.Min(1.0, Math.Abs(cosTheta));
-            double sin = Math.Sqrt(Math.Max(1e-12, 1.0 - cos * cos));
             double p = inside ? BulbProtrusion(c, r, tRun) : 0.0;
             double w = tRun + c + r + MARGIN;
-            return (c + r + tEnd) / sin + (p + R + w) * cos / sin + SPAN_MARGIN;
+            return HalfSpanX(tEnd, c, r, p + R + w, cosTheta);
+        }
+
+        /// <summary>Nửa span tổng quát: <paramref name="xMax"/> = bề rộng x' lớn nhất của dao cắt (|X| lớn nhất
+        /// các đỉnh) — vát FB vươn ~100mm, không chỉ p+R.</summary>
+        public static double HalfSpanX(double tEnd, double c, double r, double xMax, double cosTheta)
+        {
+            double cos = Math.Min(1.0, Math.Abs(cosTheta));
+            double sin = Math.Sqrt(Math.Max(1e-12, 1.0 - cos * cos));
+            return (c + r + tEnd) / sin + Math.Abs(xMax) * cos / sin + SPAN_MARGIN;
+        }
+
+        /// <summary>"HP TO FB END": mặt hàn dừng cách ĐÁY FB 15mm — cố định mọi cỡ (kỹ sư 2026-11-04).</summary>
+        public const double FB_WELD_CLEAR = 15.0;
+        private static readonly double Tan60 = Math.Sqrt(3.0);
+
+        /// <summary>
+        /// Dao cắt <b>"HP TO FB END"</b> (CAS.dump.json, polyline FB <c>1F20B</c>) trong MẶT CẮT FB CHẠY (cùng hệ x'–y
+        /// với <see cref="CutterOutline"/>): mặt hàn <c>x'=0</c> từ 0 xuống <c>yW = −(hFb − 15)</c>, rồi VÁT 30° so
+        /// với đáy HP tới <c>((b − (hFb−15))·√3, −b)</c> — kéo qua đáy thêm <see cref="MARGIN"/>. Phủ cả phần HP đầu
+        /// vẽ lấn qua mặt tiếp xúc (<c>W = tFb + c + r + M</c>). FB cao (<c>hFb − 15 ≥ b</c>) ⇒ biên dạng HP–HP p=0
+        /// (<see cref="CutterOutline"/> OUTSIDE). null nếu tham số vô lý / <c>hFb ≤ 15</c>.
+        /// </summary>
+        public static List<(double X, double Y, double Bulge)> FbCutterOutline(double b, double hFb, double tFb, double c, double r)
+        {
+            if (b <= 0 || tFb <= 0 || c <= 0 || r <= 0) return null;
+            double weld = hFb - FB_WELD_CLEAR;
+            if (weld <= 0) return null;
+            if (weld >= b) return CutterOutline(b, tFb, c, r, inside: false);
+
+            double w = tFb + c + r + MARGIN, yB = -b - MARGIN;
+            double xB = (b + MARGIN - weld) * Tan60;
+            return new List<(double X, double Y, double Bulge)>
+            {
+                (-w, MARGIN, 0), (0, MARGIN, 0), (0, -weld, 0), (xB, yB, 0), (-w, yB, 0),
+            };
         }
 
         /// <summary>Dung sai chạm thêm ngoài mặt web (+ p phía bụng — người vẽ có thể dừng HP đầu ở mép bulb).</summary>
@@ -99,7 +132,7 @@ namespace MCG_3DPanel.Services.Builders
         public static HpEndMatch Match((double X, double Y) end, (double X, double Y) otherEnd,
                                        (double X, double Y) runA, (double X, double Y) runB,
                                        double tRun, (double X, double Y) runBelly, double c, double r,
-                                       double tEnd = 0)
+                                       double tEnd = 0, bool runIsFb = false)
         {
             var m = new HpEndMatch();
             double ax = runB.X - runA.X, ay = runB.Y - runA.Y, len = Math.Sqrt(ax * ax + ay * ay);
@@ -128,9 +161,12 @@ namespace MCG_3DPanel.Services.Builders
             if ((nearA && (ovA < OVERHANG_MIN || m.CosTheta > MAX_COS)) ||
                 (nearB && (ovB < OVERHANG_MIN || m.CosTheta > MAX_COS))) return m.Fail("joint");
 
-            double bLen = Math.Sqrt(runBelly.X * runBelly.X + runBelly.Y * runBelly.Y);
-            if (bLen < 1e-9) return m.Fail("noBelly");
-            m.Inside = runBelly.X * m.Normal.X + runBelly.Y * m.Normal.Y > 0;
+            if (!runIsFb)   // FB không có bulb ⇒ không cần hướng bụng, Inside=false, p=0 ("HP TO FB END")
+            {
+                double bLen = Math.Sqrt(runBelly.X * runBelly.X + runBelly.Y * runBelly.Y);
+                if (bLen < 1e-9) return m.Fail("noBelly");
+                m.Inside = runBelly.X * m.Normal.X + runBelly.Y * m.Normal.Y > 0;
+            }
 
             double p = m.Inside ? BulbProtrusion(c, r, tRun) : 0.0;
             if (m.Dist > tRun / 2.0 + p + TOL_TOUCH) return m.Fail("far");
