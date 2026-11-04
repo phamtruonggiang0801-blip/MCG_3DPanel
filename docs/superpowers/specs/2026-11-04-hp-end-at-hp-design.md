@@ -100,6 +100,7 @@ trỏ sang skill mới.
 ## 7. Để lại cho người làm
 Tên lớp/hàm cụ thể, cấu trúc test theo khuôn `tests/` hiện có, giá trị margin nhỏ.
 
-## 8. Chưa chốt (cần kỹ sư)
-- Có cần override bật/tắt cắt ở tab Result như Sniped End (`SnipOverride`) không? (v1: không)
-- Bản vẽ panel thật có HP end tại HP (cả trường hợp xiên) để test trực quan.
+## 8. Đã chốt (kỹ sư 2026-11-04)
+
+- **Không** có override bật/tắt ở tab Result.
+- Test trực quan trên panel thật: **người dùng tự làm** — phần việc tự động dừng ở unit test + build.
