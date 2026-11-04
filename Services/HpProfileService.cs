@@ -52,6 +52,10 @@ namespace MCG_3DPanel.Services
         /// </summary>
         List<VertexBulge> HpEndAtHpCutter(double b, double tRun, double c, double r, bool inside);
 
+        /// <summary>Dao cắt <b>"HP TO FB END"</b> (mặt hàn h_fb−15 + vát 30°; FB cao ⇒ R30) trong MẶT CẮT FB CHẠY.
+        /// Bọc <see cref="Builders.HpEndAtHpGeometry.FbCutterOutline"/>. null nếu vô lý. Xem skill hp-end-at-hp §7.</summary>
+        List<VertexBulge> HpEndAtFbCutter(double b, double hFb, double tFb, double c, double r);
+
         /// <summary>Tra tham số theo quy cách "cao*dày" (vd "120*6"). false nếu spec sai.</summary>
         bool TryGetSection(string spec, out List<VertexBulge> section, out bool estimated);
     }
@@ -173,8 +177,14 @@ namespace MCG_3DPanel.Services
 
         /// <summary>Dao cắt "HP TO HP END" — xem <see cref="IHpProfileService.HpEndAtHpCutter"/>.</summary>
         public List<VertexBulge> HpEndAtHpCutter(double b, double tRun, double c, double r, bool inside)
+            => ToVb(Builders.HpEndAtHpGeometry.CutterOutline(b, tRun, c, r, inside));
+
+        /// <summary>Dao cắt "HP TO FB END" — xem <see cref="IHpProfileService.HpEndAtFbCutter"/>.</summary>
+        public List<VertexBulge> HpEndAtFbCutter(double b, double hFb, double tFb, double c, double r)
+            => ToVb(Builders.HpEndAtHpGeometry.FbCutterOutline(b, hFb, tFb, c, r));
+
+        private static List<VertexBulge> ToVb(List<(double X, double Y, double Bulge)> o)
         {
-            var o = Builders.HpEndAtHpGeometry.CutterOutline(b, tRun, c, r, inside);
             if (o == null) return null;
             var list = new List<VertexBulge>(o.Count);
             foreach (var v in o) list.Add(new VertexBulge(v.X, v.Y, v.Bulge));

@@ -123,7 +123,7 @@ namespace MCG_3DPanel.Services
 
                 // HP end tại HP ("HP TO HP END", CAS.dwt) — trừ dao cắt (mặt hàn + cung R30 thoát bulb) khỏi
                 // HP đầu chạm thân HP khác. Xem HpEndAtHpBuilder / skill hp-end-at-hp.
-                if (hpSolids.Count > 1)
+                if (hpSolids.Count > 0)   // 1 HP vẫn có thể end tại FB ("HP TO FB END")
                 {
                     var hpCutOk = HpEndAtHpBuilder.Apply(ctx, hpSolids.Select(x => (x.part, x.sol)).ToList());
                     if (hpCutOk.Count > 0)
