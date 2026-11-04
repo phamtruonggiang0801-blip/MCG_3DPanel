@@ -101,7 +101,9 @@ namespace MCG_3DPanel.UI
             PanelPart p = s.Part;
             var d = ResultCatalog.Describe(p?.Type.ToString(), p != null ? p.Code : s.Code, p == null ? s.Type : null,
                 s.MergedCodes, p?.EndTouchKinds, p?.GeAvailable ?? false, p?.GbAvailable ?? false);
-            var corr = CorrectionStore.Get(panelKey, p?.SourceKey);
+            // Solid sinh thêm đảo được (Tripping Bracket) ⇒ correction lưu theo FlipKey thay SourceKey part 2D.
+            string corrKey = p?.SourceKey ?? s.FlipKey;
+            var corr = CorrectionStore.Get(panelKey, corrKey);
             var row = new ResultRow
             {
                 Panel = PanelName(build),
@@ -109,7 +111,7 @@ namespace MCG_3DPanel.UI
                 Family = d.Family,
                 DetectedKind = corr?.OriginalKind ?? d.Kind,
                 Options = d.Options,
-                CanFlip = d.CanFlip && p != null && !s.Deleted,
+                CanFlip = d.CanFlip && (p != null || s.FlipKey != null) && !s.Deleted,
                 Size = SizeOf(build.Input, p, d.Family),
                 Flags = s.Deleted ? "deleted" : SnipFlags(p),
                 IsCorrected = corr != null || s.Deleted,
@@ -120,7 +122,7 @@ namespace MCG_3DPanel.UI
                 Solid = s,
                 Build = build,
                 PanelKey = panelKey,
-                SourceKey = p?.SourceKey,
+                SourceKey = corrKey,
             };
             row.Kind = d.Kind;
             row.Flipped = corr?.FlipDir == true;

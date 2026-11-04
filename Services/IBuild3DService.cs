@@ -52,8 +52,11 @@ namespace MCG_3DPanel.Services
         public ObjectId SolidId { get; set; }
         /// <summary>Part 2D nguồn; null với solid sinh thêm (Collar Plate, Bracket B đầu HP).</summary>
         public PanelPart Part { get; set; }
-        /// <summary>Loại khi <see cref="Part"/> null: "CollarPlate" / "HpEndBracketB" / "GirderFlange".</summary>
+        /// <summary>Loại khi <see cref="Part"/> null: "CollarPlate" / "HpEndBracketB" / "GirderFlange" / "TrippingBracket".</summary>
         public string Type { get; set; }
+        /// <summary>Khoá correction cho solid SINH THÊM đảo được trên tab Result (Tripping Bracket: đảo phía) —
+        /// thay <see cref="PanelPart.SourceKey"/> khi <see cref="Part"/> null. null = không đảo được.</summary>
+        public string FlipKey { get; set; }
         /// <summary>Code part sinh ra solid phụ (vd "GE-HP" cho GirderFlange); rỗng nếu không có.</summary>
         public string Code { get; set; }
         /// <summary>Bbox WCS SAU mọi boolean (CutOut/CO…) — block 3D chèn tại gốc, không xoay/scale.</summary>

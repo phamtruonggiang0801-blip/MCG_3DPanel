@@ -157,6 +157,17 @@ namespace MCG_3DPanel.Tests
             Assert.False(b.CanFlip);
         }
 
+        // Tripping Bracket (kỹ sư 2026-11-04): tab Result chỉ ĐẢO PHÍA (sang bên kia web dầm) — không đổi Kind.
+        [Fact]
+        public void Describe_TrippingBracket_CanFlip()
+        {
+            var tb = ResultCatalog.Describe(null, "", "TrippingBracket", None, None, false, false);
+            Assert.Equal(ResultFamily.Bracket, tb.Family);
+            Assert.Equal("Tripping B", tb.Kind);
+            Assert.True(tb.CanFlip);
+            Assert.Empty(tb.Options);
+        }
+
         [Fact]
         public void Describe_TopPlate()
         {

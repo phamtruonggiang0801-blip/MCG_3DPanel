@@ -62,6 +62,9 @@ namespace MCG_3DPanel.UI
                 {
                     case "CollarPlate": return ReadOnly(ResultFamily.Collar, "Collar Plate");
                     case "HpEndBracketB": return ReadOnly(ResultFamily.Bracket, "B");
+                    // Tripping Bracket: chỉ đảo PHÍA web dầm (kỹ sư 2026-11-04) — FlipDir lưu theo FlipKey của solid.
+                    case "TrippingBracket":
+                        { var d = ReadOnly(ResultFamily.Bracket, "Tripping B"); d.CanFlip = true; return d; }
                     case "GirderFlange": return ReadOnly(ResultFamily.Flange, "Flange GE/GB-" + Suffix(code, "HP"));
                     default: return ReadOnly(ResultFamily.Web, solidType ?? "unknown");
                 }
