@@ -118,7 +118,7 @@ Spec: `docs/superpowers/specs/2026-11-04-hp-end-at-fb-design.md`.
 ```
 
 - **15 và 30° CỐ ĐỊNH mọi cỡ FB/HP.** Vát phủ hết bề rộng HP đầu kể cả bulb (như `SnipHpEnd`).
-- **FB cao** (`h_fb − 15 ≥ b`): dùng biên dạng HP–HP **p = 0** (§2, R30, lùi 30).
+- **FB cao** (`h_fb − 15 ≥ b`): dùng biên dạng HP–HP **p = 0** (§2, R30, lùi 30). Bước nhảy ở ngưỡng (HP120: FB134 hàn 119, FB135 R30 hàn ~70) — kỹ sư 2026-11-04: **tạm thời GIỮ ngưỡng này**.
 - `h_fb ≤ 15` ⇒ không dựng dao cắt (Report). `FlatBarHeight = 0` ⇒ không xét FB (Report `SKIP FB`).
 - FB không bulb ⇒ không INSIDE/OUTSIDE. `h_fb` = `ctx.Input.FlatBarHeight` (1 giá trị/panel).
 
