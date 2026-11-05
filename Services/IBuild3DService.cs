@@ -38,6 +38,8 @@ namespace MCG_3DPanel.Services
         /// <summary>File report JSON đã ghi sau Build (không tự mở) — null nếu ghi lỗi.</summary>
         public string ReportPath { get; set; }
         public System.Collections.Generic.List<string> Report { get; } = new System.Collections.Generic.List<string>();
+        /// <summary>Cảnh báo người dùng phải thấy (BuildContext.Warn) — tab Result hiện số lượng.</summary>
+        public System.Collections.Generic.List<string> Warnings { get; } = new System.Collections.Generic.List<string>();
 
         /// <summary>Từng part đã dựng hay bị bỏ qua — dùng để xuất report JSON đọc lại kết quả build.</summary>
         public System.Collections.Generic.List<BuiltPartInfo> Parts { get; } = new System.Collections.Generic.List<BuiltPartInfo>();

@@ -96,7 +96,7 @@ namespace MCG_3DPanel.Services.Builders
                     catch (System.Exception ex)
                     {
                         Debug.WriteLine($"{LOG} lỗi ({web.Id.Handle}×{hp.Id.Handle}): {ex.Message}");
-                        ctx.Report.Add($"{LOG} Lỗi khoét Web {web.Id.Handle} × HP {hp.Id.Handle}: {ex.Message} → web giữ nguyên.");
+                        ctx.Warn($"{LOG} Lỗi khoét Web {web.Id.Handle} × HP {hp.Id.Handle}: {ex.Message} → web giữ nguyên.");
                     }
                     finally
                     {

@@ -165,7 +165,7 @@ namespace MCG_3DPanel.Services
                     }
                     catch (System.Exception ex)
                     {
-                        ctx.Report.Add($"[GE merge] không hợp nhất được GE {ge.info.Handle} vào Web {web.info.Handle}: {ex.Message} — giữ 2 solid.");
+                        ctx.Warn($"[GE merge] không hợp nhất được GE {ge.info.Handle} vào Web {web.info.Handle}: {ex.Message} — giữ 2 solid.");
                     }
                 }
 
@@ -223,7 +223,7 @@ namespace MCG_3DPanel.Services
                     if (topPlateInfo != null) FillGeometry(topPlateInfo, topPlateSolid); // cập nhật bbox/thể tích SAU khi khoét
                 }
                 else if (cls.OfType(PartType.CutOut).Any())
-                    ctx.Report.Add("[CutOut] Không có solid Top Plate để khoét — bỏ qua toàn bộ CutOut.");
+                    ctx.Warn("[CutOut] Không có solid Top Plate để khoét — bỏ qua toàn bộ CutOut.");
 
                 var ms = (BlockTableRecord)tr.GetObject(
                     SymbolUtilityServices.GetBlockModelSpaceId(db), OpenMode.ForWrite);
@@ -257,6 +257,7 @@ namespace MCG_3DPanel.Services
                 result.SolidCount = made;
                 result.BlockName = name;
                 result.Report.AddRange(ctx.Report);
+                result.Warnings.AddRange(ctx.Warnings);
 
                 tr.Commit();
             }

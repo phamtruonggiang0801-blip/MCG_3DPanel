@@ -53,7 +53,7 @@ namespace MCG_3DPanel.Services.Builders
                 catch (System.Exception ex)
                 {
                     Debug.WriteLine($"{LOG} lỗi ({p.Id.Handle}): {ex.Message}");
-                    ctx.Report.Add($"[CutOut] Lỗi khoét lỗ {p.Id.Handle}: {ex.Message} → bỏ qua.");
+                    ctx.Warn($"[CutOut] Lỗi khoét lỗ {p.Id.Handle}: {ex.Message} → bỏ qua.");
                 }
                 finally
                 {

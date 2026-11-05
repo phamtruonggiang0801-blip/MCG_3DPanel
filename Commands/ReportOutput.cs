@@ -27,11 +27,16 @@ namespace MCG_3DPanel.Commands
             return Path.Combine(desktop, name);
         }
 
-        /// <summary>Mở file bằng ứng dụng mặc định (nuốt lỗi — chỉ tiện ích).</summary>
-        public static void OpenFile(string path)
+        /// <summary>Mở file bằng ứng dụng mặc định. Trả null nếu mở được, hoặc lý do để caller BÁO người dùng (file đã
+        /// ghi xong — chỉ không mở được, vd chưa có app cho .csv/.json) — ux-guardrails.</summary>
+        public static string OpenFile(string path)
         {
-            try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); }
-            catch (System.Exception ex) { Debug.WriteLine($"{LOG_PREFIX} Không mở được file: {ex.Message}"); }
+            try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); return null; }
+            catch (System.Exception ex)
+            {
+                Debug.WriteLine($"{LOG_PREFIX} Không mở được file: {ex.Message}");
+                return ex.Message;
+            }
         }
 
         /// <summary>
@@ -86,6 +91,8 @@ namespace MCG_3DPanel.Commands
                 { "notBuiltCount", notBuilt.Count },
                 { "solids", solids },
                 { "notBuilt", notBuilt },
+                { "warningCount", build.Warnings.Count },
+                { "warnings", build.Warnings.Select(w => (object)w).ToList() },
                 { "report", build.Report.Select(r => (object)r).ToList() },
             };
         }

@@ -50,7 +50,56 @@ namespace MCG_3DPanel.UI
             }
             // Nạp lại cả khi thất bại: correction vẫn còn trong kho → dòng hiện đúng trạng thái đã sửa.
             Load(_builds, sel.panel, sel.source);
-            SetStatus(message, error: neu == null);
+            // Rebuild xong vẫn nhắc part 2D không dựng được (không để lỗi im lặng — ux-guardrails).
+            if (neu != null && _notBuilt != null) SetStatus(message + "  ·  " + _notBuilt, error: true);
+            else SetStatus(message, error: neu == null);
+        }
+
+        /// <summary>Trạng thái bình thường gần nhất (để khôi phục khi quay lại đúng drawing).</summary>
+        private string _summary;
+        /// <summary>"⚠ N 2D part(s) not built (…) · M build warning(s)" hoặc null.</summary>
+        private string _notBuilt;
+
+        /// <summary>Part 2D không ra solid + cảnh báo builder (BuildContext.Warn) — trước đây CHỈ nằm trong JSON report,
+        /// giờ báo thẳng trên thanh trạng thái (ux-guardrails).</summary>
+        private static string NotBuiltText(List<BuildResult> kept)
+        {
+            var bad = kept.SelectMany(b => b.Parts.Where(p => !p.Built).Select(p => $"{p.Type} {p.Handle}")).ToList();
+            int warn = kept.Sum(b => b.Warnings.Count);
+            if (bad.Count == 0 && warn == 0) return null;
+            var msg = new List<string>();
+            if (bad.Count > 0)
+            {
+                string list = string.Join(", ", bad.Take(3)) + (bad.Count > 3 ? $", +{bad.Count - 3} more" : "");
+                msg.Add($"{bad.Count} 2D part{(bad.Count > 1 ? "s" : "")} not built ({list})");
+            }
+            if (warn > 0) msg.Add($"{warn} build warning{(warn > 1 ? "s" : "")}");
+            return "⚠ " + string.Join(" · ", msg) + " — see the debug JSON report";
+        }
+
+        /// <summary>Đổi drawing đang mở (DocumentBecameCurrent): tắt highlight/marker của drawing cũ; bảng đang hiện
+        /// panel của drawing KHÁC ⇒ báo rõ thay vì để highlight/zoom/rebuild hỏng im lặng (lỗi 2026-11-05).</summary>
+        public void OnDocumentActivated(Autodesk.AutoCAD.DatabaseServices.Database db)
+        {
+            EntityHighlighter.ClearPoint();
+            EntityHighlighter.Clear();
+            if (db == null || _builds.Count == 0) return;
+            var kept = _builds.Where(b => b.Kept && !b.BlockRefId.IsNull).ToList();
+            if (kept.Count == 0) return;
+            if (kept.Any(b => b.BlockRefId.Database == db))
+            {
+                if (_summary != null) SetStatus(_notBuilt != null ? _notBuilt + "  ·  " + _summary : _summary, error: _notBuilt != null);
+                return;
+            }
+            string name = DrawingName(kept[0].BlockRefId.Database);
+            SetStatus($"The rows below belong to drawing {name} — switch back to it to highlight, zoom or rebuild, or run Build 3D / Load 3D here.", error: true);
+        }
+
+        private static string DrawingName(Autodesk.AutoCAD.DatabaseServices.Database db)
+        {
+            foreach (Autodesk.AutoCAD.ApplicationServices.Document d in Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager)
+                if (d.Database == db) return System.IO.Path.GetFileName(d.Name);
+            return "(closed)";
         }
 
         /// <summary>Bản vẽ sắp đóng: bỏ build của nó khỏi bảng (ObjectId sắp không còn hợp lệ).</summary>
@@ -93,10 +142,13 @@ namespace MCG_3DPanel.UI
 
             string report = _builds.Select(b => b.ReportPath).FirstOrDefault(p => p != null);
             string where = kept.Count > 1 ? $"{kept.Count} panels" : $"block {kept[0].BlockName}";
-            SetStatus(rows.Count == 0
+            _notBuilt = NotBuiltText(kept);
+            _summary = rows.Count == 0
                 ? "No solids in the 3D block."
                 : $"{rows.Count} solids  ·  {Summary(rows)}  ·  {where}"
-                  + (report != null ? $"  ·  debug JSON: {System.IO.Path.GetFileName(report)}" : ""));
+                  + (report != null ? $"  ·  debug JSON: {System.IO.Path.GetFileName(report)}" : "");
+            if (_notBuilt != null) SetStatus(_notBuilt + "  ·  " + _summary, error: true);
+            else SetStatus(_summary);
 
             if (keepSourceKey != null)
             {
@@ -221,8 +273,8 @@ namespace MCG_3DPanel.UI
                 SetStatus("Solid no longer exists — rebuild or re-run Build 3D.", error: true);
                 return;
             }
-            if (!EntityHighlighter.Show(row.Path, row.Bounds, zoom))
-                SetStatus("This row belongs to another drawing — switch to that drawing, or run Build 3D / Load 3D here.", error: true);
+            string err = EntityHighlighter.Show(row.Path, row.Bounds, zoom);
+            if (err != null) SetStatus(err, error: true);
         }
 
         private void GridResult_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -332,8 +384,9 @@ namespace MCG_3DPanel.UI
                 sb.AppendLine(Header);
                 foreach (var r in rows) sb.AppendLine(string.Join(",", Cells(r).Select(Csv)));
                 File.WriteAllText(dlg.FileName, sb.ToString(), Encoding.UTF8);
-                SetStatus("Exported: " + Path.GetFileName(dlg.FileName));
-                ReportOutput.OpenFile(dlg.FileName);
+                string openErr = ReportOutput.OpenFile(dlg.FileName);
+                if (openErr == null) SetStatus("Exported: " + Path.GetFileName(dlg.FileName));
+                else SetStatus($"Exported {Path.GetFileName(dlg.FileName)}, but could not open it: {openErr}", error: true);
             }
             catch (System.Exception ex)
             {

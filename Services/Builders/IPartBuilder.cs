@@ -23,6 +23,17 @@ namespace MCG_3DPanel.Services.Builders
         /// <summary>Dòng chẩn đoán (builder tự thêm). PanelCommands quyết định có ghi ra file hay không.</summary>
         public List<string> Report { get; } = new List<string>();
 
+        /// <summary>Lỗi/cảnh báo người dùng PHẢI thấy (1 chi tiết phụ dựng hỏng, khoét lỗi…) — tab Result hiện số lượng
+        /// trên thanh trạng thái, report JSON liệt kê. KHÔNG catch im lặng ở builder: gọi <see cref="Warn"/> (ux-guardrails).</summary>
+        public List<string> Warnings { get; } = new List<string>();
+
+        /// <summary>Ghi 1 cảnh báo: vào cả <see cref="Report"/> lẫn <see cref="Warnings"/>.</summary>
+        public void Warn(string message)
+        {
+            Report.Add("⚠ " + message);
+            Warnings.Add(message);
+        }
+
         /// <summary>Solid PHỤ builder sinh kèm part đang dựng (vd flange GE/GB) — đã đặt đúng chỗ + Layer/Color.
         /// Build3DService gom vào block ngay sau part đó rồi xoá danh sách.</summary>
         public List<ExtraSolid> Extras { get; } = new List<ExtraSolid>();

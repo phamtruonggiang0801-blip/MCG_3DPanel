@@ -132,7 +132,7 @@ namespace MCG_3DPanel.Services.Builders
             catch (Exception ex)
             {
                 Debug.WriteLine($"{LOG} lỗi ({part.Id.Handle}): {ex.Message}");
-                ctx.Report.Add($"FlatBar {part.Id.Handle} buildError: {ex.Message}");
+                ctx.Warn($"FlatBar {part.Id.Handle} buildError: {ex.Message}");
                 return null;
             }
         }

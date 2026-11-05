@@ -56,6 +56,15 @@ namespace MCG_3DPanel.UI
                     MCG_3DPanel.Services.Corrections.CorrectionStore.ClearDatabase(db);
                     _result.OnDocumentClosing(db);
                 };
+                // Đổi drawing: tắt highlight/marker KHI drawing cũ còn là current (Transient/Highlight gắn view của nó),
+                // rồi báo trên tab Result nếu bảng đang hiện panel của drawing khác (ux-guardrails, lỗi 2026-11-05).
+                Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.DocumentToBeDeactivated += (s, e) =>
+                {
+                    MCG_3DPanel.Commands.EntityHighlighter.ClearPoint();
+                    MCG_3DPanel.Commands.EntityHighlighter.Clear();
+                };
+                Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.DocumentBecameCurrent += (s, e) =>
+                    _result.OnDocumentActivated(e.Document?.Database);
                 _ps.AddVisual("Input", _input);
                 _ps.AddVisual("Result", _result);
                 _ps.Activate(TabInput);

@@ -114,7 +114,7 @@ namespace MCG_3DPanel.Services.Builders
             catch (System.Exception ex)
             {
                 Debug.WriteLine($"{LOG} lỗi ({part.Id.Handle}): {ex.Message}");
-                ctx.Report.Add($"Bracket code={part.Code} buildError: {ex.Message}");
+                ctx.Warn($"Bracket code={part.Code} buildError: {ex.Message}");
                 return null;
             }
         }

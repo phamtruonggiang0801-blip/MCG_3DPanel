@@ -20,12 +20,18 @@ namespace MCG_3DPanel.Commands
 
         /// <summary>Highlight solid theo <paramref name="path"/>; <paramref name="zoom"/> = true ⇒ zoom vào bbox (nút ⌖ / menu
         /// Zoom to Object). Chọn dòng trên tab Result chỉ highlight, KHÔNG zoom (kỹ sư 2026-11-05).
-        /// Trả false nếu solid thuộc drawing KHÁC drawing đang mở (vd build 716C rồi sang drawing mới build 716P).</summary>
-        public static bool Show(ObjectId[] path, Extents3d bounds, bool zoom = true)
+        /// Trả null khi thành công, hoặc THÔNG BÁO cho người dùng (solid thuộc drawing khác — vd build 716C rồi sang
+        /// drawing mới build 716P; lỗi AutoCAD) — KHÔNG nuốt lỗi im lặng (ux-guardrails).</summary>
+        public static string Show(ObjectId[] path, Extents3d bounds, bool zoom = true)
         {
             Document doc = AcadApp.DocumentManager.MdiActiveDocument;
-            if (doc == null || path == null || path.Length == 0) return false;
-            if (path[0].Database != doc.Database) { Clear(); return false; }
+            if (doc == null) return "No drawing is open.";
+            if (path == null || path.Length == 0) return "This row has no solid to highlight.";
+            if (path[0].Database != doc.Database)
+            {
+                Clear();
+                return "This row belongs to another drawing — switch to that drawing, or run Build 3D / Load 3D here.";
+            }
 
             try
             {
@@ -34,15 +40,17 @@ namespace MCG_3DPanel.Commands
                     ClearCore(doc);
                     SetHighlight(doc, path, true);
                     _last = path;
-                    if (zoom) ZoomTo(doc.Editor, bounds);
+                    if (zoom && !ZoomTo(doc.Editor, bounds)) { doc.Editor.UpdateScreen(); return "Highlighted, but could not zoom to it (see the AutoCAD command line)."; }
                 }
                 doc.Editor.UpdateScreen();
+                return null;
             }
             catch (System.Exception ex)
             {
                 Debug.WriteLine($"{LOG} Show lỗi: {ex.Message}");
+                doc.Editor.WriteMessage($"\n{LOG} {ex.Message}");
+                return $"Could not highlight this object: {ex.Message}";
             }
-            return true;
         }
 
         // ─── Đánh dấu 1 ĐIỂM (đầu thanh HP/FB khi rê chuột lên nút Sniped End) — vòng tròn transient ───
@@ -145,7 +153,7 @@ namespace MCG_3DPanel.Commands
 
         /// <summary>Zoom viewport hiện tại vào bbox WCS + lề để giữ ngữ cảnh. Chiếu bbox sang DCS của view
         /// hiện tại ⇒ đúng cả plan-view (2D) lẫn view 3D/isometric (solid sau Build).</summary>
-        private static void ZoomTo(Editor ed, Extents3d ext)
+        private static bool ZoomTo(Editor ed, Extents3d ext)
         {
             try
             {
@@ -167,7 +175,7 @@ namespace MCG_3DPanel.Commands
 
                     double w = dcs.MaxPoint.X - dcs.MinPoint.X;
                     double h = dcs.MaxPoint.Y - dcs.MinPoint.Y;
-                    if (w <= 0 && h <= 0) return;
+                    if (w <= 0 && h <= 0) return false;
 
                     const double margin = 4.0;   // hiện cả phần xung quanh để định vị
                     view.CenterPoint = new Point2d((dcs.MinPoint.X + dcs.MaxPoint.X) / 2.0,
@@ -175,9 +183,15 @@ namespace MCG_3DPanel.Commands
                     view.Width = Math.Max(w * margin, 200.0);
                     view.Height = Math.Max(h * margin, 200.0);
                     ed.SetCurrentView(view);
+                    return true;
                 }
             }
-            catch (System.Exception ex) { Debug.WriteLine($"{LOG} ZoomTo lỗi: {ex.Message}"); }
+            catch (System.Exception ex)
+            {
+                Debug.WriteLine($"{LOG} ZoomTo lỗi: {ex.Message}");
+                ed.WriteMessage($"\n{LOG} ZoomTo: {ex.Message}");
+                return false;
+            }
         }
     }
 }

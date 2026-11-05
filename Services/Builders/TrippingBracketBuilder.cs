@@ -157,7 +157,7 @@ namespace MCG_3DPanel.Services.Builders
                     {
                         Vector3d doz = Doz(ctx.Position, X, center);
                         sol = BuildOne(ctx, beam, web, hpSel, X, doz, key, supports, reach, Ht, H, out string place);
-                        if (sol == null) { ctx.Report.Add($"{LOG} Không dựng được: {r.Tag} HP {hpSel.Id.Handle}."); continue; }
+                        if (sol == null) { ctx.Warn($"{LOG} Không dựng được: {r.Tag} HP {hpSel.Id.Handle}."); continue; }
                         string tag = $"{r.Tag} · HP {hpSel.Id.Handle} s={sSel:0} Δ={delta:0}/L={L:0} ({how}) · {place}";
                         outSolids.Add((sol, tag, key));
                         ctx.Report.Add($"{LOG} {tag}.");
@@ -165,7 +165,7 @@ namespace MCG_3DPanel.Services.Builders
                     catch (System.Exception ex)
                     {
                         Debug.WriteLine($"{LOG} lỗi ({r.Tag}): {ex.Message}");
-                        ctx.Report.Add($"{LOG} Lỗi {r.Tag}: {ex.Message}.");
+                        ctx.Warn($"{LOG} Lỗi {r.Tag}: {ex.Message}.");
                         sol?.Dispose();
                     }
                 }

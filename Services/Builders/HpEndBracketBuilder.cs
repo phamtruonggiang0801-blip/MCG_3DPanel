@@ -214,7 +214,7 @@ namespace MCG_3DPanel.Services.Builders
                     catch (System.Exception ex)
                     {
                         Debug.WriteLine($"{LOG} lỗi ({tag}): {ex.Message}");
-                        ctx.Report.Add($"{LOG} Lỗi: {tag}: {ex.Message}.");
+                        ctx.Warn($"{LOG} Lỗi: {tag}: {ex.Message}.");
                         sol?.Dispose();
                     }
                 }

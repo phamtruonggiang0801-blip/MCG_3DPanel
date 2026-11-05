@@ -189,7 +189,7 @@ namespace MCG_3DPanel.Services.Builders
                         catch (System.Exception ex)
                         {
                             Debug.WriteLine($"{LOG} lỗi ({tag}): {ex.Message}");
-                            ctx.Report.Add($"{LOG} Lỗi collar: {tag}: {ex.Message}.");
+                            ctx.Warn($"{LOG} Lỗi collar: {tag}: {ex.Message}.");
                             sol?.Dispose();
                         }
                     }

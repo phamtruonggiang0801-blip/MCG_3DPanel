@@ -103,7 +103,7 @@ namespace MCG_3DPanel.Services.Builders
                     catch (System.Exception ex)
                     {
                         Debug.WriteLine($"{LOG} lỗi ({h.Id.Handle}~{run.Id.Handle}): {ex.Message}");
-                        ctx.Report.Add($"{LOG} Lỗi cắt h={h.Id.Handle} m={run.Id.Handle}: {ex.Message} → HP giữ nguyên.");
+                        ctx.Warn($"{LOG} Lỗi cắt h={h.Id.Handle} m={run.Id.Handle}: {ex.Message} → HP giữ nguyên.");
                     }
                     finally { cutter?.Dispose(); }
                 }

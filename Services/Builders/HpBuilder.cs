@@ -109,6 +109,7 @@ namespace MCG_3DPanel.Services.Builders
             catch (System.Exception ex)
             {
                 Debug.WriteLine($"{LOG} lỗi ({part.Id.Handle}): {ex.Message}");
+                ctx.Warn($"[HP] Lỗi dựng HP {part.Id.Handle}: {ex.Message}");
                 return null;
             }
             finally { reg?.Dispose(); }

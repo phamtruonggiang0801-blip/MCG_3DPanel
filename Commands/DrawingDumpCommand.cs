@@ -74,7 +74,8 @@ namespace MCG_3DPanel.Commands
                 : Path.ChangeExtension(db.Filename, ".dump.json");
             File.WriteAllText(outPath, JsonWriter.Serialize(root), Encoding.UTF8);
             ed.WriteMessage($"\n{LOG_PREFIX} Dump JSON: {outPath}\n");
-            ReportOutput.OpenFile(outPath);
+            string openErr = ReportOutput.OpenFile(outPath);
+            if (openErr != null) ed.WriteMessage($"{LOG_PREFIX} Could not open the file: {openErr}\n");
         }
 
         /// <summary>Mô tả 1 entity thành JsonObject — đủ để dựng lại hình học.</summary>
