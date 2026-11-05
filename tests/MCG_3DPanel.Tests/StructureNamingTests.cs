@@ -184,6 +184,64 @@ namespace MCG_3DPanel.Tests
         public void StripSpec_KeepsTagOnly(string typed, string tag)
             => Assert.Equal(tag, StructureNaming.StripSpec(typed, "WEB 374x6.0"));
 
+        // ─── Revision 2: flange đi theo web khi highlight, Merge ───
+
+        [Fact]
+        public void Flanges_AttachedToWebLine()
+        {
+            var l = StructureNaming.Lines(Cas7D16C(), PanelPosition.Center);
+            Assert.Equal("fT1", Line(l, "T1").Flanges.Single().Key);
+            Assert.Empty(Line(l, "T2").Flanges);
+            Assert.Empty(Line(l, "HL1").Flanges);
+        }
+
+        private static List<string> KeysOf(IEnumerable<NamingLine> l, params string[] names)
+            => names.SelectMany(n => Line(l, n).Pieces.Select(p => p.Key)).ToList();
+
+        [Fact]
+        public void Merge_TwoWebLines_OneRowOneNumber()
+        {
+            var pieces = Cas7D16C();
+            var plain = StructureNaming.Lines(pieces, PanelPosition.Center);
+            var group = KeysOf(plain, "T3", "T4");
+            var l = StructureNaming.Lines(pieces, PanelPosition.Center, null, new[] { group });
+            Assert.Equal(new[] { "T1", "T2", "T3", "T4", "T5", "T6", "T7" }, Names(l, NamingKind.Web, NamingDir.T));
+            var m = Line(l, "T3");
+            Assert.True(m.IsMerged);
+            Assert.Equal(4 + 1, m.Pieces.Count);
+            Assert.Equal(8303, Line(l, "T4").Center, 0);   // T5 cũ → T4
+            Assert.False(Line(l, "T1").IsMerged);
+        }
+
+        [Fact]
+        public void Merge_DifferentKindOrDir_Ignored()
+        {
+            var pieces = Cas7D16C();
+            var plain = StructureNaming.Lines(pieces, PanelPosition.Center);
+            var l = StructureNaming.Lines(pieces, PanelPosition.Center, null, new[] { KeysOf(plain, "T2", "L1"), KeysOf(plain, "T5", "HT1") });
+            Assert.Equal(plain.Count, l.Count);
+            Assert.DoesNotContain(l, x => x.IsMerged);
+        }
+
+        [Fact]
+        public void Merge_ThreeBs_OneRow()
+        {
+            var pieces = Cas7D16C();
+            var plain = StructureNaming.Lines(pieces, PanelPosition.Center);
+            var bs = plain.Where(x => x.Kind == NamingKind.FB && x.Dir == NamingDir.T).Take(3).SelectMany(x => x.Pieces.Select(p => p.Key)).ToList();
+            var l = StructureNaming.Lines(pieces, PanelPosition.Center, null, new[] { bs });
+            Assert.Equal(plain.Count(x => x.Kind == NamingKind.FB) - 2, l.Count(x => x.Kind == NamingKind.FB));
+        }
+
+        [Fact]
+        public void NamesJson_MergesRoundTrip()
+        {
+            var json = NamesJson.Serialize(new Dictionary<string, string>(), null, new[] { new[] { "a", "b" }, new[] { "c", "d" } });
+            NamesJson.Deserialize(json, out _, out var merges);
+            Assert.Equal(2, merges.Count);
+            Assert.Equal(new[] { "a", "b" }, merges[0].OrderBy(s => s).ToArray());
+        }
+
         [Fact]
         public void NamesJson_DeletedRoundTrip()
         {

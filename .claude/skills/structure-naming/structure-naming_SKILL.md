@@ -50,3 +50,10 @@ Nguồn: `CAS.dump.json` panel 7D-16C — người vẽ ghi Text cạnh mặt c�
   tuyến (đoạn xoá nhập vào tuyến khác không ẩn tuyến đó). "Restore deleted names (N)" trả lại mọi tuyến của các panel thuộc drawing đang mở. Đây cũng là cách xử lý
   đoạn ngắn lạc làm dịch số.
 - BS/HP thẳng hàng cách xa vẫn 1 dòng (bỏ luật khe 30 mm của FB).
+
+## Revision 2 (kỹ sư 2026-11-05)
+- **Name** (sửa được, chỉ tag) và **Size** (chỉ đọc, theo đối tượng) là 2 cột riêng; Copy cũng 2 cột.
+- Highlight Web kèm **mọi flange** của tuyến (`NamingLine.Flanges`: flange cùng phương, tâm trong nửa bề rộng + 15 quanh
+  1 đoạn web và chồng trục với đoạn đó). Quy cách FLANGE ưu tiên flange trên đoạn web dài nhất.
+- **Merge**: các dòng CÙNG loại + CÙNG phương trong 1 panel ⇒ 1 tuyến, 1 tên, 1 số (đánh số lại); lưu `Merges` (nhóm
+  SourceKey) trong `MCG3D_NAMES`; nhóm chạm nhau thì nhập. **Unmerge** bỏ nhóm chứa dòng đó. Kind hiện "Web (merged)".

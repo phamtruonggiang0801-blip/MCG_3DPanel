@@ -184,7 +184,7 @@ namespace MCG_3DPanel.UI
         /// loạt chỉ qua Enter. Dùng LostKeyboardFocus (bấm ra vùng vẽ AutoCAD cũng ghi — LostFocus logic thì không, review m3).</summary>
         private void TxtName_LostFocus(object sender, System.Windows.Input.KeyboardFocusChangedEventArgs e)
         {
-            if (sender is TextBox tb && tb.DataContext is NamingRow row && (tb.Text ?? "").Trim() != row.Label) Commit(tb, row, bulk: false);
+            if (sender is TextBox tb && tb.DataContext is NamingRow row && (tb.Text ?? "").Trim() != row.Name) Commit(tb, row, bulk: false);
         }
 
         /// <summary>Trả ô về tên đang dùng qua binding (không gán Text — giữ binding khi grid tái dùng ô).</summary>
@@ -282,8 +282,46 @@ namespace MCG_3DPanel.UI
             Report(BulkEdit.Describe(plan, "Name deleted") + " — renumbered (right-click → Restore deleted names to undo)", errors);
         }
 
+        // ─── Merge / Unmerge (revision 2): nhiều tuyến cùng loại + cùng phương ⇒ 1 tuyến, 1 tên, 1 số ──────
+
+        private void MnuMerge_Click(object sender, RoutedEventArgs e)
+        {
+            var sel = Selected;
+            if (sel.Count < 2) { SetStatus("Select two or more rows of the same kind to merge."); return; }
+            if (sel.Any(r => !InActiveDrawing(r))) { SetStatus(OtherDrawingText(sel.First(r => !InActiveDrawing(r))), error: true); return; }
+            if (sel.Select(r => r.PanelData).Distinct().Count() > 1) { SetStatus("Merge works inside one panel — select rows of a single panel.", error: true); return; }
+            if (sel.Select(r => (r.Line.Kind, r.Line.Dir)).Distinct().Count() > 1)
+            {
+                SetStatus("Only lines of the same kind and direction can be merged (e.g. Web T with Web T, BS with BS).", error: true);
+                return;
+            }
+            var p = sel[0].PanelData;
+            NameStore.Merge(p.PanelKey, sel.Select(r => r.Line));
+            var errors = SaveAll(new[] { p });
+            p.Recompute();
+            Rebind(sel.Select(r => r.Key).ToList());   // dòng gộp có đoạn đầu = đoạn đầu của 1 trong các dòng cũ
+            Report($"Merged {sel.Count} lines into one — renumbered (right-click → Unmerge to split)", errors);
+        }
+
+        private void MnuUnmerge_Click(object sender, RoutedEventArgs e)
+        {
+            var sel = Selected.Where(r => r.Line.IsMerged).ToList();
+            if (sel.Count == 0) { SetStatus("No merged line selected."); return; }
+            var plan = BulkEdit.Plan(sel[0], sel, r => true, InActiveDrawing);
+            if (plan.Targets.Count == 0) { SetStatus(OtherDrawingText(sel[0]), error: true); return; }
+            foreach (var r in plan.Targets) NameStore.Unmerge(r.PanelData.PanelKey, r.Line);
+            var touched = plan.Targets.Select(r => r.PanelData).Distinct().ToList();
+            var errors = SaveAll(touched);
+            foreach (var p in touched) p.Recompute();
+            Rebind(plan.Targets.Select(r => r.Key).ToList());
+            Report(BulkEdit.Describe(plan, "Unmerged") + " — renumbered", errors);
+        }
+
         private void GridMenu_Opened(object sender, RoutedEventArgs e)
         {
+            var sel = Selected;
+            MnuMerge.IsEnabled = sel.Count > 1;
+            MnuUnmerge.Visibility = sel.Any(r => r.Line.IsMerged) ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
             var adoc = AcadApp.DocumentManager.MdiActiveDocument;
             int n = _panels.Where(p => adoc != null && p.Db == adoc.Database).Sum(p => NameStore.Deleted(p.PanelKey).Count);
             MnuRestoreDeleted.Header = n > 0 ? $"Restore deleted names ({n})" : "Restore deleted names";
@@ -420,7 +458,8 @@ namespace MCG_3DPanel.UI
             {
                 if (adoc == null || r.PanelData.Db != adoc.Database) { other++; continue; }
                 bool any = false;
-                foreach (var key in r.Line.Pieces.Select(p => p.Key).Distinct())
+                // Web sáng kèm flange của tuyến (revision 2).
+                foreach (var key in r.Line.Pieces.Concat(r.Line.Flanges).Select(p => p.Key).Distinct())
                 {
                     if (!r.PanelData.Paths.TryGetValue(key, out var list)) continue;
                     foreach (var path in list)
@@ -467,9 +506,9 @@ namespace MCG_3DPanel.UI
         {
             if (rows.Count == 0) { SetStatus("Nothing to copy — select a panel first.", error: true); return; }
             var sb = new StringBuilder();
-            sb.AppendLine("Panel\tName\tTag\tSize\tKind");
+            sb.AppendLine("Panel\tName\tSize\tKind");
             foreach (var r in rows)
-                sb.AppendLine(string.Join("\t", r.Panel, r.Label, r.Name, r.Spec, r.Kind));
+                sb.AppendLine(string.Join("\t", r.Panel, r.Name, r.Spec, r.KindText));
             try
             {
                 Clipboard.SetText(sb.ToString());

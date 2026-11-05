@@ -33,10 +33,12 @@ namespace MCG_3DPanel.UI
         public string AutoName => Line.AutoName;
         public bool IsUserName => Line.IsUserName;
         public string Kind => Line.Kind.ToString();
+        /// <summary>Cột Kind: "Web" / "Web (merged ×3)".</summary>
+        public string KindText => Line.IsMerged ? $"{Kind} (merged)" : Kind;
 
         public string NameTip => IsUserName
-            ? $"Your name (auto: {AutoName}). Edit the name part and press Enter; empty = back to {AutoName}. The size ({Spec}) is added automatically."
-            : $"Auto name. Edit the name part and press Enter (or leave the cell). The size ({Spec}) is added automatically.";
+            ? $"Your name (auto: {AutoName}). Type a new one and press Enter; empty = back to {AutoName}. Applies to all selected rows."
+            : "Auto name. Type a new one and press Enter (or leave the cell). Applies to all selected rows.";
 
         /// <summary>Khoá chọn lại sau khi nạp lại: (panel, khoá đoạn đầu tiên).</summary>
         public (string panel, string piece) Key => (PanelData.PanelKey, Line.Pieces.FirstOrDefault()?.Key);

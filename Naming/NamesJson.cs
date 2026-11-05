@@ -15,16 +15,40 @@ namespace MCG_3DPanel.Naming
             public int Version { get; set; } = 1;
             public Dictionary<string, string> Names { get; set; } = new Dictionary<string, string>();
             public List<string> Deleted { get; set; } = new List<string>();
+            /// <summary>Nhóm Merge (revision 2): mỗi nhóm = SourceKey các đoạn gộp thành 1 tuyến.</summary>
+            public List<List<string>> Merges { get; set; } = new List<List<string>>();
         }
 
-        public static string Serialize(IReadOnlyDictionary<string, string> names, IEnumerable<string> deleted = null)
+        public static string Serialize(IReadOnlyDictionary<string, string> names, IEnumerable<string> deleted = null,
+            IEnumerable<IEnumerable<string>> merges = null)
         {
             var doc = new Doc();
             foreach (var kv in names ?? new Dictionary<string, string>())
                 if (!string.IsNullOrEmpty(kv.Key) && !string.IsNullOrWhiteSpace(kv.Value)) doc.Names[kv.Key] = kv.Value;
             foreach (var k in deleted ?? new string[0])
                 if (!string.IsNullOrEmpty(k) && !doc.Deleted.Contains(k)) doc.Deleted.Add(k);
+            foreach (var g in merges ?? new IEnumerable<string>[0])
+            {
+                var list = new List<string>();
+                foreach (var k in g ?? new string[0]) if (!string.IsNullOrEmpty(k) && !list.Contains(k)) list.Add(k);
+                if (list.Count > 1) doc.Merges.Add(list);
+            }
             return JsonSerializer.Serialize(doc);
+        }
+
+        public static Dictionary<string, string> Deserialize(string json, out HashSet<string> deleted, out List<HashSet<string>> merges)
+        {
+            merges = new List<HashSet<string>>();
+            var r = Deserialize(json, out deleted);
+            if (string.IsNullOrWhiteSpace(json)) return r;
+            try
+            {
+                var doc = JsonSerializer.Deserialize<Doc>(json);
+                foreach (var g in doc?.Merges ?? new List<List<string>>())
+                    if (g != null && g.Count > 1) merges.Add(new HashSet<string>(g, StringComparer.Ordinal));
+            }
+            catch (JsonException) { /* như trên */ }
+            return r;
         }
 
         /// <summary>Gộp tên đọc từ XRecord vào cache: chỉ thêm khoá cache CHƯA có — tên vừa sửa trước lần nạp không bị

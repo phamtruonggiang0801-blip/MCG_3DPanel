@@ -22,7 +22,8 @@ namespace MCG_3DPanel.Naming
         {
             string key = CorrectionStore.PanelKey(btr2D);
             if (key == "" || !_loaded.Add(key)) return;
-            var d = NamesJson.Deserialize(CorrectionXRecord.Read(tr, btr2D, CorrectionXRecord.NamesKey), out var del);
+            var d = NamesJson.Deserialize(CorrectionXRecord.Read(tr, btr2D, CorrectionXRecord.NamesKey), out var del, out var merges);
+            foreach (var g in merges) AddGroup(key, g);
             if (d.Count > 0)
             {
                 if (_store.TryGetValue(key, out var cache)) NamesJson.MergeLoaded(cache, d);   // giữ tên vừa sửa trước lần nạp
@@ -64,6 +65,36 @@ namespace MCG_3DPanel.Naming
             foreach (var p in line.Pieces) if (!string.IsNullOrEmpty(p.Key)) s.Add(p.Key);
         }
 
+        // ─── Merge (revision 2): nhóm SourceKey gộp thành 1 tuyến ─────────
+        private static readonly Dictionary<string, List<HashSet<string>>> _merges = new Dictionary<string, List<HashSet<string>>>();
+
+        public static IReadOnlyList<HashSet<string>> Merges(string panelKey) =>
+            panelKey != null && _merges.TryGetValue(panelKey, out var l) ? l : (IReadOnlyList<HashSet<string>>)new HashSet<string>[0];
+
+        /// <summary>Gộp các tuyến thành 1 nhóm; nhóm cũ nào chạm vào thì nhập luôn (1 đoạn chỉ thuộc 1 nhóm).</summary>
+        public static void Merge(string panelKey, IEnumerable<NamingLine> lines)
+        {
+            if (string.IsNullOrEmpty(panelKey) || lines == null) return;
+            AddGroup(panelKey, lines.SelectMany(l => l.Pieces).Select(p => p.Key).Where(k => !string.IsNullOrEmpty(k)));
+        }
+
+        private static void AddGroup(string panelKey, IEnumerable<string> keys)
+        {
+            var g = new HashSet<string>(keys);
+            if (g.Count < 2) return;
+            if (!_merges.TryGetValue(panelKey, out var list)) _merges[panelKey] = list = new List<HashSet<string>>();
+            foreach (var old in list.Where(o => o.Overlaps(g)).ToList()) { g.UnionWith(old); list.Remove(old); }
+            list.Add(g);
+        }
+
+        /// <summary>Tách tuyến gộp: bỏ mọi nhóm chứa đoạn của <paramref name="line"/>. Trả true nếu có bỏ.</summary>
+        public static bool Unmerge(string panelKey, NamingLine line)
+        {
+            if (panelKey == null || line == null || !_merges.TryGetValue(panelKey, out var list)) return false;
+            var keys = new HashSet<string>(line.Pieces.Select(p => p.Key).Where(k => k != null));
+            return list.RemoveAll(g => g.Overlaps(keys)) > 0;
+        }
+
         /// <summary>Lấy lại MỌI tuyến đã Del Name của panel. Trả số đoạn được trả lại.</summary>
         public static int RestoreAll(string panelKey)
         {
@@ -86,8 +117,9 @@ namespace MCG_3DPanel.Naming
                     return "Names could not be saved in the drawing (the 2D block is an xref).";
                 var names = For(key);
                 var del = Deleted(key);
+                var merges = Merges(key);
                 CorrectionXRecord.Write(tr, btr2D, CorrectionXRecord.NamesKey,
-                    names.Count > 0 || del.Count > 0 ? NamesJson.Serialize(names, del.ToList()) : null);
+                    names.Count > 0 || del.Count > 0 || merges.Count > 0 ? NamesJson.Serialize(names, del.ToList(), merges) : null);
                 return null;
             }
             catch (System.Exception ex)
@@ -105,6 +137,8 @@ namespace MCG_3DPanel.Naming
                 if (k.StartsWith(prefix)) _store.Remove(k);
             foreach (var k in new List<string>(_deleted.Keys))
                 if (k.StartsWith(prefix)) _deleted.Remove(k);
+            foreach (var k in new List<string>(_merges.Keys))
+                if (k.StartsWith(prefix)) _merges.Remove(k);
             _loaded.RemoveWhere(k => k.StartsWith(prefix));
         }
     }

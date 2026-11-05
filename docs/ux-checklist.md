@@ -92,3 +92,6 @@ built in a second drawing.
 | G11 | Select 2 stray rows → right-click Del Name. Then Restore deleted names (N). | Rows disappear and the rest renumber; Restore brings them back and renumbers again; survives Ctrl+S + reopen. |
 | G12 | A BS line split far apart (e.g. 947 + 8428 on one axis). | One row. |
 | G13 | Select panel… with an invalid value on the Input tab. | A message asks to fix the Input tab; nothing is selected. |
+| G14 | Look at the columns. | Name (editable, e.g. `T1`) and Size (read-only, e.g. `WEB 374x6.0/FLANGE 100x20.0`) are separate; Copy pastes them in separate columns. |
+| G15 | Click a Web row that has a flange (2D and after Build/Keep). | The web and its flange(s) highlight together. |
+| G16 | Select T3 and T4 → right-click Merge. Then Unmerge. | One row `T3`, Kind `Web (merged)`, T5 becomes T4…; Unmerge splits and renumbers back. Merging Web with HP, or T with L, is refused with a message. Survives Ctrl+S + reopen. |

@@ -32,7 +32,7 @@ namespace MCG_3DPanel.Naming
         /// <summary>Tính lại tuyến + tên (tự sinh, rồi tên người dùng đã lưu).</summary>
         public void Recompute()
         {
-            Lines = StructureNaming.Lines(Pieces, Position, NameStore.Deleted(PanelKey));
+            Lines = StructureNaming.Lines(Pieces, Position, NameStore.Deleted(PanelKey), NameStore.Merges(PanelKey));
             ResolveNames();
         }
 
@@ -134,15 +134,15 @@ namespace MCG_3DPanel.Naming
                     Thickness = part.FootprintThickness,
                 };
                 p.Pieces.Add(piece);
-                if (kind == NamingKind.Flange) continue;   // flange không có dòng riêng ⇒ không cần highlight
+                // Flange cũng có đường dẫn: highlight cùng web (revision 2).
                 var (path, bounds) = pathOf(part);
                 if (path == null) continue;
-                if (!p.Paths.TryGetValue(part.SourceKey, out var list)) p.Paths[part.SourceKey] = list = new List<ObjectId[]>();
+                if (!p.Paths.TryGetValue(piece.Key, out var list)) p.Paths[piece.Key] = list = new List<ObjectId[]>();
                 if (!list.Any(x => x.SequenceEqual(path))) list.Add(path);
                 if (bounds is Extents3d e)
                 {
-                    if (p.Bounds.TryGetValue(part.SourceKey, out var old)) { old.AddExtents(e); p.Bounds[part.SourceKey] = old; }
-                    else p.Bounds[part.SourceKey] = e;
+                    if (p.Bounds.TryGetValue(piece.Key, out var old)) { old.AddExtents(e); p.Bounds[piece.Key] = old; }
+                    else p.Bounds[piece.Key] = e;
                 }
             }
             ApplySizes(p, input);
