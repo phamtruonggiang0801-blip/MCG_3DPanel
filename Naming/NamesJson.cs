@@ -23,6 +23,15 @@ namespace MCG_3DPanel.Naming
             return JsonSerializer.Serialize(doc);
         }
 
+        /// <summary>Gộp tên đọc từ XRecord vào cache: chỉ thêm khoá cache CHƯA có — tên vừa sửa trước lần nạp không bị
+        /// ghi đè bởi bản cũ trong drawing (review I3).</summary>
+        public static void MergeLoaded(Dictionary<string, string> cache, IReadOnlyDictionary<string, string> loaded)
+        {
+            if (cache == null || loaded == null) return;
+            foreach (var kv in loaded)
+                if (!cache.ContainsKey(kv.Key)) cache[kv.Key] = kv.Value;
+        }
+
         public static Dictionary<string, string> Deserialize(string json)
         {
             var result = new Dictionary<string, string>(StringComparer.Ordinal);

@@ -21,7 +21,9 @@ namespace MCG_3DPanel.Naming
             string key = CorrectionStore.PanelKey(btr2D);
             if (key == "" || !_loaded.Add(key)) return;
             var d = NamesJson.Deserialize(CorrectionXRecord.Read(tr, btr2D, CorrectionXRecord.NamesKey));
-            if (d.Count > 0) _store[key] = d;
+            if (d.Count == 0) return;
+            if (_store.TryGetValue(key, out var cache)) NamesJson.MergeLoaded(cache, d);   // giữ tên vừa sửa trước lần nạp
+            else _store[key] = d;
         }
 
         public static IReadOnlyDictionary<string, string> For(string panelKey) =>

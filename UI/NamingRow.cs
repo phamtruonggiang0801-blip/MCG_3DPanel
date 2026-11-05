@@ -4,8 +4,17 @@ using MCG_3DPanel.Naming;
 namespace MCG_3DPanel.UI
 {
     /// <summary>1 dòng tab Naming = 1 tuyến (Web / HP) hoặc 1 thanh FB.</summary>
-    public sealed class NamingRow
+    public sealed class NamingRow : System.ComponentModel.INotifyPropertyChanged
     {
+        public event System.ComponentModel.PropertyChangedEventHandler PropertyChanged;
+
+        /// <summary>Tên đã đổi (Resolve lại tại chỗ) ⇒ báo grid, KHÔNG nạp lại bảng (giữ ô/vùng chọn người dùng vừa bấm).</summary>
+        public void Refresh()
+        {
+            foreach (var n in new[] { nameof(Name), nameof(IsUserName), nameof(NameTip) })
+                PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(n));
+        }
+
         public NamingRow(NamingPanel panel, NamingLine line)
         {
             PanelData = panel;

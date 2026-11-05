@@ -31,8 +31,11 @@ namespace MCG_3DPanel.Naming
         public void Recompute()
         {
             Lines = StructureNaming.Lines(Pieces, Position);
-            StructureNaming.Resolve(Lines, NameStore.For(PanelKey));
+            ResolveNames();
         }
+
+        /// <summary>Chỉ gắn lại tên người dùng (tuyến giữ nguyên đối tượng) — sau khi đổi tên.</summary>
+        public void ResolveNames() => StructureNaming.Resolve(Lines, NameStore.For(PanelKey));
     }
 
     /// <summary>Chuyển part đã phân loại → <see cref="NamingPanel"/>. Hình học lấy trong HỆ BLOCK 2D (nghịch đảo

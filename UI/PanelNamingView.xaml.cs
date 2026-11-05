@@ -91,9 +91,11 @@ namespace MCG_3DPanel.UI
 
         private void SetPanels(List<NamingPanel> panels, List<(string, string)> keep)
         {
-            _panels = panels ?? new List<NamingPanel>();
+            // 2 lần chèn cùng block 2D = cùng 1 bộ tên (lưu trên định nghĩa block) ⇒ chỉ 1 lần (review I2).
+            _panels = BulkEdit.OnePer(panels ?? new List<NamingPanel>(), p => p.PanelKey, out int dup);
             Rebind(keep);
             RestoreSummary();
+            if (dup > 0) SetStatus(Summary() + $"  ·  {dup} copy(ies) of the same 2D block listed once (they share their names).");
         }
 
         private void Rebind(List<(string panel, string piece)> keep)
@@ -147,8 +149,8 @@ namespace MCG_3DPanel.UI
         }
 
         /// <summary>Rời ô (như Excel) ⇒ ghi CHỈ dòng đó: lúc rời ô vùng chọn có thể đã đổi sang dòng vừa bấm — đổi tên hàng
-        /// loạt chỉ qua Enter.</summary>
-        private void TxtName_LostFocus(object sender, RoutedEventArgs e)
+        /// loạt chỉ qua Enter. Dùng LostKeyboardFocus (bấm ra vùng vẽ AutoCAD cũng ghi — LostFocus logic thì không, review m3).</summary>
+        private void TxtName_LostFocus(object sender, System.Windows.Input.KeyboardFocusChangedEventArgs e)
         {
             if (sender is TextBox tb && tb.DataContext is NamingRow row && (tb.Text ?? "").Trim() != row.Name) Commit(tb, row, bulk: false);
         }
@@ -159,7 +161,7 @@ namespace MCG_3DPanel.UI
         private void Commit(TextBox tb, NamingRow row, bool bulk)
         {
             string text = (tb.Text ?? "").Trim();
-            if (text == row.Name) return;   // không đổi
+            if (text == row.Name || (text.Length == 0 && !row.IsUserName)) return;   // không đổi
             ResetBox(tb);
             // Trống ⇒ về tên tự sinh.
             Rename(row, text.Length == 0 ? null : text, bulk);
@@ -176,11 +178,11 @@ namespace MCG_3DPanel.UI
             string what = name == null ? "Name = auto" : $"Name = {name}";
             if (plan.Targets.Count == 0)
             {
+                // Ô đã được trả về tên cũ (ResetBox) — chỉ báo.
                 SetStatus(plan.OtherDrawing > 0 ? OtherDrawingText(clicked) : "Nothing to rename.", error: plan.OtherDrawing > 0);
-                Rebind(Selected.Select(r => r.Key).ToList());
                 return;
             }
-            Apply(plan.Targets, name, BulkEdit.Describe(plan, what), sel.Contains(clicked) ? sel : new List<NamingRow> { clicked });
+            Apply(plan.Targets, name, BulkEdit.Describe(plan, what));
         }
 
         private void MnuReset_Click(object sender, RoutedEventArgs e)
@@ -194,16 +196,16 @@ namespace MCG_3DPanel.UI
                 else SetStatus(sel.Count == 1 ? "This row already has its auto name." : "The selected rows already have their auto names.");
                 return;
             }
-            Apply(plan.Targets, null, BulkEdit.Describe(plan, "Reset to auto"), sel);
+            Apply(plan.Targets, null, BulkEdit.Describe(plan, "Reset to auto"));
         }
 
-        /// <summary>Ghi tên vào cache + XRecord (1 lần mỗi panel), tính lại tên, nạp lại bảng giữ vùng chọn.</summary>
-        private void Apply(List<NamingRow> targets, string name, string note, List<NamingRow> keepRows)
+        /// <summary>Ghi tên vào cache + XRecord (1 lần mỗi panel), gắn lại tên, cập nhật dòng tại chỗ.</summary>
+        private void Apply(List<NamingRow> targets, string name, string note)
         {
-            var keep = keepRows.Select(r => r.Key).ToList();
             foreach (var r in targets) NameStore.SetLine(r.PanelData.PanelKey, r.Line, name);
             var errors = new List<string>();
-            foreach (var p in targets.Select(r => r.PanelData).Distinct())
+            var touched = targets.Select(r => r.PanelData).Distinct().ToList();
+            foreach (var p in touched)
             {
                 try
                 {
@@ -211,9 +213,10 @@ namespace MCG_3DPanel.UI
                     if (err != null) errors.Add($"{p.PanelName}: {err}");
                 }
                 catch (System.Exception ex) { errors.Add($"{p.PanelName}: {ex.Message}"); }
-                p.Recompute();
+                p.ResolveNames();
             }
-            Rebind(keep);
+            // Cập nhật TẠI CHỖ (không thay ItemsSource): ô / dòng người dùng vừa bấm sang không bị huỷ (review m1).
+            foreach (var r in Rows) if (touched.Contains(r.PanelData)) r.Refresh();
             if (errors.Count > 0) SetStatus(note + "  ·  " + string.Join(" · ", errors), error: true);
             else SetStatus(note + "  ·  " + Summary());
         }

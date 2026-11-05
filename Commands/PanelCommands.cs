@@ -527,11 +527,27 @@ namespace MCG_3DPanel.Commands
                     }
                     catch (System.Exception ex)
                     {
-                        errors?.Add($"Panel {id.Handle}: {ex.Message}");
+                        errors?.Add($"{BlockNameOf(db, id)}: {ex.Message}");
                     }
                 }
             }
             return panels;
+        }
+
+        /// <summary>Tên block 2D (để báo lỗi dễ hiểu); không đọc được ⇒ handle.</summary>
+        private static string BlockNameOf(Database db, ObjectId blockRef)
+        {
+            try
+            {
+                using (Transaction tr = db.TransactionManager.StartTransaction())
+                {
+                    var br = (BlockReference)tr.GetObject(blockRef, OpenMode.ForRead);
+                    string n = ((BlockTableRecord)tr.GetObject(br.BlockTableRecord, OpenMode.ForRead)).Name;
+                    tr.Commit();
+                    return n;
+                }
+            }
+            catch (System.Exception) { return "Panel " + blockRef.Handle; }   // chỉ để ghi tên trong thông báo lỗi
         }
 
         /// <summary>Quét chọn (click / window / crossing) 1 hoặc nhiều Block Reference — filter INSERT nên

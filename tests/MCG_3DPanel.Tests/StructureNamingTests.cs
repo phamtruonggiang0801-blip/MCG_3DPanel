@@ -202,5 +202,22 @@ namespace MCG_3DPanel.Tests
             Assert.Empty(NamesJson.Deserialize(""));
             Assert.Empty(NamesJson.Deserialize("{not json"));
         }
+
+        [Fact]
+        public void OnePerPanel_SameBlockTwice_KeepsFirst()   // review I2: 2 lần chèn cùng block 2D = 1 bộ tên
+        {
+            var kept = MCG_3DPanel.UI.BulkEdit.OnePer(new[] { "A:1", "B:2", "A:1", "C:3" }, s => s, out int dropped);
+            Assert.Equal(new[] { "A:1", "B:2", "C:3" }, kept);
+            Assert.Equal(1, dropped);
+        }
+
+        [Fact]
+        public void NamesJson_MergeLoaded_KeepsEditMadeBeforeLoad()   // review I3
+        {
+            var cache = new Dictionary<string, string> { ["a"] = "NEW" };
+            NamesJson.MergeLoaded(cache, new Dictionary<string, string> { ["a"] = "OLD", ["b"] = "T6a" });
+            Assert.Equal("NEW", cache["a"]);
+            Assert.Equal("T6a", cache["b"]);
+        }
     }
 }

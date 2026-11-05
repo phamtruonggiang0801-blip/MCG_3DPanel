@@ -63,7 +63,7 @@
                         <DataTemplate>
                             <TextBox x:Name="NameBox" Text="{Binding Name, Mode=OneWay}" Style="{StaticResource CellTextBox}"
                                      HorizontalAlignment="Stretch" ToolTip="{Binding NameTip}"
-                                     KeyDown="TxtName_KeyDown" LostFocus="TxtName_LostFocus"/>
+                                     KeyDown="TxtName_KeyDown" LostKeyboardFocus="TxtName_LostFocus"/>
                             <DataTemplate.Triggers>
                                 <DataTrigger Binding="{Binding IsUserName}" Value="True">
                                     <Setter TargetName="NameBox" Property="Foreground" Value="#FF0050C8"/>
