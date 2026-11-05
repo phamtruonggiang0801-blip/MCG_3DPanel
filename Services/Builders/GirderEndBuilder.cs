@@ -41,7 +41,7 @@ namespace MCG_3DPanel.Services.Builders
                 double thk = part.FootprintThickness;
                 if (L < 1e-6 || H < 1e-6 || thk < 1e-6) return null;
 
-                double member = touchHp ? ctx.Input.HpHeight : ctx.Input.FlatBarHeight;
+                double member = touchHp ? ctx.Input.HpHeight : ctx.FbHeightNear(part, "GE/GB-FB");   // chiều cao FB chạm đầu
                 double dend = member - 15.0;                          // lưng −15 (bụng −30: GE3/4, chờ)
 
                 double rawLb = BracketBuilder.OverhangProj(part, ctx.Cls) - 15.0;
@@ -119,7 +119,7 @@ namespace MCG_3DPanel.Services.Builders
             {
                 double L = part.MemberLength, H = ctx.Input.WebHeight, thk = part.FootprintThickness;
                 if (L < 1e-6 || H < 1e-6 || thk < 1e-6) return null;
-                double member = touchHp ? ctx.Input.HpHeight : ctx.Input.FlatBarHeight;
+                double member = touchHp ? ctx.Input.HpHeight : ctx.FbHeightNear(part, "GE/GB-FB");   // chiều cao FB chạm đầu
                 double dend = member - 30.0;
                 double lb = ClassifyUtil_GbPad;
 

@@ -203,6 +203,18 @@
     </Style>
 
     <!-- Ô grid: nội dung căn giữa theo chiều đứng, đệm ngang đều. -->
+    <!-- Ô nhập số TRONG ô grid (chiều cao FB): cùng cao 20, margin 0 như CellCombo. -->
+    <Style x:Key="CellTextBox" TargetType="TextBox">
+        <Setter Property="Height" Value="20"/>
+        <Setter Property="MinWidth" Value="40"/>
+        <Setter Property="Margin" Value="0"/>
+        <Setter Property="Padding" Value="2,0"/>
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="HorizontalContentAlignment" Value="Right"/>
+    </Style>
+
     <Style x:Key="ResultCellStyle" TargetType="DataGridCell">
         <Setter Property="Padding" Value="3,0"/>
         <Setter Property="BorderThickness" Value="0"/>

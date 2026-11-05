@@ -199,7 +199,10 @@ namespace MCG_3DPanel.Commands
                 Rebuilt?.Invoke(current, null, "Switch to the drawing of this panel to rebuild it.");
                 return;
             }
-            _pending.RemoveAll(b => b.SourceBtrId == current.SourceBtrId);
+            // Mỗi PANEL (block 3D — tên ổn định qua các lần rebuild) giữ 1 yêu cầu mới nhất. KHÔNG gộp theo SourceBtrId:
+            // 2 bản chèn của CÙNG 1 block 2D là 2 panel khác nhau (sửa hàng loạt 2 panel ⇒ phải rebuild cả 2 — review).
+            _pending.RemoveAll(b => ReferenceEquals(b, current) || (!string.IsNullOrEmpty(b.BlockName) && b.BlockName == current.BlockName
+                                                                   && b.SourceRefId.Database == current.SourceRefId.Database));
             _pending.Add(current);
             if (_sendScheduled) return;
             _sendScheduled = true;

@@ -35,10 +35,10 @@ namespace MCG_3DPanel.Services.Builders
         ///  - IB/IB1: Dtop = HP height − 30, ledge 15 (đoạn ngang đầu span trước R30, bọc bulb).
         ///  - BF/BF1: Dtop = FlatBar height − 15, ledge 0 (mã "FB" cũ, xem BracketCoder).
         /// </summary>
-        public static void KneeDtop(string code, PanelInput input, out double dtop, out double ledge)
+        public static void KneeDtop(string code, PanelInput input, out double dtop, out double ledge, double fbHeight = -1)
         {
             code = code ?? "";
-            if (code.StartsWith("BF")) { dtop = input.FlatBarHeight - 15.0; ledge = 0.0; }
+            if (code.StartsWith("BF")) { dtop = (fbHeight > 0 ? fbHeight : input.FlatBarHeight) - 15.0; ledge = 0.0; }   // chiều cao FB chạm đầu
             else if (code.StartsWith("IB")) { dtop = input.HpHeight - 30.0; ledge = 15.0; }
             else { dtop = input.HpHeight - 15.0; ledge = 0.0; }   // OB (mặc định)
         }
@@ -50,7 +50,7 @@ namespace MCG_3DPanel.Services.Builders
             public bool Under50, Flanged, SquareCorner;
         }
 
-        public static KneeParams Solve(PanelPart part, ClassificationResult cls, PanelInput input)
+        public static KneeParams Solve(PanelPart part, ClassificationResult cls, PanelInput input, double fbHeight = -1)
         {
             var k = new KneeParams();
             k.S = part.MemberLength;
@@ -68,7 +68,7 @@ namespace MCG_3DPanel.Services.Builders
             k.F = k.Under50 ? 15.0 : Math.Min(rawF, k.S - 30.0);
             k.Huse = k.Under50 ? input.WebHeight - 30.0 : input.WebHeight;
 
-            KneeDtop(part.Code, input, out double dtop, out double ledge);
+            KneeDtop(part.Code, input, out double dtop, out double ledge, fbHeight);
             k.Dtop = dtop; k.Ledge = ledge;
 
             // free-edge (toe-flange→toe-HP); flanged → có gấp lip (thk6 ≥350 / thk10 ≥600).
@@ -82,7 +82,7 @@ namespace MCG_3DPanel.Services.Builders
         {
             try
             {
-                var k = Solve(part, ctx.Cls, ctx.Input);
+                var k = Solve(part, ctx.Cls, ctx.Input, (part.Code ?? "").StartsWith("BF") ? ctx.FbHeightNear(part, "Bracket BF") : -1);
                 if (k.S < 1e-6 || k.Huse < 1e-6 || k.Thk < 1e-6) return null;
 
                 var outline = ctx.Profile.BracketOutline(

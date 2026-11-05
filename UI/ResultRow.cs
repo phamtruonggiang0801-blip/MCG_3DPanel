@@ -73,6 +73,34 @@ namespace MCG_3DPanel.UI
             }
         }
 
+        // ─── Collar Plate ép theo HP (Auto / On / Off) — kỹ sư 2026-11-05, cùng kiểu Tripping ───
+        private string _collar = "Auto";
+        /// <summary>Lựa chọn Collar (Auto / On / Off), cùng danh sách <see cref="TripOptions"/>. Người dùng đổi ⇒
+        /// <see cref="CollarChanged"/>. Hiện khi <see cref="CanTrip"/> (dòng HP).</summary>
+        public string CollarChoice
+        {
+            get => _collar;
+            set
+            {
+                if (_collar == value || string.IsNullOrEmpty(value)) return;
+                _collar = value;
+                Raise(nameof(CollarChoice));
+                if (!_loading) CollarChanged?.Invoke(this);
+            }
+        }
+
+        /// <summary>"Auto"/"On"/"Off" ↔ bool? (null/true/false) — dùng chung cho Tripping và Collar.</summary>
+        internal static bool? ToForce(string choice) => choice == "On" ? true : choice == "Off" ? false : (bool?)null;
+        internal static string FromForce(bool? v) => v == true ? "On" : v == false ? "Off" : "Auto";
+
+        // ─── Chiều cao riêng FB (ô số trên cột Size) — kỹ sư 2026-11-05 ───
+        public bool CanFbHeight { get; set; }
+        /// <summary>Chiều cao đang dùng (mm) — riêng FB nếu đã sửa, không thì theo tab Input.</summary>
+        public string FbHeightText { get; set; }
+        public bool FbHeightCorrected { get; set; }
+        /// <summary>"× t6" — chiều dày theo 2D, chỉ đọc.</summary>
+        public string FbThkText { get; set; }
+
         // ─── Sniped End từng đầu (HP/FB) — nút bật/tắt trên grid ───
         public bool CanSnip { get; set; }
         public string SnipLoLabel { get; set; }
@@ -89,6 +117,7 @@ namespace MCG_3DPanel.UI
         public event PropertyChangedEventHandler PropertyChanged;
         internal event Action<ResultRow> KindChanged;
         internal event Action<ResultRow> TripChanged;
+        internal event Action<ResultRow> CollarChanged;
         private bool _loading = true;
         internal void EndLoad() => _loading = false;
         private void Raise(string n) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
@@ -131,7 +160,7 @@ namespace MCG_3DPanel.UI
                 DetectedKind = corr?.OriginalKind ?? d.Kind,
                 Options = d.Options,
                 CanFlip = d.CanFlip && (p != null || s.FlipKey != null) && !s.Deleted,
-                Size = SizeOf(build.Input, p, d.Family),
+                Size = SizeOf(build.Input, p, d.Family, corr),
                 Flags = s.Deleted ? "deleted" : SnipFlags(p),
                 IsCorrected = corr != null || s.Deleted,
                 Deleted = s.Deleted,
@@ -161,7 +190,17 @@ namespace MCG_3DPanel.UI
                 if (p.Type == PartType.HP)
                 {
                     row.CanTrip = true;
-                    row.TripChoice = corr?.Tripping == true ? "On" : corr?.Tripping == false ? "Off" : "Auto";
+                    row.TripChoice = FromForce(corr?.Tripping);
+                    row.CollarChoice = FromForce(corr?.Collar);
+                }
+                if (p.Type == PartType.FlatBar)
+                {
+                    // Chiều cao riêng FB (correction) hoặc theo tab Input; chiều dày luôn theo 2D (kỹ sư 2026-11-05).
+                    double h = corr?.FbHeight ?? build.Input?.FlatBarHeight ?? 0;
+                    row.CanFbHeight = true;
+                    row.FbHeightCorrected = corr?.FbHeight != null;
+                    row.FbHeightText = MCG_3DPanel.Models.PanelInput.Fmt(h);
+                    row.FbThkText = "× t" + MCG_3DPanel.Models.PanelInput.Fmt(p.FootprintThickness);
                 }
             }
             row.EndLoad();
@@ -176,14 +215,16 @@ namespace MCG_3DPanel.UI
         }
 
         /// <summary>Size theo họ: tấm "t{dày}", flange "{rộng}*{dày}", HP/FB theo quy cách nhập; solid sinh thêm rỗng.</summary>
-        private static string SizeOf(PanelInput input, PanelPart p, ResultFamily f)
+        private static string SizeOf(PanelInput input, PanelPart p, ResultFamily f, PartCorrection corr = null)
         {
             if (p == null) return "";
             switch (p.Type)
             {
                 case PartType.TopPlate: return input != null ? "t" + Fmt(input.TopPlateThickness) : "";
-                case PartType.HP: return input?.HpSpec ?? "";
-                case PartType.FlatBar: return input?.FlatBarSpec ?? "";
+                case PartType.HP: return MCG_3DPanel.Models.PanelInput.FormatSpec(input?.HpSpec);
+                case PartType.FlatBar:
+                    // Chiều cao RIÊNG FB (tab Result) nếu đã sửa — Copy / Export CSV khớp đúng grid (review).
+                    return MCG_3DPanel.Models.PanelInput.Fmt(corr?.FbHeight ?? input?.FlatBarHeight ?? 0) + " × t" + MCG_3DPanel.Models.PanelInput.Fmt(p.FootprintThickness);
                 case PartType.Flange:
                 case PartType.FacePlate:
                     return Fmt(p.FootprintThickness) + (input != null ? "*" + Fmt(input.FlangeThickness) : "");

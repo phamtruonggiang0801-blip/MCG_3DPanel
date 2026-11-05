@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Diagnostics;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
@@ -16,7 +18,7 @@ namespace MCG_3DPanel.Commands
     internal static class EntityHighlighter
     {
         private const string LOG = "[EntityHighlighter]";
-        private static ObjectId[] _last;   // đường dẫn đang sáng — để tắt trước khi bật cái mới
+        private static List<ObjectId[]> _last;   // các đường dẫn đang sáng (chọn nhiều dòng) — để tắt trước khi bật cái mới
         private static Database _lastDb;   // drawing chứa _last — lưu lúc highlight, KHÔNG đọc lại từ id (id có thể đã free)
 
         /// <summary>Highlight solid theo <paramref name="path"/>; <paramref name="zoom"/> = true ⇒ zoom vào bbox (nút ⌖ / menu
@@ -24,28 +26,40 @@ namespace MCG_3DPanel.Commands
         /// Trả null khi thành công, hoặc THÔNG BÁO cho người dùng (solid thuộc drawing khác — vd build 716C rồi sang
         /// drawing mới build 716P; lỗi AutoCAD) — KHÔNG nuốt lỗi im lặng (ux-guardrails).</summary>
         public static string Show(ObjectId[] path, Extents3d bounds, bool zoom = true)
+            => ShowMany(path == null ? new List<ObjectId[]>() : new List<ObjectId[]> { path }, bounds, zoom);
+
+        /// <summary>Highlight NHIỀU solid (chọn nhiều dòng kiểu Excel — kỹ sư 2026-11-05); <paramref name="bounds"/> = bbox
+        /// HỢP của vùng chọn (zoom). Đường dẫn thuộc drawing khác bị bỏ qua và BÁO (ux-guardrails luật 1).</summary>
+        public static string ShowMany(IReadOnlyList<ObjectId[]> paths, Extents3d bounds, bool zoom = true)
         {
             Document doc = AcadApp.DocumentManager.MdiActiveDocument;
             if (doc == null) return "No drawing is open.";
-            if (path == null || path.Length == 0) return "This row has no solid to highlight.";
-            if (path[0].Database != doc.Database)
+            var valid = (paths ?? new List<ObjectId[]>()).Where(p => p != null && p.Length > 0 && !p[0].IsNull).ToList();
+            if (valid.Count == 0) { Clear(); return "This row has no solid to highlight."; }
+            var here = valid.Where(p => p[0].Database == doc.Database).ToList();
+            int other = valid.Count - here.Count;
+            if (here.Count == 0)
             {
                 Clear();
-                return "This row belongs to another drawing — switch to that drawing, or run Build 3D / Load 3D here.";
+                return (valid.Count == 1 ? "This row belongs" : "These rows belong")
+                       + " to another drawing — switch to that drawing, or run Build 3D / Load 3D here.";
             }
 
             try
             {
+                int failed;
                 using (doc.LockDocument())
                 {
                     ClearCore(doc);
-                    SetHighlight(doc, path, true);
-                    _last = path;
+                    _last = here;   // ghi TRƯỚC khi bật: lỗi giữa chừng vẫn tắt được các path đã sáng (review)
                     _lastDb = doc.Database;
+                    failed = SetHighlight(doc, here, true);
+                    if (failed > 0) doc.Editor.WriteMessage($"\n{LOG} {failed} object(s) could not be highlighted.");
                     if (zoom && !ZoomTo(doc.Editor, bounds)) { doc.Editor.UpdateScreen(); return "Highlighted, but could not zoom to it (see the AutoCAD command line)."; }
                 }
                 doc.Editor.UpdateScreen();
-                return null;
+                if (failed > 0) return $"{failed} selected object{(failed > 1 ? "s" : "")} could not be highlighted (see the AutoCAD command line).";
+                return other > 0 ? $"{other} selected row{(other > 1 ? "s are" : " is")} in another drawing — not highlighted." : null;
             }
             catch (System.Exception ex)
             {
@@ -111,7 +125,7 @@ namespace MCG_3DPanel.Commands
             if (db != null && ReferenceEquals(_lastDb, db)) { _last = null; _lastDb = null; }
         }
 
-        private static (ObjectId[] path, Database db) Take()
+        private static (List<ObjectId[]> paths, Database db) Take()
         {
             var r = (_last, _lastDb);
             _last = null; _lastDb = null;
@@ -127,15 +141,16 @@ namespace MCG_3DPanel.Commands
             Unhighlight(doc, last, lastDb);
         }
 
-        private static void Unhighlight(Document doc, ObjectId[] last, Database lastDb)
+        private static void Unhighlight(Document doc, List<ObjectId[]> last, Database lastDb)
         {
-            if (last == null || last.Length == 0 || last[0].IsNull || lastDb == null) return;
+            if (last == null || last.Count == 0 || lastDb == null) return;
             try
             {
                 Document owner = ReferenceEquals(lastDb, doc.Database) ? doc : FindDocument(lastDb);
                 if (owner == null) return;   // drawing đã đóng
-                if (owner == doc) SetHighlight(owner, last, false);
-                else using (owner.LockDocument()) SetHighlight(owner, last, false);
+                void Off() => SetHighlight(owner, last, false);
+                if (owner == doc) Off();
+                else using (owner.LockDocument()) Off();
             }
             catch (System.Exception ex) { Debug.WriteLine($"{LOG} ClearCore lỗi: {ex.Message}"); }
         }
@@ -146,30 +161,36 @@ namespace MCG_3DPanel.Commands
             return null;
         }
 
-        private static void SetHighlight(Document doc, ObjectId[] path, bool on)
+        /// <summary>Bật/tắt highlight NHIỀU đường dẫn trong MỘT transaction (chọn vài trăm dòng — review: trước đó mỗi
+        /// đường dẫn 1 transaction). Trả số đường dẫn lỗi (đã bỏ qua) để caller báo người dùng.</summary>
+        private static int SetHighlight(Document doc, IEnumerable<ObjectId[]> paths, bool on)
         {
+            int failed = 0;
             using (Transaction tr = doc.Database.TransactionManager.StartTransaction())
             {
-                // ⚠️ Highlight entity LỒNG phải gọi trên entity NGOÀI CÙNG (BlockReference = path[0]),
-                // truyền cả FullSubentityPath — KHÔNG gọi trên polyline lá.
-                ObjectId rootId = path[0];
-                if (rootId.IsNull || rootId.IsErased) { tr.Commit(); return; }
-
-                var root = tr.GetObject(rootId, OpenMode.ForRead) as Entity;
-                if (root != null)
+                foreach (var path in paths)
                 {
-                    if (path.Length == 1)
+                    try
                     {
-                        if (on) root.Highlight(); else root.Unhighlight();
+                        // ⚠️ Highlight entity LỒNG phải gọi trên entity NGOÀI CÙNG (BlockReference = path[0]),
+                        // truyền cả FullSubentityPath — KHÔNG gọi trên polyline lá.
+                        if (path == null || path.Length == 0) continue;
+                        ObjectId rootId = path[0];
+                        if (rootId.IsNull || rootId.IsErased) continue;
+                        var root = tr.GetObject(rootId, OpenMode.ForRead) as Entity;
+                        if (root == null) continue;
+                        if (path.Length == 1) { if (on) root.Highlight(); else root.Unhighlight(); }
+                        else
+                        {
+                            var sp = new FullSubentityPath(path, new SubentityId(SubentityType.Null, IntPtr.Zero));
+                            if (on) root.Highlight(sp, false); else root.Unhighlight(sp, false);
+                        }
                     }
-                    else
-                    {
-                        var sp = new FullSubentityPath(path, new SubentityId(SubentityType.Null, IntPtr.Zero));
-                        if (on) root.Highlight(sp, false); else root.Unhighlight(sp, false);
-                    }
+                    catch (System.Exception ex) { failed++; Debug.WriteLine($"{LOG} SetHighlight lỗi: {ex.Message}"); }
                 }
                 tr.Commit();
             }
+            return failed;
         }
 
         /// <summary>Zoom viewport hiện tại vào bbox WCS + lề để giữ ngữ cảnh. Chiếu bbox sang DCS của view

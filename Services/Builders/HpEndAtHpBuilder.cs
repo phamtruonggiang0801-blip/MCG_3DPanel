@@ -87,7 +87,7 @@ namespace MCG_3DPanel.Services.Builders
                         string tail = $"{(fill > 0 ? $" nối dài={fill:0.#}" : "")}{(est ? " (c/r NỘI SUY)" : "")}";
                         if (run.Type == PartType.FlatBar)
                         {
-                            double hFb = ctx.Input.FlatBarHeight, weld = hFb - HpEndAtHpGeometry.FB_WELD_CLEAR;
+                            double hFb = ctx.FbHeight(run), weld = hFb - HpEndAtHpGeometry.FB_WELD_CLEAR;
                             bool r30 = weld >= b;
                             ctx.Report.Add($"{LOG} HP-end-at-FB h={h.Id.Handle} m={run.Id.Handle} θ={Deg(best.CosTheta):0} " +
                                            $"hfb={hFb:0} weld={(r30 ? b - d - HpEndAtHpGeometry.R : weld):0.#} " +
@@ -131,8 +131,8 @@ namespace MCG_3DPanel.Services.Builders
             var list = ctx.Cls.OfType(PartType.HP).ToList();
             var fbs = ctx.Cls.OfType(PartType.FlatBar).ToList();
             if (fbs.Count == 0) return list;
-            if (ctx.Input.FlatBarHeight > 0) list.AddRange(fbs);
-            else if (report) ctx.Report.Add($"{LOG} SKIP FB: FlatBarHeight=0 (spec FB trống) → không xét HP end tại FB.");
+            list.AddRange(fbs.Where(fb => ctx.FbHeight(fb) > 0));   // chiều cao riêng từng FB (tab Result)
+            if (report && fbs.Any(fb => ctx.FbHeight(fb) <= 0)) ctx.Report.Add($"{LOG} SKIP FB không có chiều cao (tab Input trống) → không xét HP end tại FB đó.");
             return list;
         }
 
@@ -185,7 +185,7 @@ namespace MCG_3DPanel.Services.Builders
             if (tRun <= 1e-6 || tEnd <= 1e-6) return null;
 
             var section = run.Type == PartType.FlatBar
-                ? ctx.HpProfile.HpEndAtFbCutter(b, ctx.Input.FlatBarHeight, tRun, c, r)   // "HP TO FB END"
+                ? ctx.HpProfile.HpEndAtFbCutter(b, ctx.FbHeight(run), tRun, c, r)   // "HP TO FB END" — chiều cao riêng FB
                 : ctx.HpProfile.HpEndAtHpCutter(b, tRun, c, r, mt.Inside);
             if (section == null) return null;
             double xMax = section.Max(v => Math.Abs(v.Pt.X));                 // vát FB vươn ~100mm ⇒ span theo dao thật

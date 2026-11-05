@@ -51,3 +51,26 @@ built in a second drawing.
 | D3 | Export CSV on a PC with no app for .csv. | "Exported X, but could not open it: …" |
 | D4 | Highlight or zoom fails (e.g. empty bounds). | A status message explains it. The failure is never swallowed silently. |
 | D5 | Click a valid row after a red error, such as "Solid no longer exists". | The red error is replaced by the normal summary. |
+
+## E. Multi-select and bulk edit
+
+| # | Steps | Expected |
+|---|---|---|
+| E1 | Select rows with Shift+click, Ctrl+click, a mouse drag and Ctrl+A. | Every selected object is highlighted in the drawing at once. No zoom. |
+| E2 | With 5 HP rows and 2 Web rows selected, set Tripping = On on one of the HP rows. | All 5 HP rows change, the Web rows are skipped. The status says "Tripping = On on 5 rows · 2 skipped (not applicable)". Each panel rebuilds once, and the 7 rows stay selected. |
+| E3 | Select rows from two panels and press ⇄ on one of them. | Both panels rebuild once each, and every selected row gets the same direction. |
+| E4 | Change a control on a row that is NOT in the selection. | Only that row changes. |
+| E5 | Select rows from another drawing and change Collar. | Nothing is saved, the control returns to its old value, and the status names the drawing. |
+| E6 | Right-click Delete, then Restore, with several rows selected. Then Clear Correction. | They act on the whole selection, and the status shows the counts. |
+| E7 | Ctrl+C with 3 rows selected, then paste into Excel. | The header plus the 3 rows are pasted. |
+| E8 | ⌖ on a selected row while several rows are selected. | The view zooms to all selected objects. |
+
+## F. FB height
+
+| # | Steps | Expected |
+|---|---|---|
+| F1 | Type `x`, `0` or `-5` in the FB height box (Input tab or Result tab), then press Enter. | A clear message asks for a positive number. Nothing is rebuilt. |
+| F2 | On the Result tab, set an FB to 100 and press Enter. | The FB, its BF bracket, GE/GB-FB and any HP end at that FB use 100. Size shows `100 × t…`. |
+| F3 | Clear the box and press Enter. | The FB returns to the Input tab height. |
+| F4 | Type a new height, then click away without pressing Enter. | The value is not saved and the old value comes back. |
+| F5 | Load 3D on an old drawing whose saved spec is `120*6`. | It rebuilds with height 120 and no error. |

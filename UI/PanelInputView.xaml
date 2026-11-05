@@ -53,10 +53,10 @@
                             <TextBlock Grid.Row="3" Grid.Column="0" Text="Flange thk" Style="{StaticResource ParamLabelStyle}"/>
                             <TextBox Grid.Row="3" Grid.Column="1" x:Name="TxtFlangeThk" Text="20"/>
 
-                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Flat Bar spec" Style="{StaticResource ParamLabelStyle}"
-                                       ToolTip="height*thickness, e.g. 120*6"/>
-                            <TextBox Grid.Row="4" Grid.Column="1" x:Name="TxtFlatBarSpec" Text="120*6"
-                                     ToolTip="height*thickness, e.g. 120*6"/>
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="FB height (mm)" Style="{StaticResource ParamLabelStyle}"
+                                       ToolTip="Flat Bar height in mm. Thickness is read from the plan geometry. Individual bars can be changed on the Result tab."/>
+                            <TextBox Grid.Row="4" Grid.Column="1" x:Name="TxtFbHeight" Text="120"
+                                     ToolTip="Flat Bar height in mm. Thickness is read from the plan geometry. Individual bars can be changed on the Result tab."/>
 
                             <TextBlock Grid.Row="5" Grid.Column="0" Text="HP size" Style="{StaticResource ParamLabelStyle}"
                                        ToolTip="Standard HP table. Thickness is read from the plan geometry; this only sets the profile height (b)."/>

@@ -35,7 +35,7 @@ namespace MCG_3DPanel.Services.Builders
         {
             try
             {
-                double L = part.MemberLength, thk = part.FootprintThickness, hfb = ctx.Input.FlatBarHeight;
+                double L = part.MemberLength, thk = part.FootprintThickness, hfb = ctx.FbHeight(part);   // chiều cao riêng FB (tab Result)
                 if (L < 1e-6 || thk < 1e-6 || hfb < 1e-6) return null;
 
                 var (e1, e2) = ClassifyUtil.Endpoints(part);
