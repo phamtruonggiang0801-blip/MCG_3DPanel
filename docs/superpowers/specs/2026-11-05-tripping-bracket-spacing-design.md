@@ -31,8 +31,8 @@ chose (A): accept the result of the Center rule below and adjust on the Result t
   - Port: Y from top to bottom.
   - Starboard: Y from bottom to top.
   - **Center**: from both ends toward the panel centre (TopPlate centroid). A segment that crosses the centre is
-    split there, and each half walks from its outer end, choosing only HPs inside its own half. If the gap
-    between the last pick on each side is still > L, add a greedy step across the gap. **Picks close together in
+    split there, and each half walks from its outer end, choosing only HPs inside its own half. No extra
+    step is needed between the halves, because each half already uses every HP on its side. **Picks close together in
     the middle are acceptable**, because the user can edit them on the Result tab.
 - **R5 Manual override (option A).** A new **Tripping: Auto / On / Off** control on each **HP row** of the Result
   tab, stored in `PartCorrection` on the HP's SourceKey:
