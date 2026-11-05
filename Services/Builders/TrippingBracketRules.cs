@@ -5,28 +5,31 @@ using System.Linq;
 namespace MCG_3DPanel.Services.Builders
 {
     /// <summary>
-    /// Luật THUẦN (không AutoCAD — unit test được) cho <b>Tripping Bracket</b> (CAS.dump.json, kỹ sư 2026-11-04):
-    /// "ADD 1 TRIPPING BRACKET BELOW HP IF 3 OR MORE CONTINUOUS STIFFENER IN BEAM SEGMENT. ADD THIS BRACKET
-    /// CLOSEST TO BEAM SEGMENT MIDDLE. FOR DETAIL SEE HP BRACKET DETAIL." + hình tấm bracket B dùng chung với
+    /// Luật THUẦN (không AutoCAD — unit test được) cho <b>Tripping Bracket</b>. Kỹ sư 2026-11-05 (test 7D-16C):
+    /// khoảng cách giữa các gối chống vặn xoắn dọc 1 đoạn dầm ≤ L = 3 × bước stiffener max ⇒ đi từ gối đầu theo
+    /// CHIỀU ĐỔ, chọn HP xa nhất trong L, lặp lại (Center: 2 đầu vào tâm). Hình tấm bracket B dùng chung với
     /// <see cref="HpEndBracketBuilder"/> (skill sniped-end §5a). Xem skill tripping-bracket.
     /// </summary>
     public static class TrippingBracketRules
     {
-        /// <summary>2 HP cách giữa đoạn chênh ≤ giá trị này ⇒ hoà (chọn theo chiều đổ).</summary>
+        /// <summary>2 điểm cắt cách ≤ giá trị này ⇒ gộp làm 1.</summary>
         public const double TIE_TOL = 1.0;
-        /// <summary>Đoạn dầm cần ≥ bấy nhiêu HP liên tục xuyên qua mới thêm bracket.</summary>
-        public const int MIN_HP = 3;
+        /// <summary>Dung sai so khoảng cách với L (7D-16C: 5332.6 − 3007.6 = 2325 = L đúng ngưỡng).</summary>
+        public const double SPACING_TOL = 1.0;
 
         // Bracket B (sniped-end §5a) — hằng số đã chốt.
         public const double R = 50.0, TOP_L = 50.0, E15 = 15.0, OFF2 = 30.0, BIG_OVERHANG = 50.0;
         public const double B90 = 0.41421356;   // |bulge| cung 90°
 
-        /// <summary>Các ĐOẠN dầm = khoảng giữa 2 điểm cắt LIÊN TIẾP (dọc trục run). Điểm cắt = chỗ run bị 1 dầm
-        /// liên tục có flange ngắt. Chỉ đoạn có CẢ 2 đầu là điểm cắt (R2) — mút run tự do không tạo đoạn. Cắt
-        /// trùng (≤ <see cref="TIE_TOL"/>) gộp làm 1.</summary>
-        public static List<(double lo, double hi)> Segments(IReadOnlyList<double> cuts)
+        /// <summary>Các ĐOẠN dầm = khoảng giữa 2 gối LIÊN TIẾP dọc trục run. Gối = điểm cắt (dầm liên tục có flange
+        /// ngắt run) + 2 mút run (0 và <paramref name="runLen"/>) — mút chỉ thêm khi không có điểm cắt nào trong
+        /// <paramref name="endTol"/>. Gối trùng (≤ <see cref="TIE_TOL"/>) gộp làm 1.</summary>
+        public static List<(double lo, double hi)> Segments(IReadOnlyList<double> cuts, double runLen, double endTol)
         {
-            var c = (cuts ?? new List<double>()).OrderBy(x => x).ToList();
+            var c = (cuts ?? new List<double>()).ToList();
+            foreach (var e in new[] { 0.0, runLen })
+                if (!c.Any(x => Math.Abs(x - e) <= endTol)) c.Add(e);
+            c.Sort();
             var u = new List<double>();
             foreach (var x in c) if (u.Count == 0 || x - u[u.Count - 1] > TIE_TOL) u.Add(x);
             var res = new List<(double, double)>();
@@ -34,21 +37,53 @@ namespace MCG_3DPanel.Services.Builders
             return res;
         }
 
-        /// <summary>Chỉ số HP (trong <paramref name="s"/> = vị trí giao dọc trục dầm) gần <paramref name="mid"/>
-        /// nhất; null nếu &lt; <see cref="MIN_HP"/>. Hoà (≤ <see cref="TIE_TOL"/>) ⇒ HP về phía dấu
-        /// <paramref name="tieSign"/> (chiều đổ chiếu lên trục dầm).</summary>
-        public static int? PickHp(IReadOnlyList<double> s, double mid, double tieSign)
+        /// <summary>Bước stiffener max = khoảng lớn nhất giữa 2 HP kề nhau trên cùng 1 đoạn, lấy max toàn panel;
+        /// 0 nếu không đoạn nào có ≥ 2 HP.</summary>
+        public static double MaxSpacing(IEnumerable<IReadOnlyList<double>> segmentHpS)
         {
-            if (s == null || s.Count < MIN_HP) return null;
-            int best = 0;
-            for (int i = 1; i < s.Count; i++)
+            double m = 0;
+            foreach (var l in segmentHpS ?? Enumerable.Empty<IReadOnlyList<double>>())
             {
-                double di = Math.Abs(s[i] - mid), db = Math.Abs(s[best] - mid);
-                if (di < db - TIE_TOL) best = i;
-                else if (Math.Abs(di - db) <= TIE_TOL && Math.Sign(s[i] - mid) == Math.Sign(tieSign) && tieSign != 0)
-                    best = i;
+                if (l == null) continue;
+                var s = l.OrderBy(x => x).ToList();
+                for (int i = 1; i < s.Count; i++) m = Math.Max(m, s[i] - s[i - 1]);
             }
-            return best;
+            return m;
+        }
+
+        /// <summary>Chỉ số HP (trong <paramref name="s"/> tăng dần, nằm trong (lo, hi)) được đặt tripping bracket:
+        /// đi từ gối, chọn HP xa nhất cách gối ≤ <paramref name="L"/> (+<see cref="SPACING_TOL"/>), HP đó thành
+        /// gối mới; dừng khi khoảng tới đầu kia ≤ L. Không HP nào trong L ⇒ lấy HP kế tiếp gần nhất.
+        /// <paramref name="startSign"/> ≥ 0 ⇒ đi từ lo; &lt; 0 ⇒ từ hi. <paramref name="split"/> (Center, nằm trong
+        /// (lo, hi)) ⇒ nửa s ≤ split đi từ lo, nửa s &gt; split đi từ hi, mỗi nửa chỉ chọn HP của mình.</summary>
+        public static List<int> PickBySpacing(IReadOnlyList<double> s, double lo, double hi, double L, int startSign, double? split)
+        {
+            var res = new List<int>();
+            if (s == null || s.Count == 0 || L <= 0) return res;
+            var all = Enumerable.Range(0, s.Count).ToList();
+            if (split is double sp && sp > lo && sp < hi)
+            {
+                Walk(s, all.Where(i => s[i] <= sp).ToList(), lo, hi, +1, L, res);
+                Walk(s, all.Where(i => s[i] > sp).ToList(), hi, lo, -1, L, res);
+            }
+            else if (startSign >= 0) Walk(s, all, lo, hi, +1, L, res);
+            else Walk(s, all, hi, lo, -1, L, res);
+            return res.Distinct().OrderBy(i => i).ToList();
+        }
+
+        private static void Walk(IReadOnlyList<double> s, List<int> cand, double cur, double end, int dir, double L, List<int> res)
+        {
+            double lim = L + SPACING_TOL;
+            while (Math.Abs(end - cur) > lim)
+            {
+                double c0 = cur;
+                var ahead = cand.Where(i => (s[i] - c0) * dir > 0).OrderBy(i => (s[i] - c0) * dir).ToList();
+                if (ahead.Count == 0) break;
+                var within = ahead.Where(i => Math.Abs(s[i] - c0) <= lim).ToList();
+                int pick = within.Count > 0 ? within[within.Count - 1] : ahead[0];
+                res.Add(pick);
+                cur = s[pick];
+            }
         }
 
         /// <summary>Phía web dầm đặt bracket: +1 = theo pháp tuyến n, −1 = ngược. Theo chiều đổ (<c>doz·n ≥ 0</c>
