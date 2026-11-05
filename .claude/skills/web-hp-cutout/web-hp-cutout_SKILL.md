@@ -145,6 +145,13 @@ Tấm bù (compensation / collar plate) hàn quanh lỗ CO nơi HP xuyên web �
 Nguồn: **Hatch `1F3F2`** (`layer DM4_STEEL_CUTOUT_RASTER`, `*Model_Space` của `CAS.dump.json`, HP120) —
 biên polyline 9 đỉnh = mặt cắt THẬT tấm collar. Hình "LUG B1R (LUG FOR BULB-PROFILE)" + TABLE 1 tham khảo.
 
+### 7-bis. Ép tay theo HP (kỹ sư 2026-11-05)
+
+Tab Result, dòng HP: dropdown **Collar: Auto / On / Off** (`PartCorrection.Collar`, khoá = SourceKey HP). **On** = collar ở
+MỌI lỗ CO của HP (mọi web nó xuyên); mặt web về phía junction gần nhất trên cùng web dọc, không có junction ⇒ về
+tâm panel. **Off** = bỏ hết collar của HP. KHÔNG tính lại Auto của HP khác. `WebCollarPlateBuilder`: `Force()` +
+danh sách `forced` xử lý sau vòng run; `BuildOne(..., sideRef, ...)`.
+
 ### 7a. Quy tắc VỊ TRÍ (xác nhận kỹ sư 2026-08-28)
 
 Note gốc:

@@ -183,8 +183,16 @@ namespace MCG_3DPanel.UI
                 var hit = rows.Where(r => want.Contains((r.PanelKey, r.SourceKey ?? r.DeleteKey))).ToList();
                 if (hit.Count > 0)
                 {
-                    GridResult.SelectedItems.Clear();
-                    foreach (var r in hit) GridResult.SelectedItems.Add(r);   // SelectionChanged → highlight cả vùng chọn
+                    // Thêm từng dòng ⇒ SelectionChanged bắn N lần (highlight lại cả vùng chọn mỗi lần — chậm với vài
+                    // trăm dòng): tạm chặn, highlight 1 lần ở cuối.
+                    _suspendShow = true;
+                    try
+                    {
+                        GridResult.SelectedItems.Clear();
+                        foreach (var r in hit) GridResult.SelectedItems.Add(r);
+                    }
+                    finally { _suspendShow = false; }
+                    Show(Selected, zoom: false);
                     GridResult.ScrollIntoView(hit[0]);
                 }
             }
@@ -451,8 +459,10 @@ namespace MCG_3DPanel.UI
 
         private void Show(ResultRow row, bool zoom) => Show(new List<ResultRow> { row }, zoom);
 
+        private bool _suspendShow;
+
         private void GridResult_SelectionChanged(object sender, SelectionChangedEventArgs e)
-            => Show(Selected, zoom: false);   // chỉ highlight — zoom bằng nút ⌖
+            { if (!_suspendShow) Show(Selected, zoom: false); }   // chỉ highlight — zoom bằng nút ⌖
 
         private void BtnZoomRow_Click(object sender, RoutedEventArgs e)
         {

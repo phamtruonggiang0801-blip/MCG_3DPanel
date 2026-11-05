@@ -49,3 +49,10 @@ bóp mất mũi tên). Trong ô grid LUÔN dùng `CellButton` / `CellToggle` / `
 2. Trước khi báo xong: đi từng dòng `docs/ux-checklist.md` trên code ⇒ ✔ / ✘ (sửa) / 🔍 (chỉ thấy trong AutoCAD);
    liệt kê 🔍 trong tin nhắn cuối để kỹ sư chạy.
 3. Prompt reviewer cuối: kèm đường dẫn checklist, yêu cầu kiểm các dòng diff chạm tới.
+
+## Sửa hàng loạt (kỹ sư 2026-11-05)
+
+Mọi handler sửa correction trên tab Result đi qua `PanelResultView.ApplyBulk(clicked, supports, apply, what)` →
+`BulkEdit.Plan` (thuần, test) → dòng không hỗ trợ / drawing khác bị BỎ + đếm → mỗi panel rebuild 1 lần
+(`RebuildMany`) → status `BulkEdit.Describe`. Control mới trên grid: viết `supports` + `apply`, KHÔNG tự lưu correction.
+Giá trị áp cho cả vùng chọn = giá trị MỚI của dòng được bấm (⇄ / Sniped End không "đảo từng dòng").
