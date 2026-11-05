@@ -47,15 +47,18 @@ namespace MCG_3DPanel.Commands
 
             try
             {
+                int failed;
                 using (doc.LockDocument())
                 {
                     ClearCore(doc);
-                    foreach (var p in here) SetHighlight(doc, p, true);
-                    _last = here;
+                    _last = here;   // ghi TRƯỚC khi bật: lỗi giữa chừng vẫn tắt được các path đã sáng (review)
                     _lastDb = doc.Database;
+                    failed = SetHighlight(doc, here, true);
+                    if (failed > 0) doc.Editor.WriteMessage($"\n{LOG} {failed} object(s) could not be highlighted.");
                     if (zoom && !ZoomTo(doc.Editor, bounds)) { doc.Editor.UpdateScreen(); return "Highlighted, but could not zoom to it (see the AutoCAD command line)."; }
                 }
                 doc.Editor.UpdateScreen();
+                if (failed > 0) return $"{failed} selected object{(failed > 1 ? "s" : "")} could not be highlighted (see the AutoCAD command line).";
                 return other > 0 ? $"{other} selected row{(other > 1 ? "s are" : " is")} in another drawing — not highlighted." : null;
             }
             catch (System.Exception ex)
@@ -145,7 +148,7 @@ namespace MCG_3DPanel.Commands
             {
                 Document owner = ReferenceEquals(lastDb, doc.Database) ? doc : FindDocument(lastDb);
                 if (owner == null) return;   // drawing đã đóng
-                void Off() { foreach (var p in last) if (p != null && p.Length > 0 && !p[0].IsNull) SetHighlight(owner, p, false); }
+                void Off() => SetHighlight(owner, last, false);
                 if (owner == doc) Off();
                 else using (owner.LockDocument()) Off();
             }
@@ -158,30 +161,36 @@ namespace MCG_3DPanel.Commands
             return null;
         }
 
-        private static void SetHighlight(Document doc, ObjectId[] path, bool on)
+        /// <summary>Bật/tắt highlight NHIỀU đường dẫn trong MỘT transaction (chọn vài trăm dòng — review: trước đó mỗi
+        /// đường dẫn 1 transaction). Trả số đường dẫn lỗi (đã bỏ qua) để caller báo người dùng.</summary>
+        private static int SetHighlight(Document doc, IEnumerable<ObjectId[]> paths, bool on)
         {
+            int failed = 0;
             using (Transaction tr = doc.Database.TransactionManager.StartTransaction())
             {
-                // ⚠️ Highlight entity LỒNG phải gọi trên entity NGOÀI CÙNG (BlockReference = path[0]),
-                // truyền cả FullSubentityPath — KHÔNG gọi trên polyline lá.
-                ObjectId rootId = path[0];
-                if (rootId.IsNull || rootId.IsErased) { tr.Commit(); return; }
-
-                var root = tr.GetObject(rootId, OpenMode.ForRead) as Entity;
-                if (root != null)
+                foreach (var path in paths)
                 {
-                    if (path.Length == 1)
+                    try
                     {
-                        if (on) root.Highlight(); else root.Unhighlight();
+                        // ⚠️ Highlight entity LỒNG phải gọi trên entity NGOÀI CÙNG (BlockReference = path[0]),
+                        // truyền cả FullSubentityPath — KHÔNG gọi trên polyline lá.
+                        if (path == null || path.Length == 0) continue;
+                        ObjectId rootId = path[0];
+                        if (rootId.IsNull || rootId.IsErased) continue;
+                        var root = tr.GetObject(rootId, OpenMode.ForRead) as Entity;
+                        if (root == null) continue;
+                        if (path.Length == 1) { if (on) root.Highlight(); else root.Unhighlight(); }
+                        else
+                        {
+                            var sp = new FullSubentityPath(path, new SubentityId(SubentityType.Null, IntPtr.Zero));
+                            if (on) root.Highlight(sp, false); else root.Unhighlight(sp, false);
+                        }
                     }
-                    else
-                    {
-                        var sp = new FullSubentityPath(path, new SubentityId(SubentityType.Null, IntPtr.Zero));
-                        if (on) root.Highlight(sp, false); else root.Unhighlight(sp, false);
-                    }
+                    catch (System.Exception ex) { failed++; Debug.WriteLine($"{LOG} SetHighlight lỗi: {ex.Message}"); }
                 }
                 tr.Commit();
             }
+            return failed;
         }
 
         /// <summary>Zoom viewport hiện tại vào bbox WCS + lề để giữ ngữ cảnh. Chiếu bbox sang DCS của view

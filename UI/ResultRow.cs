@@ -160,7 +160,7 @@ namespace MCG_3DPanel.UI
                 DetectedKind = corr?.OriginalKind ?? d.Kind,
                 Options = d.Options,
                 CanFlip = d.CanFlip && (p != null || s.FlipKey != null) && !s.Deleted,
-                Size = SizeOf(build.Input, p, d.Family),
+                Size = SizeOf(build.Input, p, d.Family, corr),
                 Flags = s.Deleted ? "deleted" : SnipFlags(p),
                 IsCorrected = corr != null || s.Deleted,
                 Deleted = s.Deleted,
@@ -215,7 +215,7 @@ namespace MCG_3DPanel.UI
         }
 
         /// <summary>Size theo họ: tấm "t{dày}", flange "{rộng}*{dày}", HP/FB theo quy cách nhập; solid sinh thêm rỗng.</summary>
-        private static string SizeOf(PanelInput input, PanelPart p, ResultFamily f)
+        private static string SizeOf(PanelInput input, PanelPart p, ResultFamily f, PartCorrection corr = null)
         {
             if (p == null) return "";
             switch (p.Type)
@@ -223,7 +223,8 @@ namespace MCG_3DPanel.UI
                 case PartType.TopPlate: return input != null ? "t" + Fmt(input.TopPlateThickness) : "";
                 case PartType.HP: return MCG_3DPanel.Models.PanelInput.FormatSpec(input?.HpSpec);
                 case PartType.FlatBar:
-                    return MCG_3DPanel.Models.PanelInput.Fmt(input?.FlatBarHeight ?? 0) + " × t" + MCG_3DPanel.Models.PanelInput.Fmt(p.FootprintThickness);
+                    // Chiều cao RIÊNG FB (tab Result) nếu đã sửa — Copy / Export CSV khớp đúng grid (review).
+                    return MCG_3DPanel.Models.PanelInput.Fmt(corr?.FbHeight ?? input?.FlatBarHeight ?? 0) + " × t" + MCG_3DPanel.Models.PanelInput.Fmt(p.FootprintThickness);
                 case PartType.Flange:
                 case PartType.FacePlate:
                     return Fmt(p.FootprintThickness) + (input != null ? "*" + Fmt(input.FlangeThickness) : "");

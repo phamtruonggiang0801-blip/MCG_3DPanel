@@ -62,7 +62,8 @@
                   CellStyle="{StaticResource ResultCellStyle}"
                   MinRowHeight="24" RowHeaderWidth="0" CanUserResizeRows="False"
                   SelectionMode="Extended"
-                  SelectionChanged="GridResult_SelectionChanged">
+                  SelectionChanged="GridResult_SelectionChanged"
+                  PreviewMouseLeftButtonDown="GridResult_PreviewMouseDown">
             <!-- Ctrl+C: copy các dòng ĐANG CHỌN (kèm header) để dán Excel. -->
             <DataGrid.CommandBindings>
                 <CommandBinding Command="ApplicationCommands.Copy" Executed="GridCopy_Executed"/>
@@ -106,7 +107,7 @@
                             <Grid>
                                 <TextBlock x:Name="SizeText" Text="{Binding Size}" VerticalAlignment="Center"/>
                                 <StackPanel x:Name="FbSize" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed">
-                                    <TextBox Text="{Binding FbHeightText, Mode=OneWay}" Style="{StaticResource CellTextBox}"
+                                    <TextBox x:Name="FbBox" Text="{Binding FbHeightText, Mode=OneWay}" Style="{StaticResource CellTextBox}"
                                              KeyDown="TxtFbHeight_KeyDown" LostFocus="TxtFbHeight_LostFocus"
                                              ToolTip="FB height in mm (thickness comes from the 2D plan). Type a number and press Enter; leave empty to use the Input tab value. Applies to all selected FB rows."/>
                                     <TextBlock Text="{Binding FbThkText}" Margin="4,0,0,0" VerticalAlignment="Center"/>
@@ -116,6 +117,11 @@
                                 <DataTrigger Binding="{Binding CanFbHeight}" Value="True">
                                     <Setter TargetName="SizeText" Property="Visibility" Value="Collapsed"/>
                                     <Setter TargetName="FbSize" Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                                <!-- Chiều cao đã sửa riêng ⇒ chữ xanh như dòng có correction (checklist C3). -->
+                                <DataTrigger Binding="{Binding FbHeightCorrected}" Value="True">
+                                    <Setter TargetName="FbBox" Property="Foreground" Value="#FF0050C8"/>
+                                    <Setter TargetName="FbBox" Property="FontWeight" Value="SemiBold"/>
                                 </DataTrigger>
                             </DataTemplate.Triggers>
                         </DataTemplate>
@@ -181,7 +187,7 @@
                                       Style="{StaticResource CellCombo}" MinWidth="58"
                                       PreviewKeyDown="CmbTrip_PreviewKeyDown" PreviewMouseWheel="CmbTrip_PreviewMouseWheel"
                                       Visibility="{Binding CanTrip, Converter={StaticResource BoolToVis}}"
-                                      ToolTip="Collar Plate on this HP. Auto = the 2 CO holes next to each web junction; On = at every CO hole of this HP; Off = none. Applies to all selected HP rows. Rebuilds the panel."/>
+                                      ToolTip="Collar Plate on this HP. Auto = the 2 CO holes on each side of every web junction; On = at every CO hole of this HP; Off = none. Applies to all selected HP rows. Rebuilds the panel."/>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>

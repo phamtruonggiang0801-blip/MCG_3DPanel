@@ -37,14 +37,17 @@ namespace MCG_3DPanel.UI
         /// <summary>Các dòng cần chọn lại sau rebuild (PanelKey, SourceKey) — cả vùng chọn khi sửa hàng loạt.</summary>
         private List<(string panel, string source)> _reselect;
         /// <summary>Số panel còn chờ rebuild của lần sửa gần nhất (sửa hàng loạt 2 panel ⇒ 2 lần OnRebuilt).</summary>
-        private int _pendingRebuilds;
+        private readonly HashSet<string> _pendingPanels = new HashSet<string>();   // BlockName các panel đang chờ rebuild của lần sửa gần nhất
 
         /// <summary>PanelCommands.Rebuilt: thay bản cũ bằng bản mới (null = thất bại, giữ nguyên) rồi nạp lại.</summary>
         public void OnRebuilt(BuildResult old, BuildResult neu, string message)
         {
-            var sel = _reselect;
-            string note = _bulkNote;
-            if (_pendingRebuilds > 0 && --_pendingRebuilds == 0) { _reselect = null; _bulkNote = null; }
+            // Chỉ lần rebuild THUỘC lần sửa gần nhất mới dùng vùng chọn + ghi chú của nó (Load 3D / panel khác KHÔNG bị
+            // chọn lại dòng cũ hay nối ghi chú cũ — review).
+            bool mine = old?.BlockName != null && _pendingPanels.Remove(old.BlockName);
+            var sel = mine ? _reselect : null;
+            string note = mine ? _bulkNote : null;
+            if (_pendingPanels.Count == 0) { _reselect = null; _bulkNote = null; }
             if (neu != null)
             {
                 int i = _builds.IndexOf(old);
@@ -104,7 +107,9 @@ namespace MCG_3DPanel.UI
                 RestoreSummary();
                 // Highlight đã tắt khi rời drawing; bấm lại đúng dòng đang chọn KHÔNG phát SelectionChanged ⇒ tự sáng lại
                 // (review I4).
-                if (GridResult.SelectedItem is ResultRow sel && sel.Build?.BlockRefId.Database == db) Show(sel, zoom: false);
+                // Cả vùng chọn (không chỉ 1 dòng) — checklist A3.
+                var selRows = Selected.Where(r => r.Build?.BlockRefId.Database == db).ToList();
+                if (selRows.Count > 0) Show(selRows, zoom: false);
                 return;
             }
             string name = DrawingName(kept[0].BlockRefId.Database);
@@ -145,7 +150,11 @@ namespace MCG_3DPanel.UI
         /// <summary>Nạp solid của MỌI panel vừa build (giữ nguyên thứ tự chọn panel). Có
         /// <paramref name="keepPanelKey"/>/<paramref name="keepSourceKey"/> ⇒ chọn lại + cuộn tới + highlight dòng đó.</summary>
         public void Load(List<BuildResult> builds, string keepPanelKey = null, string keepSourceKey = null)
-            => Load(builds, keepSourceKey == null ? null : new List<(string, string)> { (keepPanelKey, keepSourceKey) });
+        {
+            // Build 3D mới (tab Input) ⇒ bỏ mọi việc sửa đang chờ của bảng cũ (không chọn lại / nối ghi chú cũ).
+            if (keepSourceKey == null) { _pendingPanels.Clear(); _reselect = null; _bulkNote = null; }
+            Load(builds, keepSourceKey == null ? null : new List<(string, string)> { (keepPanelKey, keepSourceKey) });
+        }
 
         /// <summary>Như trên, chọn lại CẢ vùng chọn <paramref name="keep"/> (sau sửa hàng loạt).</summary>
         public void Load(List<BuildResult> builds, List<(string panel, string source)> keep)
@@ -212,7 +221,16 @@ namespace MCG_3DPanel.UI
         // ─── Correction → rebuild (sửa hàng loạt kiểu Excel — kỹ sư 2026-11-05) ─────────────
 
         /// <summary>Các dòng đang chọn (thứ tự hiển thị).</summary>
-        private List<ResultRow> Selected => GridResult.SelectedItems.OfType<ResultRow>().ToList();
+        private List<ResultRow> Selected
+        {
+            get
+            {
+                // Theo THỨ TỰ BẢNG (SelectedItems theo thứ tự click) — Copy / thông báo đúng thứ tự (review).
+                var rows = GridResult.ItemsSource as IList<ResultRow>;
+                var sel = GridResult.SelectedItems.OfType<ResultRow>().ToList();
+                return rows == null ? sel : sel.OrderBy(r => rows.IndexOf(r)).ToList();
+            }
+        }
 
         /// <summary>Panel của dòng thuộc drawing ĐANG MỞ (ux-guardrails luật 1).</summary>
         private static bool InActiveDrawing(ResultRow r)
@@ -224,9 +242,9 @@ namespace MCG_3DPanel.UI
 
         /// <summary>Trả control về trạng thái thật (dropdown/toggle/ô đã đổi trên màn hình nhưng KHÔNG lưu) + báo.
         /// Hoãn: đang ở giữa cập nhật binding của chính control đó.</summary>
-        private void DeferRevert(string message)
+        private void DeferRevert(string message, List<ResultRow> keepRows = null)
         {
-            var keep = Keys(Selected);
+            var keep = Keys(keepRows ?? Selected);
             Dispatcher.BeginInvoke(new System.Action(() =>
             {
                 Load(_builds, keep);
@@ -242,13 +260,16 @@ namespace MCG_3DPanel.UI
         /// Mỗi panel rebuild đúng 1 lần.</summary>
         private void ApplyBulk(ResultRow clicked, Func<ResultRow, bool> supports, Action<ResultRow, PartCorrection> apply, string what)
         {
-            var plan = BulkEdit.Plan(clicked, Selected, supports, InActiveDrawing);
+            // Vùng chọn LÚC NHẤN CHUỘT (WPF có thể đã thu về 1 dòng khi mở dropdown — review), không thì vùng chọn hiện tại.
+            var sel = _clickSnapshot != null && _clickSnapshot.Contains(clicked) ? _clickSnapshot : Selected;
+            _clickSnapshot = null;
+            var plan = BulkEdit.Plan(clicked, sel, supports, InActiveDrawing);
             if (plan.Targets.Count == 0)
             {
                 string msg = plan.OtherDrawing > 0
                     ? $"This panel is in drawing {DrawingName(clicked?.Build?.SourceRefId.Database)} — switch to it to change {clicked?.Panel}."
                     : $"{what}: nothing to change.";
-                DeferRevert(msg);
+                DeferRevert(msg, sel);
                 return;
             }
             foreach (var r in plan.Targets)
@@ -257,7 +278,7 @@ namespace MCG_3DPanel.UI
                 apply(r, c);
                 CorrectionStore.Set(r.PanelKey, r.SourceKey, c);
             }
-            RebuildMany(clicked, plan.Targets, plan.Targets.Count > 1 || plan.Unsupported + plan.OtherDrawing > 0
+            RebuildMany(clicked, plan.Targets, sel, plan.Targets.Count > 1 || plan.Unsupported + plan.OtherDrawing > 0
                 ? BulkEdit.Describe(plan, what) : null);
         }
 
@@ -329,14 +350,18 @@ namespace MCG_3DPanel.UI
         {
             if (!(sender is TextBox tb) || !(tb.DataContext is ResultRow row)) return;
             if (e.Key == System.Windows.Input.Key.Enter) { CommitFbHeight(tb, row); e.Handled = true; }
-            else if (e.Key == System.Windows.Input.Key.Escape) { tb.Text = row.FbHeightText; e.Handled = true; }
+            else if (e.Key == System.Windows.Input.Key.Escape) { ResetBox(tb); e.Handled = true; }
         }
 
         /// <summary>Rời ô mà chưa Enter ⇒ không ghi, trả về giá trị đang dùng (tránh rebuild ngoài ý muốn).</summary>
         private void TxtFbHeight_LostFocus(object sender, RoutedEventArgs e)
         {
-            if (sender is TextBox tb && tb.DataContext is ResultRow row && tb.Text != row.FbHeightText) tb.Text = row.FbHeightText;
+            if (sender is TextBox tb && tb.DataContext is ResultRow row && tb.Text != row.FbHeightText) ResetBox(tb);
         }
+
+        /// <summary>Trả ô về giá trị ĐANG DÙNG qua binding (KHÔNG gán Text — gán đè làm mất binding, ô tái dùng khi cuộn grid
+        /// hiện chiều cao của FB khác rồi Enter ghi nhầm — review).</summary>
+        private static void ResetBox(TextBox tb) => tb.GetBindingExpression(TextBox.TextProperty)?.UpdateTarget();
 
         private void CommitFbHeight(TextBox tb, ResultRow row)
         {
@@ -348,7 +373,7 @@ namespace MCG_3DPanel.UI
                 if (!MCG_3DPanel.Models.PanelInput.TryParseHeight(text, out double v))
                 {
                     SetStatus($"Invalid FB height \"{text}\" — enter a positive number in mm (e.g. 100), or leave it empty to use the Input tab value.", error: true);
-                    tb.Text = row.FbHeightText;
+                    ResetBox(tb);
                     return;
                 }
                 h = v;
@@ -396,10 +421,10 @@ namespace MCG_3DPanel.UI
             if (sel.Count == 0) return;
             var plan = BulkEdit.Plan(sel[0], sel, r => !string.IsNullOrEmpty(r.DeleteKey) && r.Deleted != deleted, InActiveDrawing);
             string what = deleted ? "Deleted" : "Restored";
-            if (plan.Targets.Count == 0) { DeferRevert(plan.OtherDrawing > 0 ? BulkEdit.Describe(plan, what) : $"{what}: nothing to change."); return; }
+            if (plan.Targets.Count == 0) { DeferRevert(plan.OtherDrawing > 0 ? OtherDrawingText(sel) : $"{what}: nothing to change.", sel); return; }
             foreach (var r in plan.Targets) CorrectionStore.SetDeleted(r.PanelKey, r.DeleteKey, deleted);
             EntityHighlighter.Clear();
-            RebuildMany(sel[0], plan.Targets, BulkEdit.Describe(plan, what));
+            RebuildMany(sel[0], plan.Targets, sel, BulkEdit.Describe(plan, what));
         }
 
         private void MnuClearCorrection_Click(object sender, RoutedEventArgs e)
@@ -409,27 +434,60 @@ namespace MCG_3DPanel.UI
             var plan = BulkEdit.Plan(sel[0], sel, r => CorrectionStore.Get(r.PanelKey, r.SourceKey) != null, InActiveDrawing);
             if (plan.Targets.Count == 0)
             {
-                if (plan.OtherDrawing > 0) DeferRevert(BulkEdit.Describe(plan, "Correction cleared"));
+                if (plan.OtherDrawing > 0) DeferRevert(OtherDrawingText(sel), sel);
                 else SetStatus(sel.Count == 1 ? "This row has no correction." : "The selected rows have no correction.");
                 return;
             }
             foreach (var r in plan.Targets) CorrectionStore.Clear(r.PanelKey, r.SourceKey);
-            RebuildMany(sel[0], plan.Targets, BulkEdit.Describe(plan, "Correction cleared"));
+            RebuildMany(sel[0], plan.Targets, sel, BulkEdit.Describe(plan, "Correction cleared"));
+        }
+
+        /// <summary>"These rows are in drawing X — switch to it to change them." (ux-guardrails luật 1, ghi rõ drawing).</summary>
+        private string OtherDrawingText(List<ResultRow> rows)
+        {
+            var r = rows.FirstOrDefault(x => !InActiveDrawing(x));
+            string name = DrawingName(r?.Build?.SourceRefId.Database);
+            return (rows.Count > 1 ? "These rows are" : "This row is") + $" in drawing {name} — switch to it to change {(rows.Count > 1 ? "them" : "it")}.";
+        }
+
+        /// <summary>Vùng chọn chụp lúc NHẤN CHUỘT lên control trong 1 dòng đang chọn (xem GridResult_PreviewMouseDown).</summary>
+        private List<ResultRow> _clickSnapshot;
+
+        /// <summary>Nhấn chuột lên ComboBox / nút / ô nhập trong 1 dòng THUỘC vùng chọn (≥ 2 dòng) ⇒ chụp vùng chọn TRƯỚC khi WPF
+        /// có thể thu nó về 1 dòng (ComboBox không nhận focus khi mở) — sửa hàng loạt vẫn áp đúng cả vùng chọn (review).
+        /// Nhấn vào ô thường ⇒ bỏ ảnh chụp. Nhấn trong danh sách dropdown (Popup, ngoài cây visual grid) ⇒ giữ.</summary>
+        private void GridResult_PreviewMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            var src = e.OriginalSource as DependencyObject;
+            var row = Up<DataGridRow>(src);
+            if (row == null) return;
+            bool onControl = Up<ComboBox>(src) != null || Up<System.Windows.Controls.Primitives.ButtonBase>(src) != null || Up<TextBox>(src) != null;
+            var sel = Selected;
+            _clickSnapshot = onControl && row.IsSelected && sel.Count > 1 ? sel : null;
+        }
+
+        private static T Up<T>(DependencyObject d) where T : DependencyObject
+        {
+            while (d != null && !(d is T))
+                d = d is System.Windows.Media.Visual || d is System.Windows.Media.Media3D.Visual3D
+                    ? System.Windows.Media.VisualTreeHelper.GetParent(d)
+                    : LogicalTreeHelper.GetParent(d);
+            return d as T;
         }
 
         /// <summary>Ghi chú sửa hàng loạt ("Tripping = On on 5 rows · 2 skipped…") — nối vào thông báo rebuild.</summary>
         private string _bulkNote;
 
         /// <summary>Rebuild MỖI panel có dòng bị sửa đúng 1 lần; giữ lại vùng chọn hiện tại (nếu dòng được bấm thuộc nó).</summary>
-        private void RebuildMany(ResultRow clicked, List<ResultRow> targets, string note)
+        private void RebuildMany(ResultRow clicked, List<ResultRow> targets, List<ResultRow> sel, string note)
         {
             EntityHighlighter.ClearPoint();   // nút dưới chuột bị dựng lại ⇒ MouseLeave có thể không tới
-            var sel = Selected;
             _reselect = Keys(sel.Contains(clicked) ? sel : new List<ResultRow> { clicked });
             _bulkNote = note;
             var builds = targets.Select(r => r.Build).Where(b => b != null).Distinct().ToList();
             SetStatus(builds.Count == 1 ? $"Rebuilding {targets[0].Panel}…" : $"Rebuilding {builds.Count} panels…");
-            _pendingRebuilds = builds.Count;
+            _pendingPanels.Clear();
+            foreach (var b in builds) if (b.BlockName != null) _pendingPanels.Add(b.BlockName);
             foreach (var b in builds) PanelCommands.RequestRebuild(b);
         }
 
@@ -448,8 +506,11 @@ namespace MCG_3DPanel.UI
                 else SetStatus("Solid no longer exists — rebuild or re-run Build 3D.", error: true);
                 return;
             }
-            var box = live[0].Bounds;
-            foreach (var r in live.Skip(1)) box.AddExtents(r.Bounds);
+            // Khung zoom chỉ gồm dòng của drawing ĐANG MỞ (dòng drawing khác không được highlight — review).
+            var adoc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+            var inDoc = live.Where(r => adoc != null && r.Path != null && r.Path.Length > 0 && r.Path[0].Database == adoc.Database).ToList();
+            var box = (inDoc.Count > 0 ? inDoc : live)[0].Bounds;
+            foreach (var r in (inDoc.Count > 0 ? inDoc : live).Skip(1)) box.AddExtents(r.Bounds);
             string err = EntityHighlighter.ShowMany(live.Select(r => r.Path).ToList(), box, zoom);
             int gone = rows.Count - live.Count;
             if (err == null && gone > 0) err = $"{gone} selected row{(gone > 1 ? "s are" : " is")} deleted or no longer exist — not highlighted.";
@@ -462,7 +523,17 @@ namespace MCG_3DPanel.UI
         private bool _suspendShow;
 
         private void GridResult_SelectionChanged(object sender, SelectionChangedEventArgs e)
-            { if (!_suspendShow) Show(Selected, zoom: false); }   // chỉ highlight — zoom bằng nút ⌖
+            {
+                // Kéo chuột qua N dòng ⇒ N lần SelectionChanged: gom về 1 lần highlight khi grid rảnh (review — hiệu năng).
+                if (_suspendShow || _showQueued) return;
+                _showQueued = true;
+                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, new System.Action(() =>
+                {
+                    _showQueued = false;
+                    Show(Selected, zoom: false);   // chỉ highlight — zoom bằng nút ⌖
+                }));
+            }
+        private bool _showQueued;
 
         private void BtnZoomRow_Click(object sender, RoutedEventArgs e)
         {
@@ -520,11 +591,12 @@ namespace MCG_3DPanel.UI
 
         // ─── Copy / Export ────────────────────────────────────────────────
 
-        private const string Header = "Panel,Handle,Family,DetectedKind,Kind,Size,Flags,DirFlipped";
+        private const string Header = "Panel,Handle,Family,DetectedKind,Kind,Size,Flags,DirFlipped,Tripping,Collar";
 
         private static string[] Cells(ResultRow r) => new[]
         {
             r.Panel, r.Handle, r.Family.ToString(), r.DetectedKind, r.Kind, r.Size, r.Flags, r.Flipped ? "yes" : "",
+            r.CanTrip ? r.TripChoice : "", r.CanTrip ? r.CollarChoice : "",
         };
 
         /// <summary>Nút Copy / menu Copy Table: chọn nhiều dòng ⇒ chỉ các dòng đó; còn lại ⇒ cả bảng.</summary>
