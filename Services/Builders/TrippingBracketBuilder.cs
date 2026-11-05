@@ -110,7 +110,9 @@ namespace MCG_3DPanel.Services.Builders
                 }
             }
 
-            double sMax = TrippingBracketRules.MaxSpacing(recs.Select(r => (IReadOnlyList<double>)r.Xs.Select(q => q.s).ToList()));
+            // Bước THẬT giữa 2 HP = Δs dọc dầm × |trục dầm · pháp tuyến HP| (dầm xiên không làm phình L — review).
+            double sMax = TrippingBracketRules.MaxSpacing(recs.Select(r =>
+                (IReadOnlyList<(double s, double cos)>)r.Xs.Select(q => (q.s, HpCos(r.Beam, q.hp))).ToList()));
             double L = 3.0 * sMax;
             ctx.Report.Add($"{LOG} s_max={sMax:0.#} → L=3×s_max={L:0.#} ({recs.Count} đoạn dầm).");
             if (sMax <= 0) return outSolids;
@@ -171,6 +173,17 @@ namespace MCG_3DPanel.Services.Builders
 
             ctx.Report.Add($"{LOG} {flanged.Count} dầm có flange · {recs.Count} đoạn → {outSolids.Count} tripping bracket.");
             return outSolids;
+        }
+
+        /// <summary>|trục dầm · pháp tuyến HP| (mặt bằng): 1 = HP vuông góc dầm.</summary>
+        private static double HpCos(Span beam, PanelPart hp)
+        {
+            Vector3d a = hp.AxisDir;
+            if (a.Length < 1e-9) { var (h1, h2) = ClassifyUtil.Endpoints(hp); a = h2 - h1; }
+            a = new Vector3d(a.X, a.Y, 0);
+            if (a.Length < 1e-9) return 1.0;
+            a = a.GetNormal();
+            return Math.Abs(beam.Axis.X * -a.Y + beam.Axis.Y * a.X);
         }
 
         /// <summary>Ép tay theo HP (tab Result, PartCorrection.Tripping): null = Auto.</summary>

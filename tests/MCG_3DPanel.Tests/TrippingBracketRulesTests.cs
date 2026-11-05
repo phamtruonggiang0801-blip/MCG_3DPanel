@@ -34,7 +34,28 @@ namespace MCG_3DPanel.Tests
 
         [Fact]
         public void MaxSpacing_TakesPanelMax()
-            => Assert.Equal(775.0, TrippingBracketRules.MaxSpacing(new[] { new[] { 1.0, 300.0 }, new[] { 3007.6, 3782.6, 4557.6 } }), 6);
+            => Assert.Equal(775.0, TrippingBracketRules.MaxSpacing(new[]
+            {
+                new[] { (1.0, 1.0), (300.0, 1.0) },
+                new[] { (3007.6, 1.0), (3782.6, 1.0), (4557.6, 1.0) },
+            }), 6);
+
+        // Review 2026-11-05: dầm xiên 45° ⇒ khoảng dọc trục dầm = 775/cos45 = 1096 — bước stiffener THẬT vẫn 775.
+        [Fact]
+        public void MaxSpacing_SlantedBeam_ProjectsToHpNormal()
+            => Assert.Equal(775.0, TrippingBracketRules.MaxSpacing(new[]
+            {
+                new[] { (0.0, 0.70710678), (1096.0155, 0.70710678), (2192.031, 0.70710678) },
+                new[] { (0.0, 1.0), (775.0, 1.0) },
+            }), 2);
+
+        // 2 HP không song song (góc với dầm khác nhau) ⇒ cặp đó không tính bước.
+        [Fact]
+        public void MaxSpacing_NonParallelPair_Skipped()
+            => Assert.Equal(775.0, TrippingBracketRules.MaxSpacing(new[]
+            {
+                new[] { (0.0, 1.0), (775.0, 1.0), (3000.0, 0.5) },
+            }), 6);
 
         [Fact]
         public void Segments_RunEndsAreSupports()

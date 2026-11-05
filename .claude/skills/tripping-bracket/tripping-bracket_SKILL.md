@@ -19,7 +19,7 @@ Spec: `docs/superpowers/specs/2026-11-05-tripping-bracket-spacing-design.md` (h�
 |---|---|
 | R1 | Chỉ đặt tại giao điểm **HP xuyên web dầm có flange** (có lỗ CO; không tính FB). Không còn luật "dầm ngoài cùng": web biên HP dừng tại đó (7D-16C: `26963`, `26968`) tự không có bracket. |
 | R2 | **Đoạn dầm** = phần dầm giữa 2 gối liên tiếp; gối = dầm liên tục có flange cắt ngang **hoặc mút của chính dầm** (dừng ở girder / faceplate / web biên). |
-| R3 | L = 3 × s_max; s_max = khoảng lớn nhất giữa 2 HP kề nhau trên cùng 1 đoạn, **max toàn panel**. Từ gối đầu, chọn HP **xa nhất** cách gối ≤ L (+1mm), HP đó thành gối mới, lặp tới khi khoảng còn lại ≤ L. Không HP nào trong L ⇒ lấy HP kế tiếp. Đoạn ≤ L ⇒ không bracket. |
+| R3 | L = 3 × s_max; s_max = khoảng lớn nhất giữa 2 HP kề nhau (song song) trên cùng 1 đoạn, **max toàn panel**, đo VUÔNG GÓC HP (Δs × cos — dầm xiên không làm phình L). Từ gối đầu, chọn HP **xa nhất** cách gối ≤ L (+1mm), HP đó thành gối mới, lặp tới khi khoảng còn lại ≤ L. Không HP nào trong L ⇒ lấy HP kế tiếp. Đoạn ≤ L ⇒ không bracket. |
 | R4 | Chiều đi = **chiều đổ**: X trái→phải; Port Y trên→dưới; Starboard Y dưới→lên; **Center 2 đầu vào tâm** (TopPlate centroid) — đoạn qua tâm chia đôi, mỗi nửa chỉ chọn HP của mình; giữa gần nhau chấp nhận. |
 | R5 | Tab Result, dòng **HP**: nút **Tripping Auto → On → Off** (`PartCorrection.Tripping`). On = mọi giao điểm R1 của HP; Off = bỏ hết; **không tính lại** Auto. Xoá từng bracket = menu Delete; ⇄ đảo phía. |
 | R6 | **Hình = bracket B** (`hp_end_brkt_1/2`, [[sniped-end]] §5a), mép đứng hàn thẳng mặt web dầm; tấm đồng phẳng thân HP, dưới HP (`Z=−b`) tới `Z=−WebHeight`; **phía** = chiều đổ (tính tại giao điểm) chiếu lên pháp tuyến web. |

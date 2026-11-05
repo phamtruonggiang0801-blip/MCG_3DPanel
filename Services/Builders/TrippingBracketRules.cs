@@ -16,6 +16,8 @@ namespace MCG_3DPanel.Services.Builders
         public const double TIE_TOL = 1.0;
         /// <summary>Dung sai so khoảng cách với L (7D-16C: 5332.6 − 3007.6 = 2325 = L đúng ngưỡng).</summary>
         public const double SPACING_TOL = 1.0;
+        /// <summary>2 HP kề nhau coi là song song khi |cos| với trục dầm chênh ≤ giá trị này.</summary>
+        public const double PAR_TOL = 0.02;
 
         // Bracket B (sniped-end §5a) — hằng số đã chốt.
         public const double R = 50.0, TOP_L = 50.0, E15 = 15.0, OFF2 = 30.0, BIG_OVERHANG = 50.0;
@@ -38,15 +40,21 @@ namespace MCG_3DPanel.Services.Builders
         }
 
         /// <summary>Bước stiffener max = khoảng lớn nhất giữa 2 HP kề nhau trên cùng 1 đoạn, lấy max toàn panel;
-        /// 0 nếu không đoạn nào có ≥ 2 HP.</summary>
-        public static double MaxSpacing(IEnumerable<IReadOnlyList<double>> segmentHpS)
+        /// 0 nếu không đoạn nào có ≥ 2 HP. Mỗi HP = (s dọc trục dầm, cos = |trục dầm · pháp tuyến HP|): bước THẬT =
+        /// Δs × cos (dầm xiên KHÔNG làm phình L — review 2026-11-05); cặp HP không song song (cos lệch &gt;
+        /// <see cref="PAR_TOL"/>) bỏ qua.</summary>
+        public static double MaxSpacing(IEnumerable<IReadOnlyList<(double s, double cos)>> segmentHps)
         {
             double m = 0;
-            foreach (var l in segmentHpS ?? Enumerable.Empty<IReadOnlyList<double>>())
+            foreach (var l in segmentHps ?? Enumerable.Empty<IReadOnlyList<(double s, double cos)>>())
             {
                 if (l == null) continue;
-                var s = l.OrderBy(x => x).ToList();
-                for (int i = 1; i < s.Count; i++) m = Math.Max(m, s[i] - s[i - 1]);
+                var h = l.OrderBy(x => x.s).ToList();
+                for (int i = 1; i < h.Count; i++)
+                {
+                    if (Math.Abs(h[i].cos - h[i - 1].cos) > PAR_TOL) continue;
+                    m = Math.Max(m, (h[i].s - h[i - 1].s) * Math.Abs(h[i].cos + h[i - 1].cos) / 2.0);
+                }
             }
             return m;
         }
