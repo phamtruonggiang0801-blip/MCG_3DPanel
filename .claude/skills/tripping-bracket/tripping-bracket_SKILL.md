@@ -1,64 +1,59 @@
 ---
 name: tripping-bracket
-description: Quy tắc Tripping Bracket — 1 bracket "B" dưới HP gần giữa mỗi ĐOẠN DẦM (web có flange bị dầm liên tục có flange ngắt 2 đầu, không phải dầm ngoài cùng) có ≥ 3 HP liên tục xuyên qua; phía chiều đổ, đảo phía ở tab Result. Đọc khi nhận diện/dựng tripping bracket, đoạn dầm, hoặc sửa bracket B dùng chung.
+description: Quy tắc Tripping Bracket — bracket "B" dưới HP xuyên web dầm có flange, chọn sao cho khoảng giữa các gối dọc mỗi ĐOẠN DẦM ≤ 3 × bước stiffener max, đi từ đầu chiều đổ (Center: 2 đầu vào tâm); tab Result đảo phía và ép Auto/On/Off theo HP. Đọc khi nhận diện/dựng tripping bracket, đoạn dầm, hoặc sửa bracket B dùng chung.
 ---
 
-# Tripping Bracket — bracket "B" chống vặn xoắn giữa đoạn dầm
+# Tripping Bracket — bracket "B" chống vặn xoắn dọc đoạn dầm
 
-⚠️ **TẠM (kỹ sư 2026-11-04):** quy tắc sẽ được kỹ sư test trên NHIỀU panel rồi đánh giá lại.
-Spec: `docs/superpowers/specs/2026-11-04-tripping-bracket-design.md`.
+Luật hiện hành: **kỹ sư 2026-11-05** sau khi test panel 7D-16C (thay luật "1 bracket gần giữa đoạn" ngày 2026-11-04).
+Spec: `docs/superpowers/specs/2026-11-05-tripping-bracket-spacing-design.md` (hình/phía: `2026-11-04-tripping-bracket-design.md`).
 
 ## 1. Nguồn gốc
 
-Đăng kiểm: cứ ~**3 lần bước stiffener lớn nhất** dầm phải có gối chống vặn xoắn. Ghi chú `CAS.dump.json`:
+Đăng kiểm: khoảng giữa các gối chống vặn xoắn dọc dầm **≤ 3 × bước stiffener lớn nhất**. Ghi chú cũ trong
+`CAS.dump.json` ("1 bracket closest to beam segment middle") KHÔNG còn dùng — kỹ sư xác nhận sai trên 7D-16C.
 
-> ADD 1 TRIPPING BRACKET BELOW HP IF 3 OR MORE CONTINUOUS STIFFENER IN BEAM SEGMENT. ADD THIS BRACKET
-> CLOSEST TO BEAM SEGMENT MIDDLE. FOR DETAIL SEE HP BRACKET DETAIL.
-
-Giống Collar Plate (add tại lỗ HP liền kề junction — [[web-hp-cutout]] §7): tripping bracket add cho HP gần
-giữa đoạn các dầm **bên trong**; dầm ngoài cùng không cần (đầu đã có gối đỡ).
-
-**Dump (mặt bằng):** dầm ngang web y 1620.86–1623.86, flange ẩn AM_11 75 (`1F224`); 2 dầm liên tục nhãn "CG"
-x 457–460 (flange 110) / 1462–1465 (flange 50); dim **1005 "BEAM SEGMENT"**; 4 HP (`Continuous_symbol`) tâm
-633.6/833.6/1043.6/1273.6; text **"B"** cạnh HP 1043.6 phía −y (giữa ≈ 959.6 ⇒ gần nhất ✔).
-
-## 2. Quy tắc (kỹ sư 2026-11-04)
+## 2. Quy tắc (kỹ sư 2026-11-05)
 
 | # | Quy tắc |
 |---|---|
-| R1 | **Dầm** = Web có Flange. |
-| R2 | **Đoạn dầm** = dầm KHÔNG liên tục bị ngắt bởi 1 dầm LIÊN TỤC khác; chỉ dầm/girder **có flange** cắt ngang làm gối; đoạn phải có **CẢ 2 đầu** là gối (gồm dầm biên, web xiên). |
-| R3 | Chỉ đếm **HP** xuyên web đoạn (có lỗ CO); KHÔNG tính FB. |
-| R4 | ≥ 3 HP ⇒ **đúng 1** bracket tại HP gần **giữa đoạn** nhất (giữa 2 MẶT dầm liên tục). |
-| R5 | Hoà (≤ 1mm) ⇒ HP về phía **chiều đổ** dọc trục dầm. |
-| R6 | **Dầm ngoài cùng** (tâm run min/max theo pháp tuyến ± 50, trong các dầm cùng phương) ⇒ không thêm. |
-| R7 | **Hình = bracket B hiện có** (`hp_end_brkt_1/2`, [[sniped-end]] §5a). Khác: mép đứng hàn THẲNG mặt web dầm (không khe 30 — HP liên tục). Selector theo flange dầm nhô phía bracket (≥ 50 brkt_1). |
-| R8 | Tấm **đồng phẳng thân HP** (căn giữa), dưới HP (đỉnh `Z=−b`), đáy trên flange (`Z=−WebHeight`). **Phía** web dầm = **chiều đổ** (`(1, dozY)`; Port −1 / Starboard +1 / Center về tâm — [[bracket-identification]]) chiếu lên pháp tuyến web. |
-| R9 | Tab Result: **chỉ đảo phía**. |
+| R1 | Chỉ đặt tại giao điểm **HP xuyên web dầm có flange** (có lỗ CO; không tính FB). Không còn luật "dầm ngoài cùng": web biên HP dừng tại đó (7D-16C: `26963`, `26968`) tự không có bracket. |
+| R2 | **Đoạn dầm** = phần dầm giữa 2 gối liên tiếp; gối = dầm liên tục có flange cắt ngang **hoặc mút của chính dầm** (dừng ở girder / faceplate / web biên). |
+| R3 | L = 3 × s_max; s_max = khoảng lớn nhất giữa 2 HP kề nhau trên cùng 1 đoạn, **max toàn panel**. Từ gối đầu, chọn HP **xa nhất** cách gối ≤ L (+1mm), HP đó thành gối mới, lặp tới khi khoảng còn lại ≤ L. Không HP nào trong L ⇒ lấy HP kế tiếp. Đoạn ≤ L ⇒ không bracket. |
+| R4 | Chiều đi = **chiều đổ**: X trái→phải; Port Y trên→dưới; Starboard Y dưới→lên; **Center 2 đầu vào tâm** (TopPlate centroid) — đoạn qua tâm chia đôi, mỗi nửa chỉ chọn HP của mình; giữa gần nhau chấp nhận. |
+| R5 | Tab Result, dòng **HP**: nút **Tripping Auto → On → Off** (`PartCorrection.Tripping`). On = mọi giao điểm R1 của HP; Off = bỏ hết; **không tính lại** Auto. Xoá từng bracket = menu Delete; ⇄ đảo phía. |
+| R6 | **Hình = bracket B** (`hp_end_brkt_1/2`, [[sniped-end]] §5a), mép đứng hàn thẳng mặt web dầm; tấm đồng phẳng thân HP, dưới HP (`Z=−b`) tới `Z=−WebHeight`; **phía** = chiều đổ (tính tại giao điểm) chiếu lên pháp tuyến web. |
 
-Ví dụ 7D-16C: đoạn `1B6A5`/`1B5E6`/`1B5EB`/`1B5F4`/`1B5F0` (giữa `1B5CD` và `1B602`, 12 HP) ⇒ HP `1B60D`;
-`1B5CC`/`1B5E4` ngoài cùng ⇒ không; `1B62A` (giữa `1B602` và web xiên `1B601`, 3 HP) ⇒ HP `1B622`.
+**7D-16C (Center, centroid Y≈7678, s_max 775 ⇒ L 2325):**
 
-## 3. Cài đặt (2026-11-04, CHƯA test trực quan)
+| Đoạn | HP chọn |
+|---|---|
+| Vùng dưới, dầm x≈4226/6166/8106/10046/11986 (Y 995–10607) | 3007, 5332, 7651 (nửa dưới) + 8385 (nửa trên) ⇒ 20 |
+| Vùng trên, dầm x≈11986 (tới Y 13940) | 12260 |
+| Vùng trên, dầm x≈10046 (tới Y 13088) | 11004 |
+| Vùng trên, dầm x≈6166 / 8106 | không (đoạn ≤ L) |
 
-- **Luật thuần** `Services/Builders/TrippingBracketRules.cs` (test `TrippingBracketRulesTests`): `Segments`,
-  `PickHp`, `Side`, `SelectBracketB`, `BracketBPolygon` — 2 hàm cuối **dùng chung với bracket B "End 30"**
-  (`HpEndBracketBuilder` gọi lại; polygon giữ đúng thứ tự gốc).
-- **Builder** `Services/Builders/TrippingBracketBuilder.cs`: span từ `WebRuns`; dầm = run có Flange ∥ phủ tâm;
-  **điểm cắt** = run có flange KHÁC (|cos| ≤ 0.7) giao đường tâm, CG **phủ** giao điểm (part chứa ix, cách mút
-  ≥ dày dầm) mà dầm **KHÔNG phủ** + CG có flange tại ix; mid = giữa 2 mặt CG; HP = `CrossesThrough` + kẹp
-  `[b/2, L−b/2]`; đặt `P = X + away·(tW/2)/cos`, `away = ±trục HP` cùng phía; tấm qua
-  `HpEndBracketBuilder.BuildPlate(..., centered: true)`; Layer/Color = web đoạn dầm.
-- ⚠️ **Bẫy:** `WebRuns` gom web thẳng hàng khe ≤ `TOL_GAP` 20 ⇒ 2 đoạn dầm 2 bên 1 dầm liên tục (khe = dày
-  dầm) thành 1 run (vd `1B5E6` + `1B629` qua `1B602`) — builder phải TỰ CẮT (bước điểm cắt ở trên).
-- **Khoá / đảo phía:** `TrippingBracket:<web part SourceKey>~<HP SourceKey>` = `DeleteKey` = `FlipKey`
-  (`BuiltSolid.FlipKey`). Tab Result: `ResultCatalog` "TrippingBracket" ⇒ Bracket / "Tripping B" / CanFlip;
-  `ResultRow` dùng `FlipKey` làm khoá correction khi không có part 2D; builder đọc `Corrections[key].FlipDir`.
-- Report: `[TrippingBracket] dầm .. đoạn s=[..] mid=.. · HP .. s=.. (nHP=..) · side=±n brkt_1|2 overhang=..`,
-  `SKIP .. HP < 3`, `SKIP dầm ngoài cùng ..`; `Build3DService` gọi sau bracket B.
+Danh sách kỹ sư đưa lúc đầu (26875/26879/2687B/2687E/26889 = đếm từ Y nhỏ) chỉ khớp khi coi là Starboard; kỹ sư
+chọn chấp nhận kết quả luật Center, chỉnh tay ở tab Result. HP 7651 cách tâm ~27mm ⇒ nhạy với centroid.
 
-## 4. Chưa chốt / theo dõi
+## 3. Cài đặt
 
-- [ ] Test nhiều panel (kỹ sư) — đánh giá lại R2/R4/R6.
-- [ ] HP quá xiên so với web dầm (cos < 0.3) ⇒ hiện bỏ, không Report riêng.
-- [ ] Đoạn dầm mà HP chọn trùng chỗ Collar Plate: collar `Y ≥ −B1` > `−b`, bracket từ `−b` xuống ⇒ không chồng (chưa kiểm trực quan).
+- **Luật thuần** `Services/Builders/TrippingBracketRules.cs` (test `TrippingBracketRulesTests`, số thật 7D-16C):
+  `Segments(cuts, runLen, endTol)`, `MaxSpacing`, `PickBySpacing(s, lo, hi, L, startSign, split)`, `Side`,
+  `SelectBracketB`, `BracketBPolygon` (2 hàm cuối dùng chung với bracket B "End 30" — `HpEndBracketBuilder`).
+- **Builder** `Services/Builders/TrippingBracketBuilder.cs` — **2 lượt**: (1) span từ `WebRuns`, dầm = run có
+  Flange ∥ tại tâm 1 part; điểm cắt = run có flange khác (|cos| ≤ 0.7) mà CG phủ giao điểm còn dầm không phủ;
+  `Segments` thêm 2 mút run; HP = `CrossesThrough` + kẹp `[b/2, L−b/2]`. (2) L từ `MaxSpacing` mọi đoạn;
+  startSign = dấu `doz(mid)·trục`; Center ⇒ `split = (center.Y − P1.Y)/axis.Y`; áp `Tripping` theo HP SourceKey.
+  Đặt `P = X + away·(tW/2)/cos`; `HpEndBracketBuilder.BuildPlate(..., centered: true)`; Layer/Color = web.
+- ⚠️ **Bẫy:** `WebRuns` gom web thẳng hàng khe ≤ 20 ⇒ 2 đoạn 2 bên 1 dầm liên tục thành 1 run — builder TỰ CẮT.
+- **Khoá:** `TrippingBracket:<web SourceKey>~<HP SourceKey>` = `DeleteKey` = `FlipKey`. Ép theo HP lưu trên
+  SourceKey của HP (`ResultRow.CanTrip/TripLabel`, `PanelResultView.BtnTrip_Click`).
+- Report: `s_max=.. → L=..`, mỗi bracket `dầm .. đoạn s=[..] · HP .. s=.. Δ=../L=.. (auto|tay On) · side=..`,
+  `SKIP .. không cần (.. HP, dài .. ≤ L)`.
+
+## 4. Theo dõi
+
+- [ ] 1 đoạn thiếu HP (khe lớn) làm s_max ⇒ L của CẢ panel phình — xem dòng `s_max` trong report.
+- [ ] HP quá xiên so với web dầm (cos < 0.3) ⇒ bỏ, không Report riêng.
+- [ ] Test thêm panel Port/Starboard.
