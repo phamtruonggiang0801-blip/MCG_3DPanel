@@ -546,6 +546,50 @@ namespace MCG_3DPanel.UI
 
         private void MnuZoomTo_Click(object sender, RoutedEventArgs e) => Show(Selected, zoom: true);
 
+        // ─── Pick trên bản vẽ → dòng; Esc ⇒ bỏ chọn (kỹ sư 2026-11-05) ─────────────────
+
+        private void BtnPick_Click(object sender, RoutedEventArgs e)
+        {
+            if (Rows.Count == 0) { SetStatus("Nothing listed yet — build or load a panel first.", error: true); return; }
+            SetStatus("Pick objects in the drawing… Enter = done, Esc = clear.");
+            int hits = CadPick.PickLoop(SelectFromCad, PaletteManager.Instance.ClearAllSelections);
+            if (Selected.Count > 0) SetStatus($"{Selected.Count} row(s) selected" + (hits > 0 ? $" · {hits} picked" : "") + ".");
+            else RestoreSummary();
+        }
+
+        /// <summary>Chọn THÊM dòng của solid vừa pick (drawing đang mở), cuộn tới, highlight. Không có dòng ⇒ false (im lặng).</summary>
+        public bool SelectFromCad(Autodesk.AutoCAD.DatabaseServices.ObjectId picked)
+        {
+            var row = Rows.FirstOrDefault(r => r.Solid != null && r.Solid.SolidId == picked);
+            if (row == null) return false;
+            _suspendShow = true;
+            try { if (!GridResult.SelectedItems.Contains(row)) GridResult.SelectedItems.Add(row); }
+            finally { _suspendShow = false; }
+            GridResult.ScrollIntoView(row);
+            Show(Selected, zoom: false);
+            return true;
+        }
+
+        /// <summary>Esc (bản vẽ hoặc grid): bỏ chọn + tắt highlight.</summary>
+        public void ClearSelection()
+        {
+            _suspendShow = true;
+            try { GridResult.SelectedItems.Clear(); }
+            finally { _suspendShow = false; }
+            EntityHighlighter.ClearPoint();
+            EntityHighlighter.Clear();
+        }
+
+        /// <summary>Esc trong grid (không đang gõ trong ô / mở dropdown) ⇒ bỏ chọn ở CẢ 2 tab + tắt highlight.</summary>
+        private void Grid_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key != System.Windows.Input.Key.Escape) return;
+            var src = e.OriginalSource as DependencyObject;
+            if (Up<TextBox>(src) != null || Up<ComboBox>(src) != null) return;
+            PaletteManager.Instance.ClearAllSelections();
+            e.Handled = true;
+        }
+
         /// <summary>Ctrl+C trong grid: copy các dòng ĐANG CHỌN (kèm header) để dán sang Excel.</summary>
         private void GridCopy_Executed(object sender, System.Windows.Input.ExecutedRoutedEventArgs e)
         {

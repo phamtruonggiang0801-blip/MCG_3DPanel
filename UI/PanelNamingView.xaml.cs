@@ -517,6 +517,53 @@ namespace MCG_3DPanel.UI
             else if (_statusIsError) RestoreSummary();
         }
 
+        // ─── Pick trên bản vẽ → dòng; Esc ⇒ bỏ chọn (kỹ sư 2026-11-05) ─────────────────
+
+        private void BtnPick_Click(object sender, RoutedEventArgs e)
+        {
+            if (Rows.Count == 0) { SetStatus("Nothing listed yet — click Select panel… or run Build 3D first.", error: true); return; }
+            SetStatus("Pick objects in the drawing… Enter = done, Esc = clear.");
+            int hits = CadPick.PickLoop(SelectFromCad, PaletteManager.Instance.ClearAllSelections);
+            if (Selected.Count > 0) SetStatus($"{Selected.Count} line(s) selected" + (hits > 0 ? $" · {hits} picked" : "") + ".");
+            else RestoreSummary();
+        }
+
+        /// <summary>Chọn THÊM dòng chứa chi tiết vừa pick (solid 3D hoặc polyline 2D, kể cả flange ⇒ dòng web) trong panel của
+        /// drawing đang mở. Không có dòng ⇒ false (im lặng — kỹ sư 2026-11-05).</summary>
+        public bool SelectFromCad(ObjectId picked)
+        {
+            var adoc = AcadApp.DocumentManager.MdiActiveDocument;
+            bool Hit(NamingRow r) => r.Line.Pieces.Concat(r.Line.Flanges).Any(p =>
+                r.PanelData.Paths.TryGetValue(p.Key, out var paths) && paths.Any(path => path.Length > 0 && path[path.Length - 1] == picked));
+            var row = Rows.FirstOrDefault(r => adoc != null && r.PanelData.Db == adoc.Database && Hit(r));
+            if (row == null) return false;
+            _suspendShow = true;
+            try { if (!GridNaming.SelectedItems.Contains(row)) GridNaming.SelectedItems.Add(row); }
+            finally { _suspendShow = false; }
+            GridNaming.ScrollIntoView(row);
+            Show(Selected, zoom: false);
+            return true;
+        }
+
+        /// <summary>Esc (bản vẽ hoặc grid): bỏ chọn + tắt highlight.</summary>
+        public void ClearSelection()
+        {
+            _clickSnapshot = null;
+            _suspendShow = true;
+            try { GridNaming.SelectedItems.Clear(); }
+            finally { _suspendShow = false; }
+            EntityHighlighter.Clear();
+        }
+
+        /// <summary>Esc trong grid (không đang gõ tên) ⇒ bỏ chọn ở CẢ 2 tab + tắt highlight.</summary>
+        private void Grid_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key != System.Windows.Input.Key.Escape) return;
+            if (Up<TextBox>(e.OriginalSource as DependencyObject) != null) return;   // Esc trong ô Name = huỷ gõ
+            PaletteManager.Instance.ClearAllSelections();
+            e.Handled = true;
+        }
+
         /// <summary>Chuột phải → Zoom to Object (kỹ sư revision 1: bỏ cột ⌖).</summary>
         private void MnuZoomTo_Click(object sender, RoutedEventArgs e) => Show(Selected, zoom: true);
 

@@ -92,9 +92,21 @@ namespace MCG_3DPanel.UI
                 // Cố định CẠNH TRÁI, chỉ cho dock trái (không dock phải/trên/dưới, hạn chế float tự do).
                 _ps.DockEnabled = DockSides.Left;
                 _ps.Dock = DockSides.Left;
+
+                // Esc trên bản vẽ (không có lệnh) ⇒ tắt highlight + bỏ chọn grid cả 2 tab (kỹ sư 2026-11-05).
+                MCG_3DPanel.Commands.CadPick.HookEscape(ClearAllSelections);
             }
             _ps.Dock = DockSides.Left;   // đảm bảo luôn về trái mỗi lần mở
             _ps.Visible = true;
+        }
+
+        /// <summary>Esc (bản vẽ hoặc grid): bỏ chọn trên tab Result + Naming và tắt highlight trên CAD.</summary>
+        public void ClearAllSelections()
+        {
+            _result?.ClearSelection();
+            _naming?.ClearSelection();
+            MCG_3DPanel.Commands.EntityHighlighter.ClearPoint();
+            MCG_3DPanel.Commands.EntityHighlighter.Clear();
         }
     }
 }

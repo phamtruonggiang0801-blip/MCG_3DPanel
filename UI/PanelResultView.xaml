@@ -51,10 +51,12 @@
                     ToolTip="Export each panel to its own STEP file (&lt;Panel&gt;.stp)"/>
             <Button x:Name="BtnCopy" Content="Copy" Style="{StaticResource ToolbarButtonStyle}"
                     Click="BtnCopy_Click" ToolTip="Copy the table to the clipboard (paste straight into Excel)"/>
+            <Button x:Name="BtnPick" Content="Pick" Style="{StaticResource ToolbarButtonStyle}"
+                    Click="BtnPick_Click" ToolTip="Click objects in the drawing to find their rows (Enter = done, Esc = clear the selection)"/>
         </WrapPanel>
 
         <TextBlock Grid.Row="1" Style="{StaticResource HelperTextStyle}" Margin="2,2,2,6"
-                   Text="Select rows like in Excel (Shift / Ctrl + click, drag, Ctrl+A) to highlight them. Changing Tripping, Collar, FB height, ⇄ or Sniped End on a selected row applies it to every selected row; the panel rebuilds automatically. Right-click for Delete / Restore; Ctrl+C copies the selection."/>
+                   Text="Select rows like in Excel (Shift / Ctrl + click, drag, Ctrl+A) to highlight them. Changing Tripping, Collar, FB height, ⇄ or Sniped End on a selected row applies it to every selected row; the panel rebuilds automatically. Right-click for Delete / Restore; Ctrl+C copies the selection. Pick finds rows from the drawing; Esc clears the selection."/>
 
         <!-- ===== Row 2: Bảng kết quả ===== -->
         <DataGrid x:Name="GridResult" Grid.Row="2" Style="{StaticResource PanelDataGridStyle}"
@@ -63,7 +65,8 @@
                   MinRowHeight="24" RowHeaderWidth="0" CanUserResizeRows="False"
                   SelectionMode="Extended"
                   SelectionChanged="GridResult_SelectionChanged"
-                  PreviewMouseLeftButtonDown="GridResult_PreviewMouseDown">
+                  PreviewMouseLeftButtonDown="GridResult_PreviewMouseDown"
+                  PreviewKeyDown="Grid_PreviewKeyDown">
             <!-- Ctrl+C: copy các dòng ĐANG CHỌN (kèm header) để dán Excel. -->
             <DataGrid.CommandBindings>
                 <CommandBinding Command="ApplicationCommands.Copy" Executed="GridCopy_Executed"/>
@@ -71,6 +74,8 @@
             <DataGrid.ContextMenu>
                 <ContextMenu Opened="GridMenu_Opened">
                     <MenuItem Header="Zoom to Object" Click="MnuZoomTo_Click"/>
+                    <MenuItem Header="Pick in Drawing" Click="BtnPick_Click"
+                              ToolTip="Click objects in the drawing to find their rows (Enter = done, Esc = clear the selection)"/>
                     <MenuItem x:Name="MnuDelete" Header="Delete" Click="MnuDelete_Click"
                               ToolTip="Remove the selected solids from the 3D block (kept across rebuilds; Restore to undo)"/>
                     <MenuItem x:Name="MnuRestore" Header="Restore" Click="MnuRestore_Click"
