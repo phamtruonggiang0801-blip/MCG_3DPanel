@@ -34,6 +34,14 @@ namespace MCG_3DPanel.Models
             return TryParseSpec(t, out height, out _);
         }
 
+        /// <summary>1 SỐ dương (ô Top Plate / Web height / Flange thk / FB height) — Invariant rồi văn hoá hiện tại
+        /// (dấu thập phân phẩy). KHÔNG nhận spec "h*t".</summary>
+        public static bool TryParsePositive(string s, out double v)
+        {
+            v = 0;
+            return !string.IsNullOrWhiteSpace(s) && TryNum(s.Trim(), out v) && v > 0;
+        }
+
         /// <summary>"120*6" → "120 × 6" (hiển thị; giữ nguyên chuỗi khác).</summary>
         public static string FormatSpec(string spec)
             => TryParseSpec(spec, out double h, out double t) ? $"{Fmt(h)} × {Fmt(t)}" : (spec ?? "");

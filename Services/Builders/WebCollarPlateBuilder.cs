@@ -90,6 +90,8 @@ namespace MCG_3DPanel.Services.Builders
 
             var done = new HashSet<string>();   // "webPartHandle~hpHandle" — 1 cặp gần 2 junction chỉ dựng 1 lần
             int totCands = 0, totJunctions = 0;
+            var forced = new List<(int run, PanelPart webPart, PanelPart hp, Point3d cross, double s)>();
+            var runJunctions = new Dictionary<int, List<(double pos, RunSpan wn)>>();
 
             for (int i = 0; i < runs.Count; i++)
             {
@@ -125,6 +127,8 @@ namespace MCG_3DPanel.Services.Builders
                     }
                 }
                 totCands += cands.Count;
+                // Ép tay theo HP (tab Result, PartCorrection.Collar = true): MỌI lỗ CO của HP — xử lý sau vòng run.
+                foreach (var x in cands) if (Force(ctx, x.hp) == true) forced.Add((i, x.webPart, x.hp, x.cross, x.s));
                 if (cands.Count == 0) continue;
 
                 // 2) Junction với "web ngang": web run KHÁC, ~⟂, đoạn tâm cắt đoạn tâm run này.
@@ -145,6 +149,7 @@ namespace MCG_3DPanel.Services.Builders
                     junctions.Add((tRun * span.len, o));
                 }
                 totJunctions += junctions.Count;
+                runJunctions[i] = junctions;
                 if (junctions.Count == 0) continue;
 
                 // 3) Mỗi junction → SLOTS_PER_SIDE lỗ HP liền kề MỖI PHÍA ("OUTMOST 2 HP SLOTS").
@@ -166,6 +171,11 @@ namespace MCG_3DPanel.Services.Builders
                     foreach (var k in pick)
                     {
                         string key = k.webPart.Id.Handle + "~" + k.hp.Id.Handle;
+                        if (Force(ctx, k.hp) == false)   // tab Result: Collar = Off trên HP này
+                        {
+                            if (done.Add(key)) ctx.Report.Add($"{LOG} SKIP collar web {k.webPart.Id.Handle} × HP {k.hp.Id.Handle}: Collar = Off (tab Result).");
+                            continue;
+                        }
                         if (!done.Add(key)) continue;
 
                         string tag = $"webDọc {k.webPart.Id.Handle} × HP {k.hp.Id.Handle} ← junction webNgang " +
@@ -174,7 +184,7 @@ namespace MCG_3DPanel.Services.Builders
                         Solid3d sol = null;
                         try
                         {
-                            sol = BuildOne(ctx, k.webPart, k.hp, k.cross, wn, b, c, r, coR);
+                            sol = BuildOne(ctx, k.webPart, k.hp, k.cross, wn.center, b, c, r, coR);
                             if (sol == null)
                             {
                                 ctx.Report.Add($"{LOG} Không dựng được collar: {tag} (thiếu BellyDir / tiết diện lỗi).");
@@ -196,6 +206,44 @@ namespace MCG_3DPanel.Services.Builders
                 }
             }
 
+            // Collar = On (tab Result): mọi lỗ CO còn thiếu của HP đó. Mặt web: về phía junction gần nhất trên cùng web
+            // dọc (như luật tự động); web không có junction ⇒ về phía tâm panel.
+            Point3d panelCenter = ctx.Cls.TopPlate?.Centroid ?? Point3d.Origin;
+            foreach (var f in forced)
+            {
+                string key = f.webPart.Id.Handle + "~" + f.hp.Id.Handle;
+                if (!done.Add(key)) continue;
+                Point3d sideRef = panelCenter;
+                string why = "tâm panel (web không có junction)";
+                if (runJunctions.TryGetValue(f.run, out var js) && js.Count > 0)
+                {
+                    var near = js.OrderBy(q => Math.Abs(q.pos - f.s)).First();
+                    sideRef = near.wn.center;
+                    why = $"junction webNgang {near.wn.spineHandle}";
+                }
+                string tag = $"webDọc {f.webPart.Id.Handle} × HP {f.hp.Id.Handle} ← Collar = On (tab Result), mặt về {why}";
+                Solid3d sol = null;
+                try
+                {
+                    sol = BuildOne(ctx, f.webPart, f.hp, f.cross, sideRef, b, c, r, coR);
+                    if (sol == null)
+                    {
+                        ctx.Warn($"{LOG} Không dựng được collar (ép On): {tag} (thiếu BellyDir / tiết diện lỗi).");
+                        continue;
+                    }
+                    sol.Layer = f.webPart.Layer;
+                    sol.ColorIndex = f.webPart.ColorIndex;
+                    outSolids.Add((sol, tag, $"CollarPlate:{f.webPart.SourceKey}~{f.hp.SourceKey}"));
+                    ctx.Report.Add($"{LOG} Collar: {tag} · tl={f.webPart.FootprintThickness:0.#} R={coR:0}.");
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.WriteLine($"{LOG} lỗi ({tag}): {ex.Message}");
+                    ctx.Warn($"{LOG} Lỗi collar (ép On): {tag}: {ex.Message}.");
+                    sol?.Dispose();
+                }
+            }
+
             ctx.Report.Add($"{LOG} {runs.Count} web run · {totCands} lỗ CO · {totJunctions} junction web-ngang → {outSolids.Count} Collar Plate.");
             return outSolids;
         }
@@ -203,8 +251,13 @@ namespace MCG_3DPanel.Services.Builders
         /// <summary>1 tấm collar: tiết diện <see cref="HpProfileService.CollarPlateSection"/> đặt trong mặt
         /// phẳng web, phía BỤNG HP, áp lên MẶT web về phía <paramref name="wn"/> (web ngang), extrude
         /// <c>tl = webThk</c> ra ngoài.</summary>
+        /// <summary>Ép tay theo HP (tab Result, PartCorrection.Collar): null = Auto.</summary>
+        private static bool? Force(BuildContext ctx, PanelPart hp)
+            => hp?.SourceKey != null && ctx.Cls.Corrections != null && ctx.Cls.Corrections.TryGetValue(hp.SourceKey, out var c)
+                ? c?.Collar : null;
+
         private static Solid3d BuildOne(BuildContext ctx, PanelPart web, PanelPart hp, Point3d cross,
-            RunSpan wn, double b, double c, double r, double coR)
+            Point3d sideRef, double b, double c, double r, double coR)
         {
             double t = hp.FootprintThickness;
             double tl = web.FootprintThickness;
@@ -228,7 +281,7 @@ namespace MCG_3DPanel.Services.Builders
             if (reg == null) return null;
 
             // Mặt web nào (dọc trục HP): về phía web ngang (nơi truyền lực). ⚠️ giả định — cần test trực quan.
-            double side = (wn.center - cross).DotProduct(axis) >= 0 ? 1.0 : -1.0;
+            double side = (sideRef - cross).DotProduct(axis) >= 0 ? 1.0 : -1.0;
 
             // Gốc tiết diện (x=0) = mặt LƯNG thân HP tại chỗ giao; đặt tại MẶT web phía `side`, Z=0.
             Point3d luru = new Point3d(cross.X, cross.Y, 0.0) - belly * (t / 2.0);

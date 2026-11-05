@@ -39,6 +39,14 @@ namespace MCG_3DPanel.Tests
         [InlineData("120*")]
         public void TryParseHeight_Rejects(string s) => Assert.False(PanelInput.TryParseHeight(s, out _));
 
+        [Theory]
+        [InlineData("374", true)]
+        [InlineData("6.5", true)]
+        [InlineData("120*6", false)]   // ô số (Web height, Top Plate…) KHÔNG nhận spec
+        [InlineData("0", false)]
+        [InlineData("", false)]
+        public void TryParsePositive(string s, bool ok) => Assert.Equal(ok, PanelInput.TryParsePositive(s, out _));
+
         [Fact]
         public void FlatBarHeight_AcceptsPlainNumber()
             => Assert.Equal(100.0, new PanelInput { FlatBarSpec = "100" }.FlatBarHeight, 6);

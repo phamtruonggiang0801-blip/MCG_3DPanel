@@ -23,9 +23,18 @@ namespace MCG_3DPanel.UI
             InitializeComponent();
 
             // Danh sách HP tiêu chuẩn (18 cỡ) → ComboBox, thay vì nhập tay. Xem HpProfileService.StandardSpecs.
-            CmbHpSpec.ItemsSource = MCG_3DPanel.Services.HpProfileService.StandardSpecs().ToList();
-            CmbHpSpec.SelectedItem = "120*6";
-            if (CmbHpSpec.SelectedItem == null) CmbHpSpec.SelectedIndex = 0;
+            // Hiển thị "120 × 6" (kỹ sư 2026-11-05), giá trị vẫn là spec chuẩn "120*6" của HP.csv.
+            var items = MCG_3DPanel.Services.HpProfileService.StandardSpecs().Select(s => new HpItem(s)).ToList();
+            CmbHpSpec.ItemsSource = items;
+            CmbHpSpec.SelectedItem = items.FirstOrDefault(i => i.Spec == "120*6") ?? items.FirstOrDefault();
+        }
+
+        /// <summary>1 cỡ HP trên dropdown: <see cref="Spec"/> = "120*6" (HP.csv), hiển thị "120 × 6".</summary>
+        private sealed class HpItem
+        {
+            public HpItem(string spec) { Spec = spec; }
+            public string Spec { get; }
+            public override string ToString() => MCG_3DPanel.Models.PanelInput.FormatSpec(Spec);
         }
 
         private void BtnBuild_Click(object sender, RoutedEventArgs e)
@@ -57,17 +66,19 @@ namespace MCG_3DPanel.UI
         {
             input = new MCG_3DPanel.Models.PanelInput();
             error = null;
-            if (!double.TryParse(TxtTopPlateThk.Text, out double t) || t <= 0) { error = "Invalid Top Plate thickness."; return false; }
-            if (!double.TryParse(TxtWebHeight.Text, out double h) || h <= 0) { error = "Invalid Web height."; return false; }
-            if (!double.TryParse(TxtFlangeThk.Text, out double tf) || tf <= 0) { error = "Invalid Flange thickness."; return false; }
-            if (!MCG_3DPanel.Models.PanelInput.TryParseSpec(TxtFlatBarSpec.Text, out _, out _)) { error = "Invalid Flat Bar spec (use height*thickness, e.g. 120*6)."; return false; }
-            string hpSpec = CmbHpSpec.SelectedItem as string;
+            // Số dương, dấu thập phân chấm hoặc phẩy (ux-guardrails: báo rõ phải nhập gì).
+            if (!MCG_3DPanel.Models.PanelInput.TryParsePositive(TxtTopPlateThk.Text, out double t)) { error = "Top Plate thickness must be a positive number in mm (e.g. 6)."; return false; }
+            if (!MCG_3DPanel.Models.PanelInput.TryParsePositive(TxtWebHeight.Text, out double h)) { error = "Web height must be a positive number in mm (e.g. 374)."; return false; }
+            if (!MCG_3DPanel.Models.PanelInput.TryParsePositive(TxtFlangeThk.Text, out double tf)) { error = "Flange thickness must be a positive number in mm (e.g. 20)."; return false; }
+            // FB: CHỈ chiều cao (kỹ sư 2026-11-05) — chiều dày theo 2D.
+            if (!MCG_3DPanel.Models.PanelInput.TryParsePositive(TxtFbHeight.Text, out double hfb)) { error = "FB height must be a positive number in mm (e.g. 120)."; return false; }
+            string hpSpec = (CmbHpSpec.SelectedItem as HpItem)?.Spec;
             if (!MCG_3DPanel.Models.PanelInput.TryParseSpec(hpSpec, out _, out _)) { error = "Choose an HP size."; return false; }
 
             input.TopPlateThickness = t;
             input.WebHeight = h;
             input.FlangeThickness = tf;
-            input.FlatBarSpec = TxtFlatBarSpec.Text;
+            input.FlatBarSpec = MCG_3DPanel.Models.PanelInput.Fmt(hfb);
             input.HpSpec = hpSpec;
             return true;
         }

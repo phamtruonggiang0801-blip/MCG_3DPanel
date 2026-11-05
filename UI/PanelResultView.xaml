@@ -54,27 +54,31 @@
         </WrapPanel>
 
         <TextBlock Grid.Row="1" Style="{StaticResource HelperTextStyle}" Margin="2,2,2,6"
-                   Text="Select a row to highlight it. Use the Tripping dropdown, ⇄ or the Sniped End buttons to correct; the panel rebuilds automatically. Right-click for Delete / Restore."/>
+                   Text="Select rows like in Excel (Shift / Ctrl + click, drag, Ctrl+A) to highlight them. Changing Tripping, Collar, FB height, ⇄ or Sniped End on a selected row applies it to every selected row; the panel rebuilds automatically. Right-click for Delete / Restore; Ctrl+C copies the selection."/>
 
         <!-- ===== Row 2: Bảng kết quả ===== -->
         <DataGrid x:Name="GridResult" Grid.Row="2" Style="{StaticResource PanelDataGridStyle}"
                   RowStyle="{StaticResource ResultRowStyle}"
                   CellStyle="{StaticResource ResultCellStyle}"
                   MinRowHeight="24" RowHeaderWidth="0" CanUserResizeRows="False"
-                  SelectionMode="Single"
+                  SelectionMode="Extended"
                   SelectionChanged="GridResult_SelectionChanged">
+            <!-- Ctrl+C: copy các dòng ĐANG CHỌN (kèm header) để dán Excel. -->
+            <DataGrid.CommandBindings>
+                <CommandBinding Command="ApplicationCommands.Copy" Executed="GridCopy_Executed"/>
+            </DataGrid.CommandBindings>
             <DataGrid.ContextMenu>
                 <ContextMenu Opened="GridMenu_Opened">
                     <MenuItem Header="Zoom to Object" Click="MnuZoomTo_Click"/>
                     <MenuItem x:Name="MnuDelete" Header="Delete" Click="MnuDelete_Click"
-                              ToolTip="Remove only this solid from the 3D block (kept across rebuilds; Restore to undo)"/>
+                              ToolTip="Remove the selected solids from the 3D block (kept across rebuilds; Restore to undo)"/>
                     <MenuItem x:Name="MnuRestore" Header="Restore" Click="MnuRestore_Click"
-                              ToolTip="Bring this deleted solid back, then rebuild"/>
+                              ToolTip="Bring the selected deleted solids back, then rebuild"/>
                     <MenuItem Header="Clear Correction" Click="MnuClearCorrection_Click"
-                              ToolTip="Remove every correction of the selected row (Tripping, direction, Sniped End, Kind), then rebuild"/>
+                              ToolTip="Remove every correction of the selected rows (Tripping, Collar, FB height, direction, Sniped End, Kind), then rebuild"/>
                     <Separator/>
-                    <MenuItem Header="Copy Table" Click="BtnCopy_Click"
-                              ToolTip="Copy the table to the clipboard (paste straight into Excel)"/>
+                    <MenuItem Header="Copy" Click="BtnCopy_Click"
+                              ToolTip="Copy the selected rows (or the whole table when one row is selected) to the clipboard — paste straight into Excel"/>
                     <MenuItem Header="Export Table to CSV..." Click="BtnExport_Click"/>
                 </ContextMenu>
             </DataGrid.ContextMenu>
@@ -95,7 +99,28 @@
                 <!-- Kind: CHỈ ĐỌC (kỹ sư 2026-11-05 — người dùng không cần sửa Kind trên tab Result). -->
                 <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="*" MinWidth="110" IsReadOnly="True"/>
 
-                <DataGridTextColumn Header="Size" Binding="{Binding Size}" Width="Auto" IsReadOnly="True"/>
+                <!-- Size: FB ⇒ ô số chiều cao (Enter = ghi, trống = theo tab Input) + "× t" chỉ đọc (kỹ sư 2026-11-05). -->
+                <DataGridTemplateColumn Header="Size" Width="Auto" MinWidth="70">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <TextBlock x:Name="SizeText" Text="{Binding Size}" VerticalAlignment="Center"/>
+                                <StackPanel x:Name="FbSize" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed">
+                                    <TextBox Text="{Binding FbHeightText, Mode=OneWay}" Style="{StaticResource CellTextBox}"
+                                             KeyDown="TxtFbHeight_KeyDown" LostFocus="TxtFbHeight_LostFocus"
+                                             ToolTip="FB height in mm (thickness comes from the 2D plan). Type a number and press Enter; leave empty to use the Input tab value. Applies to all selected FB rows."/>
+                                    <TextBlock Text="{Binding FbThkText}" Margin="4,0,0,0" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Grid>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding CanFbHeight}" Value="True">
+                                    <Setter TargetName="SizeText" Property="Visibility" Value="Collapsed"/>
+                                    <Setter TargetName="FbSize" Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
 
                 <!-- Dir: ⇄ đảo bụng HP / hướng gấp Bracket / phía Tripping B — chỉ hiện ở dòng CanFlip. -->
                 <DataGridTemplateColumn Header="Dir" Width="Auto" MinWidth="34">
@@ -142,7 +167,21 @@
                                       Style="{StaticResource CellCombo}" MinWidth="58"
                                       PreviewKeyDown="CmbTrip_PreviewKeyDown" PreviewMouseWheel="CmbTrip_PreviewMouseWheel"
                                       Visibility="{Binding CanTrip, Converter={StaticResource BoolToVis}}"
-                                      ToolTip="Tripping bracket on this HP. Auto = by the 3 × max stiffener spacing rule; On = at every beam it passes through; Off = none. Rebuilds the panel."/>
+                                      ToolTip="Tripping bracket on this HP. Auto = by the 3 × max stiffener spacing rule; On = at every beam it passes through; Off = none. Applies to all selected HP rows. Rebuilds the panel."/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <!-- Collar Plate theo HP (kỹ sư 2026-11-05): cùng kiểu Tripping. -->
+                <DataGridTemplateColumn Header="Collar" Width="Auto" MinWidth="64">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <ComboBox ItemsSource="{Binding TripOptions}"
+                                      SelectedItem="{Binding CollarChoice, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      Style="{StaticResource CellCombo}" MinWidth="58"
+                                      PreviewKeyDown="CmbTrip_PreviewKeyDown" PreviewMouseWheel="CmbTrip_PreviewMouseWheel"
+                                      Visibility="{Binding CanTrip, Converter={StaticResource BoolToVis}}"
+                                      ToolTip="Collar Plate on this HP. Auto = the 2 CO holes next to each web junction; On = at every CO hole of this HP; Off = none. Applies to all selected HP rows. Rebuilds the panel."/>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>

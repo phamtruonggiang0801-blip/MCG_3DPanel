@@ -187,7 +187,7 @@ namespace MCG_3DPanel.Services
                     if (chamfered.Contains(kv.Value.sol)) FillGeometry(kv.Value.info, kv.Value.sol);   // bbox/thể tích SAU khi vát
 
                 // Collar Plate / LUG B1R — SOLID MỚI (không boolean) hàn phía bụng HP quanh lỗ CO, tại
-                // 2 lỗ gần mỗi junction web-ngang × web-dọc, chỉ khi WebHeight < 300. Xem skill web-hp-cutout §7.
+                // 2 lỗ gần mỗi junction web-ngang × web-dọc (+ ép On/Off theo HP ở tab Result). Xem skill web-hp-cutout §7.
                 foreach (var (collar, tag, ckey) in WebCollarPlateBuilder.BuildCollarPlates(ctx))
                 {
                     btr.AppendEntity(collar);
