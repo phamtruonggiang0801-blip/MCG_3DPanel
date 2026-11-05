@@ -1,4 +1,6 @@
 using System;
+using System.Windows;
+using System.Windows.Threading;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
@@ -12,59 +14,74 @@ namespace MCG_3DPanel.Commands
     /// </summary>
     public static class CadPick
     {
-        /// <summary>Lặp chọn: mỗi lần trúng ⇒ <paramref name="onPick"/>(id chi tiết lồng); Enter/chuột phải ⇒ dừng, giữ
-        /// vùng chọn; Esc ⇒ <paramref name="onClear"/> rồi dừng. Trả số lần pick trúng dòng.</summary>
-        public static int PickLoop(Func<ObjectId, bool> onPick, Action onClear)
-        {
-            Document doc = AcadApp.DocumentManager.MdiActiveDocument;
-            if (doc == null) return 0;
-            Editor ed = doc.Editor;
-            try { Autodesk.AutoCAD.Internal.Utils.SetFocusToDwgView(); }
-            catch (System.Exception ex) { System.Diagnostics.Debug.WriteLine("[MCG_3DPanel] SetFocusToDwgView: " + ex.Message); }   // chỉ là tiện lợi: không có focus thì người dùng click vào bản vẽ trước
+        /// <summary>Đang trong vòng Pick (nút Pick bấm lại / hook Esc bỏ qua).</summary>
+        public static bool IsPicking { get; private set; }
 
-            int hits = 0;
-            var opts = new PromptNestedEntityOptions("\nPick an object to find its row [Enter = done, Esc = clear]: ")
+        /// <summary>Lặp chọn: mỗi lần trúng ⇒ <paramref name="onPick"/>(id chi tiết lồng); Enter/chuột phải ⇒ dừng, giữ
+        /// vùng chọn; Esc ⇒ <paramref name="onClear"/> rồi dừng. Trả thông báo lỗi (null nếu bình thường) — không ném,
+        /// không xoá vùng chọn khi prompt hỏng (review: chỉ Esc mới xoá).</summary>
+        public static string PickLoop(Func<ObjectId, bool> onPick, Action onClear, out int hits)
+        {
+            hits = 0;
+            if (IsPicking) return "Already picking — finish it in the drawing first (Enter = done, Esc = clear).";
+            Document doc = AcadApp.DocumentManager.MdiActiveDocument;
+            if (doc == null) return "No active drawing.";
+            if (!string.IsNullOrEmpty(doc.CommandInProgress))
+                return $"Finish or cancel the current command ({doc.CommandInProgress}) first, then click Pick again.";
+            IsPicking = true;
+            try
             {
-                AllowNone = true,
-            };
-            while (true)
-            {
-                PromptNestedEntityResult r = ed.GetNestedEntity(opts);
-                if (r.Status == PromptStatus.OK)
+                try { Autodesk.AutoCAD.Internal.Utils.SetFocusToDwgView(); }
+                catch (System.Exception ex) { System.Diagnostics.Debug.WriteLine("[MCG_3DPanel] SetFocusToDwgView: " + ex.Message); }   // tiện lợi: thiếu focus thì người dùng click bản vẽ trước
+
+                var opts = new PromptNestedEntityOptions("\nPick an object to find its row [Enter = done, Esc = clear]: ")
                 {
-                    // Không có dòng ⇒ không báo gì (kỹ sư 2026-11-05).
-                    if (onPick(r.ObjectId)) hits++;
-                    continue;
+                    AllowNone = true,
+                };
+                while (true)
+                {
+                    PromptNestedEntityResult r = doc.Editor.GetNestedEntity(opts);
+                    if (r.Status == PromptStatus.OK)
+                    {
+                        if (onPick(r.ObjectId)) hits++;   // không có dòng ⇒ không báo gì (kỹ sư 2026-11-05)
+                        continue;
+                    }
+                    if (r.Status == PromptStatus.None) return null;               // Enter / chuột phải: giữ vùng chọn
+                    if (r.Status == PromptStatus.Cancel) { onClear?.Invoke(); return null; }   // Esc
+                    return $"Pick stopped ({r.Status}).";
                 }
-                if (r.Status == PromptStatus.None) break;   // Enter / chuột phải: giữ vùng chọn
-                onClear?.Invoke();                           // Esc
-                break;
             }
-            return hits;
+            finally { IsPicking = false; }
         }
 
         // ─── Esc trên bản vẽ (không có lệnh) ⇒ tắt highlight + bỏ chọn grid ─────────────────────
         private const int WM_KEYDOWN = 0x0100;
         private const int VK_ESCAPE = 0x1B;
         private static Action _onEsc;
+        private static Dispatcher _dispatcher;
+        private static Func<DependencyObject, bool> _inPalette;
 
-        /// <summary>Gắn 1 lần (PaletteManager). Bỏ qua khi đang có lệnh, hoặc khi focus đang ở ô nhập/dropdown của palette
-        /// (Esc ở đó là huỷ gõ / đóng dropdown).</summary>
-        public static void HookEscape(Action onEsc)
+        /// <summary>Gắn 1 lần (PaletteManager, từ UI thread). Bỏ qua: đang có lệnh, đang Pick (vòng Pick tự xử lý Esc),
+        /// phím lặp, focus trong palette của mình (grid tự xử lý) hoặc trong ô nhập/dropdown. Việc xoá luôn hoãn ra
+        /// <see cref="Dispatcher"/> của palette — không làm việc nặng trong vòng lặp thông điệp.</summary>
+        public static void HookEscape(Action onEsc, Func<DependencyObject, bool> inPalette)
         {
-            if (_onEsc != null) { _onEsc = onEsc; return; }
             _onEsc = onEsc;
+            _inPalette = inPalette;
+            if (_dispatcher != null) return;
+            _dispatcher = Dispatcher.CurrentDispatcher;
             AcadApp.PreTranslateMessage += (s, e) =>
             {
                 if (e.Message.message != WM_KEYDOWN || (int)e.Message.wParam != VK_ESCAPE) return;
+                if (((long)e.Message.lParam & (1L << 30)) != 0) return;   // phím giữ (auto-repeat)
+                if (IsPicking) return;
                 var doc = AcadApp.DocumentManager.MdiActiveDocument;
                 if (doc == null || !string.IsNullOrEmpty(doc.CommandInProgress)) return;
-                var focused = System.Windows.Input.Keyboard.FocusedElement as System.Windows.DependencyObject;
+                var focused = System.Windows.Input.Keyboard.FocusedElement as DependencyObject;
                 if (focused is System.Windows.Controls.TextBox || focused is System.Windows.Controls.ComboBox
                     || focused is System.Windows.Controls.ComboBoxItem) return;
-                // Không làm việc nặng trong vòng lặp thông điệp: hoãn ra dispatcher.
-                System.Windows.Application.Current?.Dispatcher.BeginInvoke(new Action(() => _onEsc?.Invoke()));
-                if (System.Windows.Application.Current == null) _onEsc?.Invoke();
+                if (focused != null && _inPalette != null && _inPalette(focused)) return;
+                _dispatcher.BeginInvoke(new Action(() => _onEsc?.Invoke()));
             };
         }
     }

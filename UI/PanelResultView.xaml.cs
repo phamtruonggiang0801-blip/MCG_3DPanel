@@ -552,7 +552,12 @@ namespace MCG_3DPanel.UI
         {
             if (Rows.Count == 0) { SetStatus("Nothing listed yet — build or load a panel first.", error: true); return; }
             SetStatus("Pick objects in the drawing… Enter = done, Esc = clear.");
-            int hits = CadPick.PickLoop(SelectFromCad, PaletteManager.Instance.ClearAllSelections);
+            string err;
+            int hits;
+            try { err = CadPick.PickLoop(SelectFromCad, PaletteManager.Instance.ClearAllSelections, out hits); }
+            catch (System.Exception ex) { SetStatus("Pick failed: " + ex.Message, error: true); return; }
+            if (err != null) { SetStatus(err, error: true); return; }
+            if (_statusIsError) return;   // giữ lỗi highlight trong lúc pick (vd không highlight được)
             if (Selected.Count > 0) SetStatus($"{Selected.Count} row(s) selected" + (hits > 0 ? $" · {hits} picked" : "") + ".");
             else RestoreSummary();
         }
@@ -573,6 +578,7 @@ namespace MCG_3DPanel.UI
         /// <summary>Esc (bản vẽ hoặc grid): bỏ chọn + tắt highlight.</summary>
         public void ClearSelection()
         {
+            _clickSnapshot = null;
             _suspendShow = true;
             try { GridResult.SelectedItems.Clear(); }
             finally { _suspendShow = false; }

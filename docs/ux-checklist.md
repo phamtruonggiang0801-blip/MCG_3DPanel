@@ -106,3 +106,6 @@ built in a second drawing.
 | H4 | During Pick press Esc. | Picking ends; CAD highlight and grid selection (both tabs) are cleared. |
 | H5 | Select rows, click in the drawing area, press Esc (no command). | Highlight off in CAD, no row selected on either tab. |
 | H6 | Esc on the grid (not editing a name / not in an open dropdown). | Same as H5. Esc while typing a name only cancels the typing. |
+| H7 | Start LINE, then click Pick on the palette. | A message asks to finish or cancel LINE first; the selection is kept. |
+| H8 | Click Pick, then click Pick (or Pick in Drawing) again before finishing. | "Already picking…" message; the first pick keeps working. |
+| H9 | Press Esc in another palette (e.g. Properties) or hold Esc down. | At most one clear; no slowdown. (Esc in other palettes also clears — accepted.) |
