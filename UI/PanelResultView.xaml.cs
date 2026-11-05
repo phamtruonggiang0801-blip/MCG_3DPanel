@@ -221,7 +221,8 @@ namespace MCG_3DPanel.UI
                 SetStatus("Solid no longer exists — rebuild or re-run Build 3D.", error: true);
                 return;
             }
-            EntityHighlighter.Show(row.Path, row.Bounds, zoom);
+            if (!EntityHighlighter.Show(row.Path, row.Bounds, zoom))
+                SetStatus("This row belongs to another drawing — switch to that drawing, or run Build 3D / Load 3D here.", error: true);
         }
 
         private void GridResult_SelectionChanged(object sender, SelectionChangedEventArgs e)

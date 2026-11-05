@@ -18,13 +18,14 @@ namespace MCG_3DPanel.Commands
         private const string LOG = "[EntityHighlighter]";
         private static ObjectId[] _last;   // đường dẫn đang sáng — để tắt trước khi bật cái mới
 
-        /// <summary>Tắt highlight cũ, bật highlight + zoom entity ở <paramref name="path"/>.</summary>
         /// <summary>Highlight solid theo <paramref name="path"/>; <paramref name="zoom"/> = true ⇒ zoom vào bbox (nút ⌖ / menu
-        /// Zoom to Object). Chọn dòng trên tab Result chỉ highlight, KHÔNG zoom (kỹ sư 2026-11-05).</summary>
-        public static void Show(ObjectId[] path, Extents3d bounds, bool zoom = true)
+        /// Zoom to Object). Chọn dòng trên tab Result chỉ highlight, KHÔNG zoom (kỹ sư 2026-11-05).
+        /// Trả false nếu solid thuộc drawing KHÁC drawing đang mở (vd build 716C rồi sang drawing mới build 716P).</summary>
+        public static bool Show(ObjectId[] path, Extents3d bounds, bool zoom = true)
         {
             Document doc = AcadApp.DocumentManager.MdiActiveDocument;
-            if (doc == null || path == null || path.Length == 0) return;
+            if (doc == null || path == null || path.Length == 0) return false;
+            if (path[0].Database != doc.Database) { Clear(); return false; }
 
             try
             {
@@ -41,6 +42,7 @@ namespace MCG_3DPanel.Commands
             {
                 Debug.WriteLine($"{LOG} Show lỗi: {ex.Message}");
             }
+            return true;
         }
 
         // ─── Đánh dấu 1 ĐIỂM (đầu thanh HP/FB khi rê chuột lên nút Sniped End) — vòng tròn transient ───
@@ -90,9 +92,29 @@ namespace MCG_3DPanel.Commands
             catch (System.Exception ex) { Debug.WriteLine($"{LOG} Clear lỗi: {ex.Message}"); }
         }
 
+        /// <summary>Tắt highlight cũ trên ĐÚNG drawing chứa nó (_last là static, dùng chung mọi drawing: mở id của
+        /// drawing A bằng transaction drawing B ⇒ eWrongDatabase làm hỏng mọi highlight sau đó — lỗi 2026-11-05).
+        /// Drawing đó đã đóng ⇒ bỏ qua. Luôn xoá _last.</summary>
         private static void ClearCore(Document doc)
         {
-            if (_last != null) { SetHighlight(doc, _last, false); _last = null; }
+            var last = _last;
+            _last = null;
+            if (last == null || last.Length == 0 || last[0].IsNull) return;
+            try
+            {
+                Database db = last[0].Database;
+                Document owner = db == doc.Database ? doc : FindDocument(db);
+                if (owner == null) return;
+                if (owner == doc) SetHighlight(owner, last, false);
+                else using (owner.LockDocument()) SetHighlight(owner, last, false);
+            }
+            catch (System.Exception ex) { Debug.WriteLine($"{LOG} ClearCore lỗi: {ex.Message}"); }
+        }
+
+        private static Document FindDocument(Database db)
+        {
+            foreach (Document d in AcadApp.DocumentManager) if (d.Database == db) return d;
+            return null;
         }
 
         private static void SetHighlight(Document doc, ObjectId[] path, bool on)
