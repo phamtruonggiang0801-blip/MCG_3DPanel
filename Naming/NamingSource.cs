@@ -93,26 +93,6 @@ namespace MCG_3DPanel.Naming
             return p;
         }
 
-        /// <summary>Panel chỉ phân loại 2D (nút Select panel) — highlight polyline 2D.</summary>
-        public static NamingPanel FromBlock(Transaction tr, ObjectId blockRef, PanelPosition pos, PanelInput input, ClassificationResult cls)
-        {
-            var br = (BlockReference)tr.GetObject(blockRef, OpenMode.ForRead);
-            NameStore.EnsureLoaded(tr, br.BlockTableRecord);
-            var p = new NamingPanel
-            {
-                PanelKey = CorrectionStore.PanelKey(br.BlockTableRecord),
-                PanelName = cls.PanelBlockName,
-                Db = blockRef.Database,
-                SourceBtrId = br.BlockTableRecord,
-                Position = pos,
-                From3D = false,
-            };
-            Fill(p, cls.Parts, br.BlockTransform.Inverse(), input, part =>
-                (part.IdPath != null && part.IdPath.Length > 0 ? part.IdPath : null, (Extents3d?)part.Bounds));
-            p.Recompute();
-            return p;
-        }
-
         /// <summary>Quy cách từng đoạn (revision 1): Web cao theo Input, dày 2D · Flange rộng 2D, dày Input · HP theo
         /// quy cách Input · FB cao riêng (correction tab Result) hoặc Input, dày 2D.</summary>
         private static void Fill(NamingPanel p, IEnumerable<PanelPart> parts, Matrix3d toBlock, PanelInput input,

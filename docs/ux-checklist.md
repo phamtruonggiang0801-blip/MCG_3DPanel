@@ -110,3 +110,7 @@ built in a second drawing.
 | H8 | Click Pick, then click Pick (or Pick in Drawing) again before finishing. | "Already picking…" message; the first pick keeps working. |
 | H9 | Press Esc in another palette (e.g. Properties) or hold Esc down. | At most one clear; no slowdown. (Esc in other palettes also clears — accepted.) |
 | H10 | Pick 3 HP rows, change Tripping (or Collar / FB height) while the Pick prompt is still active, then press Enter in the drawing. | Status says the change is saved and the 3D rebuilds after picking; after Enter the panel rebuilds once with the new value. Same after ending with Esc (selection cleared, rebuild still runs). |
+
+> 2026-11-05: Naming has no Select panel / Copy buttons and no Position box any more. G1, G5 and G13 now read: panels
+> come from Build 3D / Load 3D; change Position on the Input tab, then open Naming ⇒ L/HL renumber; Copy stays in the
+> right-click menu and Ctrl+C.

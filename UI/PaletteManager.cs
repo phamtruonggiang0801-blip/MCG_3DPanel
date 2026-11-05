@@ -43,7 +43,7 @@ namespace MCG_3DPanel.UI
                 _input = new PanelInputView();
                 _result = new PanelResultView();
                 _naming = new PanelNamingView();
-                _naming.InputProvider = _input.TryGetInput;   // quy cách WEB/FLANGE/HP/FB trong tên theo tab Input
+                _naming.PositionProvider = () => _input.Position;   // đánh số theo Position của tab Input (kỹ sư 2026-11-05)
                 _input.Built += r =>
                 {
                     _result.Load(r);
@@ -82,7 +82,7 @@ namespace MCG_3DPanel.UI
                 _ps.PaletteActivated += (s, e) =>
                 {
                     _activeTab = e.Activated?.Name ?? _activeTab;
-                    if (_activeTab == "Naming") _naming.RefreshSizes();   // quy cách theo tab Input hiện tại
+                    if (_activeTab == "Naming") _naming.OnActivated();   // Position tab Input đổi ⇒ đánh số lại
                 };
                 _ps.AddVisual("Input", _input);
                 _ps.AddVisual("Result", _result);

@@ -57,3 +57,8 @@ Nguồn: `CAS.dump.json` panel 7D-16C — người vẽ ghi Text cạnh mặt c�
   1 đoạn web và chồng trục với đoạn đó). Quy cách FLANGE ưu tiên flange trên đoạn web dài nhất.
 - **Merge**: các dòng CÙNG loại + CÙNG phương trong 1 panel ⇒ 1 tuyến, 1 tên, 1 số (đánh số lại); lưu `Merges` (nhóm
   SourceKey) trong `MCG3D_NAMES`; nhóm chạm nhau thì nhập. **Unmerge** bỏ nhóm chứa dòng đó. Kind hiện "Web (merged)".
+
+## 2026-11-05 (sau revision 2)
+- Bỏ nút **Select panel…** (và đường phân loại-2D-only `ClassifyOnly`/`FromBlock`), nút **Copy** trên thanh công cụ
+  (Copy vẫn ở chuột phải + Ctrl+C) và ô **Position**: tab chỉ nạp panel từ Build 3D / rebuild / Load 3D, đánh số theo
+  Position của **tab Input** (`PositionProvider`); mở tab Naming sau khi đổi Position ⇒ đánh số lại (`OnActivated`).
