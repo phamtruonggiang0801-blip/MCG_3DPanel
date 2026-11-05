@@ -51,6 +51,15 @@ namespace MCG_3DPanel.Services.Builders
                     string key = $"{thick.part.SourceKey}@{Math.Round(j.Jx)},{Math.Round(j.Jy)}";
                     if (!done.Add(key)) continue;
 
+                    // Tấm dày ngắn hơn L: khối nêm sẽ chạy quá đầu kia — bỏ, ghi report (review).
+                    var ts = j.Thick == 0 ? segs[i] : segs[k];
+                    double thickLen = Math.Sqrt((ts.Bx - ts.Ax) * (ts.Bx - ts.Ax) + (ts.By - ts.Ay) * (ts.By - ts.Ay));
+                    if (thickLen < j.L + MARGIN)
+                    {
+                        ctx.Report.Add($"{LOG} SKIP {thick.part.Id.Handle}: dài {thickLen:0} < L={j.L:0} — không vát.");
+                        continue;
+                    }
+
                     string tag = $"{thick.part.Type} {thick.part.Id.Handle} t{thick.part.FootprintThickness:0.#} ↔ " +
                                  $"{thin.part.Type} {thin.part.Id.Handle} t{thin.part.FootprintThickness:0.#}: " +
                                  $"Δt={j.Dt:0.#} L={j.L:0.#}";
@@ -62,10 +71,13 @@ namespace MCG_3DPanel.Services.Builders
                         double step = side > 0 ? j.StepPlus : j.StepMinus;
                         try
                         {
-                            if (Cut(thick.sol, poly, -H - Z_PAD, H + 2 * Z_PAD))
+                            if (Cut(thick.sol, poly, -H - Z_PAD, H + 2 * Z_PAD, out double removed))
                             {
                                 changed.Add(thick.sol);
-                                sides.Add($"{(side > 0 ? "+" : "−")}N step={step:0.#}");
+                                // Không bớt vật liệu ⇒ footprint 2D đã vẽ sẵn vát (hoặc sai hướng) — ghi rõ, không coi là đã vát.
+                                sides.Add(removed > 1.0
+                                    ? $"{(side > 0 ? "+" : "−")}N step={step:0.#}"
+                                    : $"{(side > 0 ? "+" : "−")}N step={step:0.#} (không bớt vật liệu — 2D đã vát sẵn?)");
                             }
                             else ctx.Warn($"{LOG} Không tạo được khối vát: {tag} ({(side > 0 ? "+" : "−")}N) → giữ nguyên.");
                         }
@@ -83,8 +95,9 @@ namespace MCG_3DPanel.Services.Builders
 
         /// <summary>Đùn đa giác mặt bằng từ <paramref name="z0"/> lên <paramref name="height"/> rồi BoolSubtract khỏi
         /// <paramref name="target"/>. false nếu không tạo được region/solid.</summary>
-        private static bool Cut(Solid3d target, List<(double X, double Y)> poly, double z0, double height)
+        private static bool Cut(Solid3d target, List<(double X, double Y)> poly, double z0, double height, out double removed)
         {
+            removed = 0;
             using (var pl = new Polyline())
             {
                 for (int i = 0; i < poly.Count; i++) pl.AddVertexAt(i, new Point2d(poly[i].X, poly[i].Y), 0, 0, 0);
@@ -100,13 +113,23 @@ namespace MCG_3DPanel.Services.Builders
                 try
                 {
                     cutter.CreateExtrudedSolid(reg, new Vector3d(0, 0, height), new SweepOptionsBuilder().ToSweepOptions());
+                    double v0 = Volume(target);
+                    target.BooleanOperation(BooleanOperationType.BoolSubtract, cutter);   // cutter bị tiêu thụ
+                    removed = v0 - Volume(target);
+                    return true;
                 }
-                catch { cutter.Dispose(); reg.Dispose(); throw; }
-                reg.Dispose();
-                target.BooleanOperation(BooleanOperationType.BoolSubtract, cutter);   // cutter bị tiêu thụ
-                cutter.Dispose();
-                return true;
+                finally
+                {
+                    // Luôn giải phóng (kể cả khi boolean ném lỗi) — solid ngoài DB để GC finalise là không an toàn.
+                    cutter.Dispose();
+                    reg.Dispose();
+                }
             }
+        }
+
+        private static double Volume(Solid3d s)
+        {
+            try { return s.MassProperties.Volume; } catch { return 0; }
         }
     }
 }

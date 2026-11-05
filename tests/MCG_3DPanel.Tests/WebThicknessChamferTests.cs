@@ -60,6 +60,20 @@ namespace MCG_3DPanel.Tests
         [Fact] public void Match_SideBySide_Null() => Assert.Null(WebThicknessChamferGeometry.Match(S(0, 0, 100, 0, 10), S(0, 8, 100, 8, 6)));
         [Fact] public void Match_LateralOffsetTooBig_Null() => Assert.Null(WebThicknessChamferGeometry.Match(S(0, 0, 100, 0, 10), S(100, 20, 300, 20, 6)));
 
+        // Review 2026-11-05: tấm mỏng lệch ra NGOÀI mặt tấm dày (chỉ chạm mặt) ⇒ không phải mối nối (trước đó vát tới mép dao).
+        [Fact] public void Match_ThinFaceOutsideThick_Null() => Assert.Null(WebThicknessChamferGeometry.Match(S(0, 0, 100, 0, 10), S(100, 8, 300, 8, 6)));
+
+        // Review 2026-11-05: tấm mỏng dài vẽ lệch 0.05° ⇒ độ lệch đo TẠI MỐI NỐI, không tại trung điểm.
+        [Fact]
+        public void Match_SkewedThin_MeasuredAtJoint()
+        {
+            double dy = 11000 * Math.Tan(0.05 * Math.PI / 180);
+            var j = WebThicknessChamferGeometry.Match(S(0, 0, 100, 0, 10), S(100, 2, 11100, 2 + dy, 6));
+            Assert.NotNull(j);
+            Assert.Equal(4.0, j.StepPlus, 6);    // U = −x ⇒ N = −y: mặt y = −5 lệch 4 (tấm mỏng ở y = 2)
+            Assert.Equal(0.0, j.StepMinus, 6);
+        }
+
         [Fact]
         public void Match_UsesNearestEnds()   // tấm dày vẽ ngược chiều: mối nối vẫn ở đầu chạm tấm mỏng
         {
@@ -75,9 +89,11 @@ namespace MCG_3DPanel.Tests
             var w = WebThicknessChamferGeometry.Wedge(j, -1, 1.0);
             Assert.Equal(4, w.Count);
             // Đường vát đi qua (mối nối, mặt tấm mỏng 992.8) và (L=16 vào tấm dày, mặt tấm dày 988.8).
-            Assert.Equal(13639.8, w[1].X, 6); Assert.Equal(988.8, w[1].Y, 6);
+            // Cạnh vát kéo QUA L thêm m (tránh đỉnh nằm đúng trên mặt tấm dày — review).
+            Assert.Equal(13640.8, w[1].X, 6); Assert.Equal(988.55, w[1].Y, 6);
             double k = (w[1].Y - w[0].Y) / (w[1].X - w[0].X);
             Assert.Equal(992.8, w[0].Y + k * (13623.8 - w[0].X), 6);
+            Assert.Equal(988.8, w[0].Y + k * (13639.8 - w[0].X), 6);
             Assert.True(w[2].Y < 988.8 && w[3].Y < 988.8);   // phần đệm nằm NGOÀI mặt tấm dày
         }
 
@@ -92,7 +108,7 @@ namespace MCG_3DPanel.Tests
             Assert.NotNull(j);
             Assert.Equal(4.0, j.StepPlus, 6);   // U = −x (vào tấm dày) ⇒ N = −y: mặt lệch y = −5 là +N
             var w = WebThicknessChamferGeometry.Wedge(j, +1, 1.0);
-            var (ex, ey) = R(100 - 16, -5);   // mút vát trên mặt tấm dày (dày nằm phía x<100 sau khi xoay)
+            var (ex, ey) = R(100 - 17, -5.25);   // (L+m, h+k·m) sau khi xoay
             Assert.Equal(ex, w[1].X, 6); Assert.Equal(ey, w[1].Y, 6);
         }
     }

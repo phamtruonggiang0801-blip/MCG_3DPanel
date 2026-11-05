@@ -14,7 +14,7 @@ dim `t` = bậc lệch và `4 x t` — hình KHÔNG đúng tỉ lệ (đo 15), c
 | # | Quy tắc |
 |---|---|
 | R1 | Chỉ web: `Web`, `ClosedPlate`, `GirderEnd` (GE/GB gộp vào web). KHÔNG flange/faceplate. |
-| R2 | Mối nối = 2 web thẳng hàng (\|cos\| ≥ 0.999), nối đầu–đầu (khe/chồng ≤ 5), lệch ngang ≤ (t1+t2)/2, **Δt ≥ 4**. |
+| R2 | Mối nối = 2 web thẳng hàng (|cos| ≥ 0.999), nối đầu–đầu (khe/chồng ≤ 5), **mặt tấm mỏng nằm trong dải dày tấm dày** (± 0.5; lệch ra ngoài = chỉ chạm mặt ⇒ không phải mối nối), **Δt ≥ 4**. Độ lệch đo TẠI ĐẦU MỐI NỐI tấm mỏng (không tại trung điểm). Tấm dày ngắn hơn L ⇒ bỏ (report SKIP). ||cos\| ≥ 0.999), nối đầu–đầu (khe/chồng ≤ 5), lệch ngang ≤ (t1+t2)/2, **Δt ≥ 4**. |
 | R3 | **L = 4 × Δt** (bậc lệch) dọc trục tấm dày từ mối nối: t10↔t6 ⇒ 16; t20↔t10 ⇒ 40. |
 | R4 | Bậc từng mặt từ footprint 2D; ≤ 0.5 ⇒ flush (không cắt); mặt lệch ⇒ vát từ `step` về 0 trên L; thẳng tâm ⇒ 2 mặt, mỗi mặt Δt/2. Cắt suốt chiều cao web. |
 
@@ -35,6 +35,10 @@ dim `t` = bậc lệch và `4 x t` — hình KHÔNG đúng tỉ lệ (đo 15), c
 - Report: `[WebChamfer] Web h t10 ↔ Web h t6: Δt=4 L=16 · −N step=4.` + tổng `N mối nối … vát 1:4`.
 
 ## Theo dõi
+
+- Kiểm trong AutoCAD (🔍): 10 mối nối 7D-16C vát mặt TRONG, mặt ngoài phẳng, L 16/40, suốt 374; `[WebChamfer] 10 …` không cảnh báo; 7D-17C `26FFF` (2D vát sẵn) ⇒ report "không bớt vật liệu", không lỗi boolean; ép lỗi ⇒ "⚠ N build warning(s)".
+- [ ] Xoá tấm mỏng ở tab Result: tấm dày VẪN vát (Delete chạy sau boolean — cùng kiểu lỗ CO).
+- [ ] Collar / bracket B / tripping hàn lên mặt tấm dày trong 16–40mm sát mối nối sẽ nằm trên vùng vát.
 
 - [ ] Footprint 2D đã vẽ sẵn vát 1:4: khối nêm trùng vùng trống ⇒ trừ vô hại (chưa kiểm trực quan).
 - [ ] Mối nối web chéo nhau / chữ T không thuộc luật (chỉ thẳng hàng).

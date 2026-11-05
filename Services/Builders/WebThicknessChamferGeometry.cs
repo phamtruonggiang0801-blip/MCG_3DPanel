@@ -62,7 +62,6 @@ namespace MCG_3DPanel.Services.Builders
                     if (Math.Abs(gap) > END_TOL || far <= END_TOL) continue;
                     if (lat > (a.T + b.T) / 2.0) continue;
                     if (Math.Abs(gap) >= bestGap) continue;
-                    bestGap = Math.Abs(gap);
 
                     bool aThick = a.T > b.T;
                     var j = new ChamferJoint { Thick = aThick ? 0 : 1, Thin = aThick ? 1 : 0, Dt = dt, L = RATIO * dt };
@@ -75,20 +74,27 @@ namespace MCG_3DPanel.Services.Builders
                     }
                     j.Nx = -j.Uy; j.Ny = j.Ux;
                     WebSeg thick = aThick ? a : b, thin = aThick ? b : a;
-                    // Lệch tâm tấm mỏng so với đường tâm tấm dày, đo theo N (dùng trung điểm tấm mỏng).
-                    double mx = (thin.Ax + thin.Bx) / 2.0 - j.Jx, my = (thin.Ay + thin.By) / 2.0 - j.Jy;
+                    // Lệch tâm tấm mỏng so với đường tâm tấm dày, đo theo N TẠI ĐẦU MỐI NỐI của tấm mỏng (trung điểm sai
+                    // vài mm khi tấm mỏng dài vẽ lệch trục chút ít — review 2026-11-05).
+                    double tx = aThick ? ebx : eax, ty = aThick ? eby : eay;
+                    double mx = tx - j.Jx, my = ty - j.Jy;
                     double d = mx * j.Nx + my * j.Ny;
                     double h = thick.T / 2.0, hn = thin.T / 2.0;
                     j.HalfThick = h;
-                    j.StepPlus = Clean(h - (d + hn));
-                    j.StepMinus = Clean((d - hn) + h);
+                    double sp = h - (d + hn), sm = (d - hn) + h;
+                    // Mặt tấm mỏng phải nằm TRONG dải chiều dày tấm dày (± FLUSH_TOL); lệch ra ngoài = 2 tấm chỉ chạm mặt,
+                    // không phải mối nối đối đầu (trước đó vát tấm dày tới mép dao — review 2026-11-05).
+                    if (sp < -FLUSH_TOL || sm < -FLUSH_TOL) continue;
+                    j.StepPlus = Clean(sp);
+                    j.StepMinus = Clean(sm);
+                    bestGap = Math.Abs(gap);   // chỉ khi ứng viên ĐƯỢC NHẬN
                     best = j;
                 }
             return best;
         }
 
         /// <summary>Đa giác mặt bằng (4 đỉnh, WCS) của khối nêm cắt trên mặt <paramref name="side"/> (+1 = +N, −1 = −N):
-        /// trong hệ (U, side·N): (−m, h−s−k·m) → (L, h) → (L, h+m) → (−m, h+m); h = nửa dày tấm dày, s = bậc mặt đó,
+        /// trong hệ (U, side·N): (−m, h−s−k·m) → (L+m, h+k·m) → (L+m, h+m+k·m) → (−m, h+m+k·m); h = nửa dày tấm dày, s = bậc mặt đó,
         /// k = s/L. Cạnh vát đi qua (0, h−s) = mặt tấm mỏng tại mối nối và (L, h) = mặt tấm dày; m = đệm ra NGOÀI để
         /// không trùng mặt (boolean ổn định).</summary>
         public static List<(double X, double Y)> Wedge(ChamferJoint j, int side, double margin)
@@ -99,7 +105,8 @@ namespace MCG_3DPanel.Services.Builders
             if (s <= FLUSH_TOL) return res;
             double h = j.HalfThick;
             double k = s / j.L, m = margin;
-            var local = new[] { (-m, h - s - k * m), (j.L, h), (j.L, h + m), (-m, h + m) };
+            // Cạnh vát kéo qua L thêm m (đỉnh không nằm ĐÚNG trên mặt tấm dày ⇒ boolean ổn định hơn — review).
+            var local = new[] { (-m, h - s - k * m), (j.L + m, h + k * m), (j.L + m, h + m + k * m), (-m, h + m + k * m) };
             foreach (var (x, y) in local)
                 res.Add((j.Jx + j.Ux * x + j.Nx * side * y, j.Jy + j.Uy * x + j.Ny * side * y));
             return res;
