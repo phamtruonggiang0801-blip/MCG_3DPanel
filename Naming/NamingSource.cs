@@ -30,7 +30,7 @@ namespace MCG_3DPanel.Naming
         /// <summary>Tính lại tuyến + tên (tự sinh, rồi tên người dùng đã lưu).</summary>
         public void Recompute()
         {
-            Lines = StructureNaming.Lines(Pieces, Position);
+            Lines = StructureNaming.Lines(Pieces, Position, NameStore.Deleted(PanelKey));
             ResolveNames();
         }
 
@@ -50,6 +50,7 @@ namespace MCG_3DPanel.Naming
                 case PartType.GirderEnd: return NamingKind.Web;
                 case PartType.HP: return NamingKind.HP;
                 case PartType.FlatBar: return NamingKind.FB;
+                case PartType.Flange: return NamingKind.Flange;   // chỉ cho quy cách tuyến Web (revision 1)
                 default: return null;
             }
         }
@@ -72,7 +73,7 @@ namespace MCG_3DPanel.Naming
             if (!p.From3D)
             {
                 // Bỏ 3D (No) ⇒ block 2D vẫn còn: highlight polyline 2D.
-                Fill(p, b.ClassifiedParts, b.SourceTransform.Inverse(), part =>
+                Fill(p, b.ClassifiedParts, b.SourceTransform.Inverse(), b.Input, part =>
                     (part.IdPath != null && part.IdPath.Length > 0 ? part.IdPath : null, (Extents3d?)part.Bounds));
                 p.Recompute();
                 return p;
@@ -80,7 +81,7 @@ namespace MCG_3DPanel.Naming
             var solidOf = new Dictionary<PanelPart, BuiltSolid>();
             foreach (var s in b.Solids)
                 if (s.Part != null && !s.Deleted && !s.SolidId.IsNull && !solidOf.ContainsKey(s.Part)) solidOf[s.Part] = s;
-            Fill(p, b.ClassifiedParts, b.SourceTransform.Inverse(), part =>
+            Fill(p, b.ClassifiedParts, b.SourceTransform.Inverse(), b.Input, part =>
             {
                 // GE hợp nhất vào Web ⇒ solid của Web đó.
                 if (!solidOf.TryGetValue(part, out var s) && part.JoinWithWeb != null) solidOf.TryGetValue(part.JoinWithWeb, out s);
@@ -91,7 +92,7 @@ namespace MCG_3DPanel.Naming
         }
 
         /// <summary>Panel chỉ phân loại 2D (nút Select panel) — highlight polyline 2D.</summary>
-        public static NamingPanel FromBlock(Transaction tr, ObjectId blockRef, PanelPosition pos, ClassificationResult cls)
+        public static NamingPanel FromBlock(Transaction tr, ObjectId blockRef, PanelPosition pos, PanelInput input, ClassificationResult cls)
         {
             var br = (BlockReference)tr.GetObject(blockRef, OpenMode.ForRead);
             NameStore.EnsureLoaded(tr, br.BlockTableRecord);
@@ -104,29 +105,47 @@ namespace MCG_3DPanel.Naming
                 Position = pos,
                 From3D = false,
             };
-            Fill(p, cls.Parts, br.BlockTransform.Inverse(), part =>
+            Fill(p, cls.Parts, br.BlockTransform.Inverse(), input, part =>
                 (part.IdPath != null && part.IdPath.Length > 0 ? part.IdPath : null, (Extents3d?)part.Bounds));
             p.Recompute();
             return p;
         }
 
-        private static void Fill(NamingPanel p, IEnumerable<PanelPart> parts, Matrix3d toBlock,
+        /// <summary>Quy cách từng đoạn (revision 1): Web cao theo Input, dày 2D · Flange rộng 2D, dày Input · HP theo
+        /// quy cách Input · FB cao riêng (correction tab Result) hoặc Input, dày 2D.</summary>
+        private static void Fill(NamingPanel p, IEnumerable<PanelPart> parts, Matrix3d toBlock, PanelInput input,
             System.Func<PanelPart, (ObjectId[] path, Extents3d? bounds)> pathOf)
         {
+            input = input ?? new PanelInput();
+            PanelInput.TryParseSpec(input.HpSpec, out double hpH, out double hpT);
+            var corr = CorrectionStore.For(p.PanelKey);
             foreach (var part in parts ?? Enumerable.Empty<PanelPart>())
             {
                 var kind = KindOf(part.Type);
-                if (kind == null || string.IsNullOrEmpty(part.SourceKey)) continue;
+                if (kind == null) continue;
+                if (string.IsNullOrEmpty(part.SourceKey) && kind != NamingKind.Flange) continue;
                 var (a, b) = MCG_3DPanel.Services.Classify.ClassifyUtil.Endpoints(part);
                 a = a.TransformBy(toBlock);
                 b = b.TransformBy(toBlock);
-                p.Pieces.Add(new NamingPiece
+                var piece = new NamingPiece
                 {
-                    Key = part.SourceKey,
+                    Key = part.SourceKey ?? ("F" + part.Id.Handle),
                     Kind = kind.Value,
                     X0 = a.X, Y0 = a.Y, X1 = b.X, Y1 = b.Y,
                     Thickness = part.FootprintThickness,
-                });
+                };
+                switch (kind.Value)
+                {
+                    case NamingKind.Web: piece.Height = input.WebHeight; break;
+                    case NamingKind.Flange: piece.Height = input.FlangeThickness; break;
+                    case NamingKind.HP: piece.Height = hpH; piece.Thickness = hpT; break;
+                    case NamingKind.FB:
+                        piece.Height = part.SourceKey != null && corr.TryGetValue(part.SourceKey, out var c)
+                                       && c?.FbHeight is double h && h > 0 ? h : input.FlatBarHeight;
+                        break;
+                }
+                p.Pieces.Add(piece);
+                if (kind == NamingKind.Flange) continue;   // flange không có dòng riêng ⇒ không cần highlight
                 var (path, bounds) = pathOf(part);
                 if (path == null) continue;
                 if (!p.Paths.TryGetValue(part.SourceKey, out var list)) p.Paths[part.SourceKey] = list = new List<ObjectId[]>();

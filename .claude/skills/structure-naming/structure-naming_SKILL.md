@@ -21,7 +21,7 @@ Nguồn: `CAS.dump.json` panel 7D-16C — người vẽ ghi Text cạnh mặt c�
 - Hình học trong **hệ block 2D** (nghịch đảo block transform) — dời/xoay block không đổi tên.
 - Hướng = trục gần trục dài nhất (đoạn chéo theo trục gần nhất). Web + HP cùng hướng, tâm lệch ≤ **15 mm** = 1 tuyến
   (không cần liền). Loại tuyến = loại có **tổng dài lớn hơn** (HP 1B2E9 nằm trên L3 ⇒ tên L3). Tâm tuyến = tâm đoạn dài nhất.
-- FB chỉ gộp với FB, tâm ≤ 15 **và** khe ≤ **30 mm** (FB tách tại HP vẫn là 1 dòng). Tên luôn "BS".
+- FB chỉ gộp với FB, tâm ≤ 15 (cách xa vẫn 1 dòng — revision 1). Tên luôn "BS".
 - Theo hướng tàu (vị trí panel): T/HT lái → mũi (mũi ở X+ ⇒ X tăng); L/HL tâm tàu → mạn: Center/Port Y tăng,
   Starboard Y giảm. 4 bộ đếm riêng.
 
@@ -40,3 +40,13 @@ Nguồn: `CAS.dump.json` panel 7D-16C — người vẽ ghi Text cạnh mặt c�
 - Select panel… = chỉ phân loại 2D (`PanelCommands.ClassifyOnly`); sau Build/rebuild/Load 3D tab tự nạp (`BuildResult.ClassifiedParts`).
 - Highlight: solid 3D nếu panel đã Keep, polyline 2D nếu chưa/bỏ 3D. Enter = đổi tên cả vùng chọn; rời ô = chỉ dòng đó.
 - ux-guardrails: dòng của drawing khác không ghi gì và báo tên drawing; checklist mục G.
+
+## Revision 1 (kỹ sư 2026-11-05)
+- Tên hiển thị/xuất = `<tag> <quy cách>` của đoạn DÀI NHẤT: `T1 WEB 374x6.0/FLANGE 100x20.0` (web cao Input × dày 2D;
+  flange rộng 2D × dày Input, flange = Flange AM_11 có tâm trong nửa bề rộng + 15 quanh đường tâm web), `HL1 HP 120x6.0`
+  (HP tab Input), `BS FB 80x6.0` (FB cao riêng/Input × dày 2D). Người dùng chỉ sửa tag (`StripSpec`).
+- Grid chỉ Panel / Name / Kind; Zoom qua chuột phải.
+- **Del Name**: ẩn tuyến + đánh số lại; lưu `Deleted` (SourceKey) trong `MCG3D_NAMES`; tuyến có BẤT KỲ đoạn nào bị xoá
+  là bị xoá. "Restore deleted names (N)" trả lại mọi tuyến của các panel thuộc drawing đang mở. Đây cũng là cách xử lý
+  đoạn ngắn lạc làm dịch số.
+- BS/HP thẳng hàng cách xa vẫn 1 dòng (bỏ luật khe 30 mm của FB).

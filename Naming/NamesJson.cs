@@ -6,20 +6,24 @@ namespace MCG_3DPanel.Naming
 {
     // ⚠️ File THUẦN C# — KHÔNG using Autodesk.* (link sang tests/MCG_3DPanel.Tests).
 
-    /// <summary>Tên người dùng đặt (SourceKey → tên) ↔ JSON trong XRecord MCG3D_NAMES. JSON hỏng/rỗng ⇒ không có tên.</summary>
+    /// <summary>Tên người dùng đặt (SourceKey → tên) + đoạn đã "Del Name" ↔ JSON trong XRecord MCG3D_NAMES.
+    /// JSON hỏng/rỗng ⇒ không có tên.</summary>
     public static class NamesJson
     {
         private sealed class Doc
         {
             public int Version { get; set; } = 1;
             public Dictionary<string, string> Names { get; set; } = new Dictionary<string, string>();
+            public List<string> Deleted { get; set; } = new List<string>();
         }
 
-        public static string Serialize(IReadOnlyDictionary<string, string> names)
+        public static string Serialize(IReadOnlyDictionary<string, string> names, IEnumerable<string> deleted = null)
         {
             var doc = new Doc();
             foreach (var kv in names ?? new Dictionary<string, string>())
                 if (!string.IsNullOrEmpty(kv.Key) && !string.IsNullOrWhiteSpace(kv.Value)) doc.Names[kv.Key] = kv.Value;
+            foreach (var k in deleted ?? new string[0])
+                if (!string.IsNullOrEmpty(k) && !doc.Deleted.Contains(k)) doc.Deleted.Add(k);
             return JsonSerializer.Serialize(doc);
         }
 
@@ -32,9 +36,12 @@ namespace MCG_3DPanel.Naming
                 if (!cache.ContainsKey(kv.Key)) cache[kv.Key] = kv.Value;
         }
 
-        public static Dictionary<string, string> Deserialize(string json)
+        public static Dictionary<string, string> Deserialize(string json) => Deserialize(json, out _);
+
+        public static Dictionary<string, string> Deserialize(string json, out HashSet<string> deleted)
         {
             var result = new Dictionary<string, string>(StringComparer.Ordinal);
+            deleted = new HashSet<string>(StringComparer.Ordinal);
             if (string.IsNullOrWhiteSpace(json)) return result;
             try
             {
@@ -42,6 +49,8 @@ namespace MCG_3DPanel.Naming
                 if (doc?.Names != null)
                     foreach (var kv in doc.Names)
                         if (!string.IsNullOrEmpty(kv.Key) && !string.IsNullOrWhiteSpace(kv.Value)) result[kv.Key] = kv.Value;
+                if (doc?.Deleted != null)
+                    foreach (var k in doc.Deleted) if (!string.IsNullOrEmpty(k)) deleted.Add(k);
             }
             catch (JsonException) { /* JSON hỏng ⇒ coi như chưa đặt tên (giống CorrectionJson) */ }
             return result;

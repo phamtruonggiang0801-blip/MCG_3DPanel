@@ -499,7 +499,7 @@ namespace MCG_3DPanel.Commands
         /// Panel lỗi không chặn panel khác — lỗi gom vào <paramref name="errors"/> (tab hiện lên thanh trạng thái).
         /// Trả null nếu huỷ chọn.
         /// </summary>
-        public static List<MCG_3DPanel.Naming.NamingPanel> ClassifyOnly(PanelPosition position, List<string> errors)
+        public static List<MCG_3DPanel.Naming.NamingPanel> ClassifyOnly(PanelPosition position, PanelInput input, List<string> errors)
         {
             if (!TryPickPanels(out Document doc, out ObjectId[] ids)) return null;
             Database db = doc.Database;
@@ -521,7 +521,7 @@ namespace MCG_3DPanel.Commands
                         var cls = new ClassificationService().Classify(id, position, CorrectionStore.For(panelKey));
                         using (Transaction tr = db.TransactionManager.StartTransaction())
                         {
-                            panels.Add(MCG_3DPanel.Naming.NamingSource.FromBlock(tr, id, position, cls));
+                            panels.Add(MCG_3DPanel.Naming.NamingSource.FromBlock(tr, id, position, input, cls));
                             tr.Commit();
                         }
                     }

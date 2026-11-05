@@ -23,7 +23,7 @@ namespace MCG_3DPanel.Tests
             l.Add(VY(NamingKind.Web, 530, 200, 1400, 20));
             l.Add(VY(NamingKind.Web, 2483, 452, 10057));
             l.Add(VY(NamingKind.Web, 4423, 90, 446));
-            l.Add(VY(NamingKind.Web, 4423, 452, 10057));
+            l.Add(VY(NamingKind.Web, 4423, 452, 10057, key: "T3a"));
             l.Add(VY(NamingKind.Web, 4423, 10063, 10908));
             l.Add(VY(NamingKind.Web, 4423, 10917, 11296));
             l.Add(VY(NamingKind.Web, 6363, 452, 10057));
@@ -50,8 +50,21 @@ namespace MCG_3DPanel.Tests
             l.Add(VY(NamingKind.FB, 7803, 11725, 12351));
             l.Add(HX(NamingKind.FB, 9710, 570, 8270));
             l.Add(HX(NamingKind.FB, 9710, 8336, 8800));
+            // Flange T1 (AM_11 487..587 ⇒ rộng 100, tâm 537), dày theo Input 20
+            l.Add(new NamingPiece { Key = "fT1", Kind = NamingKind.Flange, X0 = 537, Y0 = 1040, X1 = 537, Y1 = 9520, Thickness = 100, Height = 20 });
+            foreach (var p in l) Spec(p);
             return l;
         }
+
+        /// <summary>Thông số adapter gán: Web cao 374 (Input), HP 120×6 (Input), FB cao 80 (BS 80×6).</summary>
+        private static NamingPiece Spec(NamingPiece p)
+        {
+            if (p.Kind == NamingKind.Web) p.Height = 374;
+            else if (p.Kind == NamingKind.HP) { p.Height = 120; p.Thickness = 6; }
+            else if (p.Kind == NamingKind.FB) p.Height = 80;
+            return p;
+        }
+        private static NamingPiece Web(NamingPiece p) => Spec(p);
 
         private static string[] Names(IEnumerable<NamingLine> l, NamingKind k, NamingDir d)
             => l.Where(x => x.Kind == k && x.Dir == d).Select(x => x.Name).ToArray();
@@ -94,8 +107,73 @@ namespace MCG_3DPanel.Tests
             var l = StructureNaming.Lines(Cas7D16C(), PanelPosition.Center);
             var fb = l.Where(x => x.Kind == NamingKind.FB).ToList();
             Assert.All(fb, x => Assert.Equal("BS", x.Name));
-            // 12 thanh dọc + x=7803 phần trên (2 đoạn cách 6 → 1 dòng) + 1 thanh ngang (2 đoạn cách 66 → 2 dòng)
-            Assert.Equal(12 + 1 + 2, fb.Count);
+            // Revision 1: BS thẳng hàng = 1 dòng dù cách xa ⇒ 12 tuyến dọc + 1 tuyến ngang
+            Assert.Equal(12 + 1, fb.Count);
+        }
+
+        [Fact]
+        public void Lines_FbFarApart_OneLine()   // BS 947 + BS 8428 cùng phương ⇒ 1 dòng (kỹ sư revision 1)
+        {
+            var l = StructureNaming.Lines(Cas7D16C(), PanelPosition.Center);
+            var x7803 = l.Single(x => x.Kind == NamingKind.FB && x.Dir == NamingDir.T && System.Math.Abs(x.Center - 7803) < 1);
+            Assert.Equal(3, x7803.Pieces.Count);
+        }
+
+        [Fact]
+        public void Spec_WebWithFlange()
+        {
+            var t1 = Line(StructureNaming.Lines(Cas7D16C(), PanelPosition.Center), "T1");
+            Assert.Equal("WEB 374x6.0/FLANGE 100x20.0", t1.Spec);
+            Assert.Equal("T1 WEB 374x6.0/FLANGE 100x20.0", t1.Label);
+        }
+
+        [Fact]
+        public void Spec_WebNoFlange_HpFb()
+        {
+            var l = StructureNaming.Lines(Cas7D16C(), PanelPosition.Center);
+            Assert.Equal("WEB 374x6.0", Line(l, "T2").Spec);
+            Assert.Equal("WEB 374x6.0", Line(l, "L3").Spec);   // HP 1B2E9 không đổi quy cách tuyến web
+            Assert.Equal("HL1 HP 120x6.0", Line(l, "HL1").Label);
+            Assert.Equal("BS FB 80x6.0", l.First(x => x.Kind == NamingKind.FB).Label);
+        }
+
+        [Fact]
+        public void Spec_FlangeNotOnLine_Ignored()
+        {
+            var l = StructureNaming.Lines(new[]
+            {
+                Web(VY(NamingKind.Web, 1000, 0, 5000)),
+                new NamingPiece { Key = "f", Kind = NamingKind.Flange, X0 = 1300, Y0 = 0, X1 = 1300, Y1 = 5000, Thickness = 100, Height = 20 },
+            }, PanelPosition.Center);
+            Assert.Equal("WEB 374x6.0", l.Single().Spec);
+        }
+
+        [Fact]
+        public void Deleted_HiddenAndRenumbered()
+        {
+            var l = StructureNaming.Lines(Cas7D16C(), PanelPosition.Center, new HashSet<string> { "T3a" });
+            Assert.Equal(new[] { "T1", "T2", "T3", "T4", "T5", "T6", "T7" }, Names(l, NamingKind.Web, NamingDir.T));
+            Assert.Equal(6363, Line(l, "T3").Center, 0);   // T4 cũ → T3
+            Assert.DoesNotContain(l, x => x.Pieces.Any(p => p.Key == "T3a"));
+        }
+
+        [Theory]
+        [InlineData("T6a WEB 374x6.0", "T6a")]
+        [InlineData("T6a", "T6a")]
+        [InlineData("  T6a  WEB 374x6.0 ", "T6a")]
+        [InlineData("WEB 374x6.0", "")]
+        public void StripSpec_KeepsTagOnly(string typed, string tag)
+            => Assert.Equal(tag, StructureNaming.StripSpec(typed, "WEB 374x6.0"));
+
+        [Fact]
+        public void NamesJson_DeletedRoundTrip()
+        {
+            var json = NamesJson.Serialize(new Dictionary<string, string> { ["a"] = "T1" }, new[] { "x", "y" });
+            var names = NamesJson.Deserialize(json, out var deleted);
+            Assert.Equal("T1", names["a"]);
+            Assert.Equal(new[] { "x", "y" }, deleted.OrderBy(s => s).ToArray());
+            Assert.Empty(NamesJson.Deserialize("garbage", out var none).Keys);
+            Assert.Empty(none);
         }
 
         [Fact]

@@ -7,7 +7,8 @@ namespace MCG_3DPanel.Naming
 {
     // ⚠️ File THUẦN C# — KHÔNG using Autodesk.* (link sang tests/MCG_3DPanel.Tests).
 
-    public enum NamingKind { Web, HP, FB }
+    /// <summary>Flange không thành dòng riêng — chỉ cho quy cách của tuyến Web nằm dưới nó.</summary>
+    public enum NamingKind { Web, HP, FB, Flange }
 
     /// <summary>T = chạy theo Y của block (transverse), L = chạy theo X (longitudinal).</summary>
     public enum NamingDir { T, L }
@@ -21,8 +22,10 @@ namespace MCG_3DPanel.Naming
         public double Y0 { get; set; }
         public double X1 { get; set; }
         public double Y1 { get; set; }
+        /// <summary>Web/HP/FB: chiều dày (2D; HP theo quy cách Input). Flange: BỀ RỘNG (cạnh ngắn 2D).</summary>
         public double Thickness { get; set; }
-        public string Spec { get; set; }
+        /// <summary>Web: chiều cao (Input) · HP: chiều cao HP (Input) · FB: chiều cao riêng/Input · Flange: chiều dày (Input).</summary>
+        public double Height { get; set; }
 
         internal NamingDir Dir => Math.Abs(X1 - X0) >= Math.Abs(Y1 - Y0) ? NamingDir.L : NamingDir.T;
         internal double Center => Dir == NamingDir.T ? (X0 + X1) / 2 : (Y0 + Y1) / 2;
@@ -41,8 +44,13 @@ namespace MCG_3DPanel.Naming
         public IReadOnlyList<NamingPiece> Pieces { get; set; }
         public double Length { get; set; }
         public string AutoName { get; set; }
+        /// <summary>Phần TÊN (tag) — tự sinh hoặc người dùng gõ, vd "T1" / "T6a".</summary>
         public string Name { get; set; }
         public bool IsUserName { get; set; }
+        /// <summary>Quy cách của đoạn dài nhất, vd "WEB 374x6.0/FLANGE 100x20.0", "HP 120x6.0", "FB 80x6.0".</summary>
+        public string Spec { get; set; }
+        /// <summary>Tên đầy đủ hiển thị/xuất (kỹ sư revision 1): "T1 WEB 374x6.0/FLANGE 100x20.0".</summary>
+        public string Label => string.IsNullOrEmpty(Spec) ? Name : Name + " " + Spec;
     }
 
     /// <summary>
@@ -53,38 +61,33 @@ namespace MCG_3DPanel.Naming
     public static class StructureNaming
     {
         public const double LINE_TOL = 15;   // lệch đường tâm tối đa trong 1 tuyến (mm)
-        public const double FB_GAP = 30;     // khe tối đa giữa 2 đoạn của 1 thanh FB (tách tại HP)
         public const string BS = "BS";
 
-        public static IReadOnlyList<NamingLine> Lines(IEnumerable<NamingPiece> pieces, PanelPosition pos)
+        /// <param name="deleted">SourceKey người dùng "Del Name": tuyến có đoạn thuộc tập này bị BỎ (không hiện, không
+        /// đánh số) — các tuyến còn lại đánh số lại (kỹ sư revision 1).</param>
+        public static IReadOnlyList<NamingLine> Lines(IEnumerable<NamingPiece> pieces, PanelPosition pos,
+            ICollection<string> deleted = null)
         {
             var all = (pieces ?? Enumerable.Empty<NamingPiece>()).Where(p => p != null).ToList();
+            var flanges = all.Where(p => p.Kind == NamingKind.Flange).ToList();
             var lines = new List<NamingLine>();
 
             foreach (NamingDir dir in new[] { NamingDir.T, NamingDir.L })
             {
                 // Web + HP
-                foreach (var cl in Cluster(all.Where(p => p.Kind != NamingKind.FB && p.Dir == dir)))
+                foreach (var cl in Cluster(all.Where(p => (p.Kind == NamingKind.Web || p.Kind == NamingKind.HP) && p.Dir == dir)))
                 {
                     double web = cl.Where(p => p.Kind == NamingKind.Web).Sum(p => p.Length);
                     double hp = cl.Where(p => p.Kind == NamingKind.HP).Sum(p => p.Length);
                     var kind = web >= hp ? NamingKind.Web : NamingKind.HP;
-                    lines.Add(Make(kind, dir, cl, cl.Where(p => p.Kind == kind)));
+                    lines.Add(Make(kind, dir, cl, cl.Where(p => p.Kind == kind), flanges));
                 }
-                // FB: chỉ gộp FB với FB, và chỉ khi liền (khe ≤ FB_GAP)
+                // FB: chỉ gộp FB với FB; thẳng hàng là 1 dòng dù cách xa (revision 1: BS 947 + BS 8428)
                 foreach (var cl in Cluster(all.Where(p => p.Kind == NamingKind.FB && p.Dir == dir)))
-                {
-                    var run = new List<NamingPiece>();
-                    double hi = double.NegativeInfinity;
-                    foreach (var p in cl.OrderBy(p => p.AxLo))
-                    {
-                        if (run.Count > 0 && p.AxLo - hi > FB_GAP) { lines.Add(Make(NamingKind.FB, dir, run, run)); run = new List<NamingPiece>(); }
-                        run.Add(p);
-                        hi = run.Count == 1 ? p.AxHi : Math.Max(hi, p.AxHi);
-                    }
-                    if (run.Count > 0) lines.Add(Make(NamingKind.FB, dir, run, run));
-                }
+                    lines.Add(Make(NamingKind.FB, dir, cl, cl, flanges));
             }
+            if (deleted != null && deleted.Count > 0)
+                lines.RemoveAll(l => l.Pieces.Any(p => p.Key != null && deleted.Contains(p.Key)));
 
             bool lDesc = pos == PanelPosition.Starboard;
             var ordered = new List<NamingLine>();
@@ -142,9 +145,24 @@ namespace MCG_3DPanel.Naming
             if (cur.Count > 0) yield return cur;
         }
 
-        private static NamingLine Make(NamingKind kind, NamingDir dir, List<NamingPiece> pieces, IEnumerable<NamingPiece> main)
+        private static NamingLine Make(NamingKind kind, NamingDir dir, List<NamingPiece> pieces, IEnumerable<NamingPiece> main,
+            List<NamingPiece> flanges)
         {
             var longest = main.OrderByDescending(p => p.Length).First();
+            string spec;
+            switch (kind)
+            {
+                case NamingKind.Web:
+                    spec = $"WEB {H(longest.Height)}x{T(longest.Thickness)}";
+                    // Flange của tuyến: cùng phương, tâm trong nửa bề rộng flange (+ LINE_TOL) quanh đường tâm web, chồng trục.
+                    var fl = flanges.Where(f => f.Dir == dir && Math.Abs(f.Center - longest.Center) <= f.Thickness / 2 + LINE_TOL
+                                                && pieces.Any(p => f.AxLo < p.AxHi && p.AxLo < f.AxHi))
+                                    .OrderByDescending(f => f.Length).FirstOrDefault();
+                    if (fl != null) spec += $"/FLANGE {H(fl.Thickness)}x{T(fl.Height)}";
+                    break;
+                case NamingKind.HP: spec = $"HP {H(longest.Height)}x{T(longest.Thickness)}"; break;
+                default: spec = $"FB {H(longest.Height)}x{T(longest.Thickness)}"; break;
+            }
             return new NamingLine
             {
                 Kind = kind,
@@ -152,7 +170,21 @@ namespace MCG_3DPanel.Naming
                 Center = longest.Center,
                 Pieces = pieces.OrderBy(p => p.AxLo).ToList(),
                 Length = pieces.Sum(p => p.Length),
+                Spec = spec,
             };
+        }
+
+        private static string H(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        private static string T(double v) => v.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
+
+        /// <summary>Người dùng chỉ sửa phần TÊN; quy cách luôn tự ghép. Chữ gõ kết thúc bằng quy cách hiện tại ⇒ bỏ phần đó.
+        /// Trả "" nếu chỉ còn quy cách (⇒ về tên tự sinh).</summary>
+        public static string StripSpec(string typed, string spec)
+        {
+            string t = (typed ?? "").Trim();
+            if (!string.IsNullOrEmpty(spec) && t.EndsWith(spec, StringComparison.OrdinalIgnoreCase))
+                t = t.Substring(0, t.Length - spec.Length).Trim();
+            return t;
         }
     }
 }

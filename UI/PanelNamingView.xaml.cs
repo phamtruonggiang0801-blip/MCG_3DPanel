@@ -24,6 +24,10 @@ namespace MCG_3DPanel.UI
         private List<NamingPanel> _panels = new List<NamingPanel>();
         private bool _suspendPosition;
 
+        public delegate bool TryInput(out PanelInput input, out string error);
+        /// <summary>Thông số tab Input (PaletteManager gán) — cho nút Select panel.</summary>
+        public TryInput InputProvider { get; set; }
+
         public PanelNamingView()
         {
             InitializeComponent();
@@ -43,9 +47,17 @@ namespace MCG_3DPanel.UI
         private void BtnSelect_Click(object sender, RoutedEventArgs e)
         {
             if (AcadApp.DocumentManager.MdiActiveDocument == null) { SetStatus("No active drawing.", error: true); return; }
+            // Quy cách WEB/FLANGE/HP/FB lấy theo tab Input (revision 1) — thông số sai thì báo, không đoán.
+            PanelInput input = null;
+            string inputErr = null;
+            if (InputProvider == null || !InputProvider(out input, out inputErr))
+            {
+                SetStatus($"Check the Input tab first (sizes in the names come from it): {inputErr ?? "no input"}", error: true);
+                return;
+            }
             SetStatus("Select one or more 2D panel blocks to name…");
             var errors = new List<string>();
-            var panels = PanelCommands.ClassifyOnly(Position, errors);
+            var panels = PanelCommands.ClassifyOnly(Position, input, errors);
             if (panels == null) { SetStatus("Selection cancelled.", error: true); return; }
             SetPanels(panels, null);
             if (errors.Count > 0)
@@ -152,7 +164,7 @@ namespace MCG_3DPanel.UI
         /// loạt chỉ qua Enter. Dùng LostKeyboardFocus (bấm ra vùng vẽ AutoCAD cũng ghi — LostFocus logic thì không, review m3).</summary>
         private void TxtName_LostFocus(object sender, System.Windows.Input.KeyboardFocusChangedEventArgs e)
         {
-            if (sender is TextBox tb && tb.DataContext is NamingRow row && (tb.Text ?? "").Trim() != row.Name) Commit(tb, row, bulk: false);
+            if (sender is TextBox tb && tb.DataContext is NamingRow row && (tb.Text ?? "").Trim() != row.Label) Commit(tb, row, bulk: false);
         }
 
         /// <summary>Trả ô về tên đang dùng qua binding (không gán Text — giữ binding khi grid tái dùng ô).</summary>
@@ -160,8 +172,9 @@ namespace MCG_3DPanel.UI
 
         private void Commit(TextBox tb, NamingRow row, bool bulk)
         {
-            string text = (tb.Text ?? "").Trim();
-            if (text == row.Name || (text.Length == 0 && !row.IsUserName)) return;   // không đổi
+            // Người dùng chỉ sửa phần tên; quy cách luôn tự ghép (revision 1) ⇒ bỏ quy cách khỏi chữ gõ.
+            string text = StructureNaming.StripSpec(tb.Text, row.Spec);
+            if (text == row.Name || (text.Length == 0 && !row.IsUserName)) { ResetBox(tb); return; }   // không đổi
             ResetBox(tb);
             // Trống ⇒ về tên tự sinh.
             Rename(row, text.Length == 0 ? null : text, bulk);
@@ -203,9 +216,18 @@ namespace MCG_3DPanel.UI
         private void Apply(List<NamingRow> targets, string name, string note)
         {
             foreach (var r in targets) NameStore.SetLine(r.PanelData.PanelKey, r.Line, name);
-            var errors = new List<string>();
             var touched = targets.Select(r => r.PanelData).Distinct().ToList();
-            foreach (var p in touched)
+            var errors = SaveAll(touched);
+            foreach (var p in touched) p.ResolveNames();
+            // Cập nhật TẠI CHỖ (không thay ItemsSource): ô / dòng người dùng vừa bấm sang không bị huỷ (review m1).
+            foreach (var r in Rows) if (touched.Contains(r.PanelData)) r.Refresh();
+            Report(note, errors);
+        }
+
+        private List<string> SaveAll(IEnumerable<NamingPanel> panels)
+        {
+            var errors = new List<string>();
+            foreach (var p in panels)
             {
                 try
                 {
@@ -213,12 +235,51 @@ namespace MCG_3DPanel.UI
                     if (err != null) errors.Add($"{p.PanelName}: {err}");
                 }
                 catch (System.Exception ex) { errors.Add($"{p.PanelName}: {ex.Message}"); }
-                p.ResolveNames();
             }
-            // Cập nhật TẠI CHỖ (không thay ItemsSource): ô / dòng người dùng vừa bấm sang không bị huỷ (review m1).
-            foreach (var r in Rows) if (touched.Contains(r.PanelData)) r.Refresh();
+            return errors;
+        }
+
+        private void Report(string note, List<string> errors)
+        {
             if (errors.Count > 0) SetStatus(note + "  ·  " + string.Join(" · ", errors), error: true);
             else SetStatus(note + "  ·  " + Summary());
+        }
+
+        // ─── Del Name (kỹ sư revision 1): ẩn tuyến, không đánh số, các tuyến khác đánh số lại ─────────
+
+        private void MnuDelName_Click(object sender, RoutedEventArgs e)
+        {
+            var sel = Selected;
+            if (sel.Count == 0) return;
+            var plan = BulkEdit.Plan(sel[0], sel, r => true, InActiveDrawing);
+            if (plan.Targets.Count == 0) { SetStatus(OtherDrawingText(sel[0]), error: true); return; }
+            foreach (var r in plan.Targets) NameStore.DeleteLine(r.PanelData.PanelKey, r.Line);
+            var touched = plan.Targets.Select(r => r.PanelData).Distinct().ToList();
+            var errors = SaveAll(touched);
+            foreach (var p in touched) p.Recompute();   // đánh số lại
+            EntityHighlighter.Clear();
+            Rebind(null);
+            Report(BulkEdit.Describe(plan, "Name deleted") + " — renumbered (right-click → Restore deleted names to undo)", errors);
+        }
+
+        private void GridMenu_Opened(object sender, RoutedEventArgs e)
+        {
+            var adoc = AcadApp.DocumentManager.MdiActiveDocument;
+            int n = _panels.Where(p => adoc != null && p.Db == adoc.Database).Sum(p => NameStore.Deleted(p.PanelKey).Count);
+            MnuRestoreDeleted.Header = n > 0 ? $"Restore deleted names ({n})" : "Restore deleted names";
+            MnuRestoreDeleted.IsEnabled = n > 0;
+        }
+
+        private void MnuRestoreDeleted_Click(object sender, RoutedEventArgs e)
+        {
+            var adoc = AcadApp.DocumentManager.MdiActiveDocument;
+            var panels = _panels.Where(p => adoc != null && p.Db == adoc.Database).ToList();
+            int n = panels.Sum(p => NameStore.RestoreAll(p.PanelKey));
+            if (n == 0) { SetStatus("Nothing to restore in this drawing."); return; }
+            var errors = SaveAll(panels);
+            foreach (var p in panels) p.Recompute();
+            Rebind(Selected.Select(r => r.Key).ToList());
+            Report($"Restored {n} deleted piece name(s) — renumbered", errors);
         }
 
         // ─── Vùng chọn / drawing ──────────────────────────────────────────
@@ -367,15 +428,7 @@ namespace MCG_3DPanel.UI
             else if (_statusIsError) RestoreSummary();
         }
 
-        private void BtnZoomRow_Click(object sender, RoutedEventArgs e)
-        {
-            if (!((sender as FrameworkElement)?.DataContext is NamingRow row)) return;
-            var sel = Selected;
-            if (sel.Count > 1 && sel.Contains(row)) { Show(sel, zoom: true); return; }
-            GridNaming.SelectedItem = row;
-            Show(new List<NamingRow> { row }, zoom: true);
-        }
-
+        /// <summary>Chuột phải → Zoom to Object (kỹ sư revision 1: bỏ cột ⌖).</summary>
         private void MnuZoomTo_Click(object sender, RoutedEventArgs e) => Show(Selected, zoom: true);
 
         // ─── Copy ─────────────────────────────────────────────────────────
@@ -392,9 +445,9 @@ namespace MCG_3DPanel.UI
         {
             if (rows.Count == 0) { SetStatus("Nothing to copy — select a panel first.", error: true); return; }
             var sb = new StringBuilder();
-            sb.AppendLine("Panel\tName\tAutoName\tKind\tDir\tPieces\tLength\tThk");
+            sb.AppendLine("Panel\tName\tTag\tSize\tKind");
             foreach (var r in rows)
-                sb.AppendLine(string.Join("\t", r.Panel, r.Name, r.AutoName, r.Kind, r.Dir, r.Pieces.ToString(), r.Length, r.Thk));
+                sb.AppendLine(string.Join("\t", r.Panel, r.Label, r.Name, r.Spec, r.Kind));
             try
             {
                 Clipboard.SetText(sb.ToString());

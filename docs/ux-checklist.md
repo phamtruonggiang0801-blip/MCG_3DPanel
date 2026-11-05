@@ -87,3 +87,8 @@ built in a second drawing.
 | G6 | Select panel in drawing A, switch to drawing B, rename a row. | Nothing is saved; the status names drawing A. |
 | G7 | Build 3D (Keep), then open Naming; then change a Kind on Result (rebuild). | Naming lists the built panel and highlights its 3D solids; after the rebuild the rows and your names are still there. |
 | G8 | Type a name, then click another row without pressing Enter. | Only the edited row is renamed. |
+| G9 | Look at T1 and a web without flange, an HP and a BS row. | `T1 WEB 374x6.0/FLANGE 100x20.0`, `T2 WEB 374x6.0` (if no flange), `HL1 HP 120x6.0`, `BS FB 80x6.0`; only Panel/Name/Kind columns. |
+| G10 | Edit `T7 WEB …` to `T6a WEB …` (or just `T6a`), Enter. | Name becomes `T6a WEB 374x6.0/FLANGE …`; the size is never doubled. |
+| G11 | Select 2 stray rows → right-click Del Name. Then Restore deleted names (N). | Rows disappear and the rest renumber; Restore brings them back and renumbers again; survives Ctrl+S + reopen. |
+| G12 | A BS line split far apart (e.g. 947 + 8428 on one axis). | One row. |
+| G13 | Select panel… with an invalid value on the Input tab. | A message asks to fix the Input tab; nothing is selected. |

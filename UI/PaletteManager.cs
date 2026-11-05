@@ -43,6 +43,7 @@ namespace MCG_3DPanel.UI
                 _input = new PanelInputView();
                 _result = new PanelResultView();
                 _naming = new PanelNamingView();
+                _naming.InputProvider = _input.TryGetInput;   // quy cách WEB/FLANGE/HP/FB trong tên theo tab Input
                 _input.Built += r =>
                 {
                     _result.Load(r);
