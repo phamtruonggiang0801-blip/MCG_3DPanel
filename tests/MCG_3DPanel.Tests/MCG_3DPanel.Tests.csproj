@@ -21,6 +21,8 @@
     <Compile Include="..\..\Services\Builders\HpEndAtHpGeometry.cs" Link="HpEndAtHpGeometry.cs" />
     <Compile Include="..\..\Services\Builders\TrippingBracketRules.cs" Link="TrippingBracketRules.cs" />
     <Compile Include="..\..\Services\Builders\WebThicknessChamferGeometry.cs" Link="WebThicknessChamferGeometry.cs" />
+    <Compile Include="..\..\Naming\StructureNaming.cs" Link="StructureNaming.cs" />
+    <Compile Include="..\..\Naming\NamesJson.cs" Link="NamesJson.cs" />
   </ItemGroup>
 
   <ItemGroup>
