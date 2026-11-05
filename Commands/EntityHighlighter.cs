@@ -17,6 +17,7 @@ namespace MCG_3DPanel.Commands
     {
         private const string LOG = "[EntityHighlighter]";
         private static ObjectId[] _last;   // đường dẫn đang sáng — để tắt trước khi bật cái mới
+        private static Database _lastDb;   // drawing chứa _last — lưu lúc highlight, KHÔNG đọc lại từ id (id có thể đã free)
 
         /// <summary>Highlight solid theo <paramref name="path"/>; <paramref name="zoom"/> = true ⇒ zoom vào bbox (nút ⌖ / menu
         /// Zoom to Object). Chọn dòng trên tab Result chỉ highlight, KHÔNG zoom (kỹ sư 2026-11-05).
@@ -40,6 +41,7 @@ namespace MCG_3DPanel.Commands
                     ClearCore(doc);
                     SetHighlight(doc, path, true);
                     _last = path;
+                    _lastDb = doc.Database;
                     if (zoom && !ZoomTo(doc.Editor, bounds)) { doc.Editor.UpdateScreen(); return "Highlighted, but could not zoom to it (see the AutoCAD command line)."; }
                 }
                 doc.Editor.UpdateScreen();
@@ -90,14 +92,30 @@ namespace MCG_3DPanel.Commands
         /// <summary>Tắt highlight hiện tại (nếu có).</summary>
         public static void Clear()
         {
+            // Lấy + XOÁ state TRƯỚC mọi thứ có thể thất bại (không có drawing, LockDocument lỗi) — review I3.
+            var (last, lastDb) = Take();
             Document doc = AcadApp.DocumentManager.MdiActiveDocument;
-            if (doc == null) return;
+            if (doc == null || last == null) return;
             try
             {
-                using (doc.LockDocument()) ClearCore(doc);
+                using (doc.LockDocument()) Unhighlight(doc, last, lastDb);
                 doc.Editor.UpdateScreen();
             }
             catch (System.Exception ex) { Debug.WriteLine($"{LOG} Clear lỗi: {ex.Message}"); }
+        }
+
+        /// <summary>Drawing sắp đóng (DocumentToBeDestroyed): quên highlight của nó mà KHÔNG chạm vào id — sau khi
+        /// Database giải phóng, đọc id cũ là truy cập bộ nhớ đã free (AutoCAD có thể crash).</summary>
+        public static void ForgetDatabase(Database db)
+        {
+            if (db != null && ReferenceEquals(_lastDb, db)) { _last = null; _lastDb = null; }
+        }
+
+        private static (ObjectId[] path, Database db) Take()
+        {
+            var r = (_last, _lastDb);
+            _last = null; _lastDb = null;
+            return r;
         }
 
         /// <summary>Tắt highlight cũ trên ĐÚNG drawing chứa nó (_last là static, dùng chung mọi drawing: mở id của
@@ -105,14 +123,17 @@ namespace MCG_3DPanel.Commands
         /// Drawing đó đã đóng ⇒ bỏ qua. Luôn xoá _last.</summary>
         private static void ClearCore(Document doc)
         {
-            var last = _last;
-            _last = null;
-            if (last == null || last.Length == 0 || last[0].IsNull) return;
+            var (last, lastDb) = Take();
+            Unhighlight(doc, last, lastDb);
+        }
+
+        private static void Unhighlight(Document doc, ObjectId[] last, Database lastDb)
+        {
+            if (last == null || last.Length == 0 || last[0].IsNull || lastDb == null) return;
             try
             {
-                Database db = last[0].Database;
-                Document owner = db == doc.Database ? doc : FindDocument(db);
-                if (owner == null) return;
+                Document owner = ReferenceEquals(lastDb, doc.Database) ? doc : FindDocument(lastDb);
+                if (owner == null) return;   // drawing đã đóng
                 if (owner == doc) SetHighlight(owner, last, false);
                 else using (owner.LockDocument()) SetHighlight(owner, last, false);
             }
@@ -175,7 +196,7 @@ namespace MCG_3DPanel.Commands
 
                     double w = dcs.MaxPoint.X - dcs.MinPoint.X;
                     double h = dcs.MaxPoint.Y - dcs.MinPoint.Y;
-                    if (w <= 0 && h <= 0) return false;
+                    if (w <= 0 && h <= 0) { ed.WriteMessage($"{LOG} This object has no extents to zoom to.\n"); return false; }
 
                     const double margin = 4.0;   // hiện cả phần xung quanh để định vị
                     view.CenterPoint = new Point2d((dcs.MinPoint.X + dcs.MaxPoint.X) / 2.0,

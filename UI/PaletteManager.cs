@@ -53,6 +53,7 @@ namespace MCG_3DPanel.UI
                 {
                     var db = e.Document?.Database;
                     MCG_3DPanel.Commands.PanelCommands.ForgetDatabase(db);
+                    MCG_3DPanel.Commands.EntityHighlighter.ForgetDatabase(db);
                     MCG_3DPanel.Services.Corrections.CorrectionStore.ClearDatabase(db);
                     _result.OnDocumentClosing(db);
                 };

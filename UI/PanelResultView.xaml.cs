@@ -64,9 +64,17 @@ namespace MCG_3DPanel.UI
         /// giờ báo thẳng trên thanh trạng thái (ux-guardrails).</summary>
         private static string NotBuiltText(List<BuildResult> kept)
         {
-            var bad = kept.SelectMany(b => b.Parts.Where(p => !p.Built).Select(p => $"{p.Type} {p.Handle}")).ToList();
-            int warn = kept.Sum(b => b.Warnings.Count);
+            // "Unknown" = nét không phải kết cấu (vd marker layer 0 ngoài boong) — không phải lỗi dựng (review M3).
+            var problem = kept.Where(b => b.Warnings.Count > 0 || b.Parts.Any(p => !p.Built && p.Type != "Unknown")).ToList();
+            var bad = problem.SelectMany(b => b.Parts.Where(p => !p.Built && p.Type != "Unknown")
+                .Select(p => $"{p.Type} {p.Handle}")).ToList();
+            int warn = problem.Sum(b => b.Warnings.Count);
             if (bad.Count == 0 && warn == 0) return null;
+            // Rebuild ghi report riêng khi có lỗi; Load 3D (mở lại bản vẽ) thì có thể chưa có file nào — review I1.
+            string report = problem.Select(b => b.ReportPath).FirstOrDefault(p => p != null);
+            string where = report != null
+                ? $" — see {System.IO.Path.GetFileName(report)}"
+                : " — run Build 3D again to write a debug report";
             var msg = new List<string>();
             if (bad.Count > 0)
             {
@@ -74,7 +82,7 @@ namespace MCG_3DPanel.UI
                 msg.Add($"{bad.Count} 2D part{(bad.Count > 1 ? "s" : "")} not built ({list})");
             }
             if (warn > 0) msg.Add($"{warn} build warning{(warn > 1 ? "s" : "")}");
-            return "⚠ " + string.Join(" · ", msg) + " — see the debug JSON report";
+            return "⚠ " + string.Join(" · ", msg) + where;
         }
 
         /// <summary>Đổi drawing đang mở (DocumentBecameCurrent): tắt highlight/marker của drawing cũ; bảng đang hiện
@@ -88,11 +96,21 @@ namespace MCG_3DPanel.UI
             if (kept.Count == 0) return;
             if (kept.Any(b => b.BlockRefId.Database == db))
             {
-                if (_summary != null) SetStatus(_notBuilt != null ? _notBuilt + "  ·  " + _summary : _summary, error: _notBuilt != null);
+                RestoreSummary();
+                // Highlight đã tắt khi rời drawing; bấm lại đúng dòng đang chọn KHÔNG phát SelectionChanged ⇒ tự sáng lại
+                // (review I4).
+                if (GridResult.SelectedItem is ResultRow sel && sel.Build?.BlockRefId.Database == db) Show(sel, zoom: false);
                 return;
             }
             string name = DrawingName(kept[0].BlockRefId.Database);
             SetStatus($"The rows below belong to drawing {name} — switch back to it to highlight, zoom or rebuild, or run Build 3D / Load 3D here.", error: true);
+        }
+
+        /// <summary>Thanh trạng thái về tóm tắt bình thường (kèm ⚠ nếu có part hỏng / cảnh báo).</summary>
+        private void RestoreSummary()
+        {
+            if (_summary == null) return;
+            SetStatus(_notBuilt != null ? _notBuilt + "  ·  " + _summary : _summary, error: _notBuilt != null);
         }
 
         private static string DrawingName(Autodesk.AutoCAD.DatabaseServices.Database db)
@@ -214,6 +232,32 @@ namespace MCG_3DPanel.UI
 
         // ─── Tripping bracket theo HP: dropdown Auto / On / Off ─────────────
 
+        /// <summary>ComboBox ĐÓNG mà nhận phím mũi tên / Home / End / PageUp-Down ⇒ WPF đổi lựa chọn ngay ⇒ lưu + rebuild
+        /// ngoài ý muốn (vd Esc rồi ↓ để xuống dòng). Chỉ đổi Tripping khi người dùng MỞ dropdown chọn — review I2.</summary>
+        private void CmbTrip_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (!(sender is ComboBox cb) || cb.IsDropDownOpen) return;
+            switch (e.Key)
+            {
+                case System.Windows.Input.Key.Up: case System.Windows.Input.Key.Down:
+                case System.Windows.Input.Key.Home: case System.Windows.Input.Key.End:
+                case System.Windows.Input.Key.PageUp: case System.Windows.Input.Key.PageDown:
+                    e.Handled = true;
+                    break;
+            }
+        }
+
+        /// <summary>Lăn chuột trên ComboBox đóng: không đổi lựa chọn — để grid cuộn.</summary>
+        private void CmbTrip_PreviewMouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
+        {
+            if (!(sender is ComboBox cb) || cb.IsDropDownOpen) return;
+            e.Handled = true;
+            // Bắn lại từ phần tử CHA để sự kiện nổi lên ScrollViewer của DataGrid (bắn trên DataGrid thì không tới).
+            var parent = System.Windows.Media.VisualTreeHelper.GetParent(cb) as UIElement;
+            parent?.RaiseEvent(new System.Windows.Input.MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta)
+                { RoutedEvent = UIElement.MouseWheelEvent, Source = parent });
+        }
+
         private void OnTripChanged(ResultRow row)
         {
             if (!row.CanTrip) return;
@@ -298,6 +342,7 @@ namespace MCG_3DPanel.UI
             }
             string err = EntityHighlighter.Show(row.Path, row.Bounds, zoom);
             if (err != null) SetStatus(err, error: true);
+            else if (_statusIsError && _summary != null) RestoreSummary();   // lỗi cũ (vd "Solid no longer exists") không treo mãi — review M1
         }
 
         private void GridResult_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -425,6 +470,11 @@ namespace MCG_3DPanel.UI
             return "\"" + s.Replace("\"", "\"\"") + "\"";
         }
 
-        private void SetStatus(string message, bool error = false) => StatusText.Set(TxtStatus, message, error);
+        private bool _statusIsError;
+        private void SetStatus(string message, bool error = false)
+        {
+            _statusIsError = error;
+            StatusText.Set(TxtStatus, message, error);
+        }
     }
 }

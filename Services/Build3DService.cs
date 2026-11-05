@@ -165,7 +165,7 @@ namespace MCG_3DPanel.Services
                     }
                     catch (System.Exception ex)
                     {
-                        ctx.Warn($"[GE merge] không hợp nhất được GE {ge.info.Handle} vào Web {web.info.Handle}: {ex.Message} — giữ 2 solid.");
+                        ctx.Report.Add($"[GE merge] không hợp nhất được GE {ge.info.Handle} vào Web {web.info.Handle}: {ex.Message} — giữ 2 solid.");
                     }
                 }
 

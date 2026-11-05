@@ -319,6 +319,10 @@ namespace MCG_3DPanel.Commands
             }
             neu.Kept = true;
             doc.Editor.Regen();
+            // Có part hỏng / cảnh báo ⇒ ghi report riêng cho lần rebuild này để thông báo "see …json" trỏ đúng file
+            // chứa lỗi (review I1). Không lỗi ⇒ không sinh file mới trên Desktop mỗi lần sửa.
+            if (neu.Warnings.Count > 0 || neu.Parts.Any(p => !p.Built && p.Type != "Unknown"))
+                SaveBuildReport(new List<BuildResult> { neu }, doc.Editor);
             string msg = replaceError == null
                 ? $"Rebuilt {neu.PanelBlockName} in {neu.BuildSeconds:0.0} s."
                 : $"Rebuilt {neu.PanelBlockName}, but the previous 3D block could not be replaced: {replaceError}";
@@ -345,7 +349,12 @@ namespace MCG_3DPanel.Commands
                     tr.Commit();
                 }
             }
-            catch (System.Exception ex) { build.Report.Add($"[SourceMeta] không ghi được: {ex.Message}"); }
+            catch (System.Exception ex)
+            {
+                // Thiếu meta ⇒ sau khi mở lại bản vẽ Load 3D / rebuild KHÔNG được — phải báo ngay (review M4).
+                build.Report.Add($"[SourceMeta] không ghi được: {ex.Message}");
+                build.Warnings.Add($"[SourceMeta] could not save rebuild info (Load 3D after reopening will not work): {ex.Message}");
+            }
         }
 
         /// <summary>Đọc metadata nguồn của 1 block 3D thành BuildResult "cũ" để rebuild. null nếu thiếu/hỏng.</summary>

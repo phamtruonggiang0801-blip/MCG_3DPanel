@@ -71,7 +71,7 @@
                     <MenuItem x:Name="MnuRestore" Header="Restore" Click="MnuRestore_Click"
                               ToolTip="Bring this deleted solid back, then rebuild"/>
                     <MenuItem Header="Clear Correction" Click="MnuClearCorrection_Click"
-                              ToolTip="Remove the Kind and direction correction of the selected row, then rebuild"/>
+                              ToolTip="Remove every correction of the selected row (Tripping, direction, Sniped End, Kind), then rebuild"/>
                     <Separator/>
                     <MenuItem Header="Copy Table" Click="BtnCopy_Click"
                               ToolTip="Copy the table to the clipboard (paste straight into Excel)"/>
@@ -140,6 +140,7 @@
                             <ComboBox ItemsSource="{Binding TripOptions}"
                                       SelectedItem="{Binding TripChoice, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                       Style="{StaticResource CellCombo}" MinWidth="58"
+                                      PreviewKeyDown="CmbTrip_PreviewKeyDown" PreviewMouseWheel="CmbTrip_PreviewMouseWheel"
                                       Visibility="{Binding CanTrip, Converter={StaticResource BoolToVis}}"
                                       ToolTip="Tripping bracket on this HP. Auto = by the 3 × max stiffener spacing rule; On = at every beam it passes through; Off = none. Rebuilds the panel."/>
                         </DataTemplate>
