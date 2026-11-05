@@ -23,7 +23,7 @@
         <WrapPanel Grid.Row="0" Margin="1,0,1,2">
             <!-- Kỹ sư 2026-11-05: bỏ Select panel / Copy / Position — panel nạp từ Build 3D, Position theo tab Input. -->
             <Button x:Name="BtnPick" Content="Pick" Style="{StaticResource ToolbarButtonStyle}"
-                    Click="BtnPick_Click" ToolTip="Click objects in the drawing to find their lines (Enter = done, Esc = clear the selection)"/>
+                    Click="BtnPick_Click" ToolTip="Click objects, or drag a window on empty space (left→right = fully inside, right→left = touching), to find their lines. Enter = done, Esc = clear the selection"/>
         </WrapPanel>
 
         <TextBlock Grid.Row="1" Style="{StaticResource HelperTextStyle}" Margin="2,2,2,6"
@@ -43,7 +43,7 @@
                 <ContextMenu Opened="GridMenu_Opened">
                     <MenuItem Header="Zoom to Object" Click="MnuZoomTo_Click"/>
                     <MenuItem Header="Pick in Drawing" Click="BtnPick_Click"
-                              ToolTip="Click objects in the drawing to find their lines (Enter = done, Esc = clear the selection)"/>
+                              ToolTip="Click objects, or drag a window on empty space (left→right = fully inside, right→left = touching), to find their lines. Enter = done, Esc = clear the selection"/>
                     <Separator/>
                     <MenuItem Header="Del Name" Click="MnuDelName_Click"
                               ToolTip="Do not name the selected lines: they are hidden and the other lines are renumbered"/>

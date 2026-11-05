@@ -477,10 +477,10 @@ namespace MCG_3DPanel.UI
         private void BtnPick_Click(object sender, RoutedEventArgs e)
         {
             if (Rows.Count == 0) { SetStatus("Nothing listed yet — run Build 3D first.", error: true); return; }
-            SetStatus("Pick objects in the drawing… Enter = done, Esc = clear.");
+            SetStatus("Pick objects or drag a window in the drawing… Enter = done, Esc = clear.");
             string err;
             int hits;
-            try { err = CadPick.PickLoop(SelectFromCad, PaletteManager.Instance.ClearAllSelections, out hits); }
+            try { err = CadPick.PickLoop(SelectFromCad, SelectInWindow, PaletteManager.Instance.ClearAllSelections, out hits); }
             catch (System.Exception ex) { SetStatus("Pick failed: " + ex.Message, error: true); return; }
             if (err != null) { SetStatus(err, error: true); return; }
             if (_statusIsError) return;   // giữ lỗi highlight trong lúc pick
@@ -503,6 +503,21 @@ namespace MCG_3DPanel.UI
             GridNaming.ScrollIntoView(row);
             Show(Selected, zoom: false);
             return true;
+        }
+
+        /// <summary>Quét chọn trong Pick: THÊM mọi tuyến (drawing đang mở) có ÍT NHẤT 1 đoạn/flange khớp khung. Trả số dòng thêm.</summary>
+        public int SelectInWindow(Func<Extents3d, bool> hit)
+        {
+            var adoc = AcadApp.DocumentManager.MdiActiveDocument;
+            if (adoc == null) return 0;
+            var rows = Rows.Where(r => r.PanelData.Db == adoc.Database
+                && r.Line.Pieces.Concat(r.Line.Flanges).Any(p => r.PanelData.Bounds.TryGetValue(p.Key, out var b) && hit(b))).ToList();
+            int added = 0;
+            _suspendShow = true;
+            try { foreach (var r in rows) if (!GridNaming.SelectedItems.Contains(r)) { GridNaming.SelectedItems.Add(r); added++; } }
+            finally { _suspendShow = false; }
+            if (rows.Count > 0) { GridNaming.ScrollIntoView(rows[0]); Show(Selected, zoom: false); }
+            return added;
         }
 
         /// <summary>Esc (bản vẽ hoặc grid): bỏ chọn + tắt highlight.</summary>

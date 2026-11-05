@@ -21,6 +21,12 @@ namespace MCG_3DPanel.Commands
         /// vùng chọn; Esc ⇒ <paramref name="onClear"/> rồi dừng. Trả thông báo lỗi (null nếu bình thường) — không ném,
         /// không xoá vùng chọn khi prompt hỏng (review: chỉ Esc mới xoá).</summary>
         public static string PickLoop(Func<ObjectId, bool> onPick, Action onClear, out int hits)
+            => PickLoop(onPick, null, onClear, out hits);
+
+        /// <summary>Như trên + quét chọn (kỹ sư 2026-11-05): click chỗ TRỐNG ⇒ kéo khung như AutoCAD (trái→phải Window = trọn
+        /// trong, phải→trái Crossing = chạm). <paramref name="onWindow"/>(phép thử hộp bao WCS) trả số dòng thêm được.</summary>
+        public static string PickLoop(Func<ObjectId, bool> onPick, Func<Func<Autodesk.AutoCAD.DatabaseServices.Extents3d, bool>, int> onWindow,
+            Action onClear, out int hits)
         {
             hits = 0;
             if (IsPicking) return "Already picking — finish it in the drawing first (Enter = done, Esc = clear).";
@@ -34,24 +40,86 @@ namespace MCG_3DPanel.Commands
                 try { Autodesk.AutoCAD.Internal.Utils.SetFocusToDwgView(); }
                 catch (System.Exception ex) { System.Diagnostics.Debug.WriteLine("[MCG_3DPanel] SetFocusToDwgView: " + ex.Message); }   // tiện lợi: thiếu focus thì người dùng click bản vẽ trước
 
-                var opts = new PromptNestedEntityOptions("\nPick an object to find its row [Enter = done, Esc = clear]: ")
+                Editor ed = doc.Editor;
+                if (onWindow == null)
+                {
+                    var opts = new PromptNestedEntityOptions("\nPick an object to find its row [Enter = done, Esc = clear]: ")
+                    {
+                        AllowNone = true,
+                    };
+                    while (true)
+                    {
+                        PromptNestedEntityResult r = ed.GetNestedEntity(opts);
+                        if (r.Status == PromptStatus.OK)
+                        {
+                            if (onPick(r.ObjectId)) hits++;   // không có dòng ⇒ không báo gì (kỹ sư 2026-11-05)
+                            continue;
+                        }
+                        if (r.Status == PromptStatus.None) return null;               // Enter / chuột phải: giữ vùng chọn
+                        if (r.Status == PromptStatus.Cancel) { onClear?.Invoke(); return null; }   // Esc
+                        return $"Pick stopped ({r.Status}).";
+                    }
+                }
+
+                var po = new PromptPointOptions("\nPick an object, or click empty space to drag a window [Enter = done, Esc = clear]: ")
                 {
                     AllowNone = true,
                 };
                 while (true)
                 {
-                    PromptNestedEntityResult r = doc.Editor.GetNestedEntity(opts);
-                    if (r.Status == PromptStatus.OK)
+                    PromptPointResult p = ed.GetPoint(po);
+                    if (p.Status == PromptStatus.None) return null;
+                    if (p.Status == PromptStatus.Cancel) { onClear?.Invoke(); return null; }
+                    if (p.Status != PromptStatus.OK) return $"Pick stopped ({p.Status}).";
+
+                    // Trúng chi tiết tại điểm click ⇒ chọn lồng như NENTSEL; không trúng ⇒ góc 1 của khung.
+                    var at = ed.GetNestedEntity(new PromptNestedEntityOptions("")
                     {
-                        if (onPick(r.ObjectId)) hits++;   // không có dòng ⇒ không báo gì (kỹ sư 2026-11-05)
+                        NonInteractivePickPoint = p.Value,
+                        UseNonInteractivePickPoint = true,
+                    });
+                    if (at.Status == PromptStatus.OK)
+                    {
+                        if (onPick(at.ObjectId)) hits++;
                         continue;
                     }
-                    if (r.Status == PromptStatus.None) return null;               // Enter / chuột phải: giữ vùng chọn
-                    if (r.Status == PromptStatus.Cancel) { onClear?.Invoke(); return null; }   // Esc
-                    return $"Pick stopped ({r.Status}).";
+                    PromptPointResult c = ed.GetCorner(new PromptCornerOptions("\nOpposite corner: ", p.Value));
+                    if (c.Status == PromptStatus.Cancel) { onClear?.Invoke(); return null; }
+                    if (c.Status != PromptStatus.OK) continue;
+                    hits += onWindow(WindowTest(ed, p.Value, c.Value));
                 }
             }
             finally { IsPicking = false; }
+        }
+
+        /// <summary>Phép thử hộp bao (WCS) với khung 2 góc (UCS): chiếu lên mặt phẳng nhìn hiện tại (đúng cả góc nhìn 3D),
+        /// Window/Crossing theo chiều kéo trên màn hình (<see cref="PickWindow"/>). Hộp bao ⇒ chi tiết chéo có thể dư khi Crossing.</summary>
+        private static Func<Autodesk.AutoCAD.DatabaseServices.Extents3d, bool> WindowTest(Editor ed,
+            Autodesk.AutoCAD.Geometry.Point3d c1Ucs, Autodesk.AutoCAD.Geometry.Point3d c2Ucs)
+        {
+            var ucs = ed.CurrentUserCoordinateSystem;
+            Autodesk.AutoCAD.Geometry.Matrix3d toEye;
+            using (ViewTableRecord v = ed.GetCurrentView())
+            {
+                toEye = (Autodesk.AutoCAD.Geometry.Matrix3d.Rotation(-v.ViewTwist, v.ViewDirection, v.Target)
+                         * Autodesk.AutoCAD.Geometry.Matrix3d.Displacement(v.Target - Autodesk.AutoCAD.Geometry.Point3d.Origin)
+                         * Autodesk.AutoCAD.Geometry.Matrix3d.PlaneToWorld(v.ViewDirection)).Inverse();
+            }
+            var a = c1Ucs.TransformBy(ucs).TransformBy(toEye);
+            var b = c2Ucs.TransformBy(ucs).TransformBy(toEye);
+            bool crossing = PickWindow.IsCrossing(a.X, b.X);
+            return box =>
+            {
+                double x0 = double.MaxValue, y0 = double.MaxValue, x1 = double.MinValue, y1 = double.MinValue;
+                var lo = box.MinPoint; var hi = box.MaxPoint;
+                for (int i = 0; i < 8; i++)
+                {
+                    var q = new Autodesk.AutoCAD.Geometry.Point3d((i & 1) == 0 ? lo.X : hi.X, (i & 2) == 0 ? lo.Y : hi.Y, (i & 4) == 0 ? lo.Z : hi.Z)
+                        .TransformBy(toEye);
+                    x0 = Math.Min(x0, q.X); y0 = Math.Min(y0, q.Y); x1 = Math.Max(x1, q.X); y1 = Math.Max(y1, q.Y);
+                }
+                return PickWindow.Hit(a.X, a.Y, b.X, b.Y, crossing, x0, y0, x1, y1);
+            };
         }
 
         // ─── Esc trên bản vẽ (không có lệnh) ⇒ tắt highlight + bỏ chọn grid ─────────────────────
