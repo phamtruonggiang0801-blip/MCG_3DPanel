@@ -223,7 +223,7 @@ namespace MCG_3DPanel.Services
                     if (topPlateInfo != null) FillGeometry(topPlateInfo, topPlateSolid); // cập nhật bbox/thể tích SAU khi khoét
                 }
                 else if (cls.OfType(PartType.CutOut).Any())
-                    ctx.Warn("[CutOut] Không có solid Top Plate để khoét — bỏ qua toàn bộ CutOut.");
+                    ctx.Report.Add("[CutOut] Không có solid Top Plate để khoét — bỏ qua toàn bộ CutOut.");
 
                 var ms = (BlockTableRecord)tr.GetObject(
                     SymbolUtilityServices.GetBlockModelSpaceId(db), OpenMode.ForWrite);

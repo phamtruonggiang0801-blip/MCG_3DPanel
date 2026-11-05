@@ -149,7 +149,7 @@ namespace MCG_3DPanel.Services.Builders
             catch (Exception ex)
             {
                 Debug.WriteLine($"{LOG} lỗi ({part.Id.Handle}): {ex.Message}");
-                ctx.Warn($"BackingPlate {part.Id.Handle} buildError: {ex.Message}");
+                ctx.Report.Add($"BackingPlate {part.Id.Handle} buildError: {ex.Message}");
                 return null;
             }
         }

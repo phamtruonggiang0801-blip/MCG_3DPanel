@@ -103,7 +103,7 @@ namespace MCG_3DPanel.Services.Builders
             catch (System.Exception ex)
             {
                 Debug.WriteLine($"{LOG} lỗi ({part.Id.Handle}): {ex.Message}");
-                ctx.Warn($"GE code={part.Code} buildError: {ex.Message}");
+                ctx.Report.Add($"GE code={part.Code} buildError: {ex.Message}");
                 return null;
             }
         }
@@ -146,7 +146,7 @@ namespace MCG_3DPanel.Services.Builders
             }
             catch (System.Exception ex)
             {
-                ctx.Warn($"GB code={part.Code} buildError: {ex.Message}");
+                ctx.Report.Add($"GB code={part.Code} buildError: {ex.Message}");
                 return null;
             }
         }
