@@ -92,9 +92,31 @@ namespace MCG_3DPanel.UI
                 // Cố định CẠNH TRÁI, chỉ cho dock trái (không dock phải/trên/dưới, hạn chế float tự do).
                 _ps.DockEnabled = DockSides.Left;
                 _ps.Dock = DockSides.Left;
+
+                // Esc trên bản vẽ (không có lệnh) ⇒ tắt highlight + bỏ chọn grid cả 2 tab (kỹ sư 2026-11-05).
+                MCG_3DPanel.Commands.CadPick.HookEscape(ClearAllSelections, InPalette);
             }
             _ps.Dock = DockSides.Left;   // đảm bảo luôn về trái mỗi lần mở
             _ps.Visible = true;
+        }
+
+        /// <summary>Esc (bản vẽ hoặc grid): bỏ chọn trên tab Result + Naming và tắt highlight trên CAD.</summary>
+        public void ClearAllSelections()
+        {
+            _result?.ClearSelection();
+            _naming?.ClearSelection();
+        }
+
+        /// <summary>Phần tử thuộc palette của mình (Esc ở đó do grid tự xử lý — hook Esc bản vẽ bỏ qua).</summary>
+        private bool InPalette(System.Windows.DependencyObject d)
+        {
+            while (d != null)
+            {
+                if (ReferenceEquals(d, _input) || ReferenceEquals(d, _result) || ReferenceEquals(d, _naming)) return true;
+                d = d is System.Windows.Media.Visual ? System.Windows.Media.VisualTreeHelper.GetParent(d)
+                                                     : System.Windows.LogicalTreeHelper.GetParent(d);
+            }
+            return false;
         }
     }
 }

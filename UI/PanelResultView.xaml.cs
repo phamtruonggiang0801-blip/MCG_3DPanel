@@ -485,7 +485,9 @@ namespace MCG_3DPanel.UI
             _reselect = Keys(sel.Contains(clicked) ? sel : new List<ResultRow> { clicked });
             _bulkNote = note;
             var builds = targets.Select(r => r.Build).Where(b => b != null).Distinct().ToList();
-            SetStatus(builds.Count == 1 ? $"Rebuilding {targets[0].Panel}…" : $"Rebuilding {builds.Count} panels…");
+            SetStatus(CadPick.IsPicking
+                ? "Change saved — the 3D rebuilds as soon as you finish picking (Enter in the drawing)."
+                : builds.Count == 1 ? $"Rebuilding {targets[0].Panel}…" : $"Rebuilding {builds.Count} panels…");
             _pendingPanels.Clear();
             foreach (var b in builds) if (b.BlockName != null) _pendingPanels.Add(b.BlockName);
             foreach (var b in builds) PanelCommands.RequestRebuild(b);
@@ -545,6 +547,57 @@ namespace MCG_3DPanel.UI
         }
 
         private void MnuZoomTo_Click(object sender, RoutedEventArgs e) => Show(Selected, zoom: true);
+
+        // ─── Pick trên bản vẽ → dòng; Esc ⇒ bỏ chọn (kỹ sư 2026-11-05) ─────────────────
+
+        private void BtnPick_Click(object sender, RoutedEventArgs e)
+        {
+            if (Rows.Count == 0) { SetStatus("Nothing listed yet — build or load a panel first.", error: true); return; }
+            SetStatus("Pick objects in the drawing… Enter = done, Esc = clear.");
+            string err;
+            int hits;
+            try { err = CadPick.PickLoop(SelectFromCad, PaletteManager.Instance.ClearAllSelections, out hits); }
+            catch (System.Exception ex) { SetStatus("Pick failed: " + ex.Message, error: true); return; }
+            if (err != null) { SetStatus(err, error: true); return; }
+            if (_statusIsError) return;   // giữ lỗi highlight trong lúc pick (vd không highlight được)
+            if (_pendingPanels.Count > 0) SetStatus("Rebuilding the edited panel(s)…");   // sửa trong lúc Pick ⇒ rebuild chạy ngay sau
+            else if (Selected.Count > 0) SetStatus($"{Selected.Count} row(s) selected" + (hits > 0 ? $" · {hits} picked" : "") + ".");
+            else RestoreSummary();
+        }
+
+        /// <summary>Chọn THÊM dòng của solid vừa pick (drawing đang mở), cuộn tới, highlight. Không có dòng ⇒ false (im lặng).</summary>
+        public bool SelectFromCad(Autodesk.AutoCAD.DatabaseServices.ObjectId picked)
+        {
+            var row = Rows.FirstOrDefault(r => r.Solid != null && r.Solid.SolidId == picked);
+            if (row == null) return false;
+            _suspendShow = true;
+            try { if (!GridResult.SelectedItems.Contains(row)) GridResult.SelectedItems.Add(row); }
+            finally { _suspendShow = false; }
+            GridResult.ScrollIntoView(row);
+            Show(Selected, zoom: false);
+            return true;
+        }
+
+        /// <summary>Esc (bản vẽ hoặc grid): bỏ chọn + tắt highlight.</summary>
+        public void ClearSelection()
+        {
+            _clickSnapshot = null;
+            _suspendShow = true;
+            try { GridResult.SelectedItems.Clear(); }
+            finally { _suspendShow = false; }
+            EntityHighlighter.ClearPoint();
+            EntityHighlighter.Clear();
+        }
+
+        /// <summary>Esc trong grid (không đang gõ trong ô / mở dropdown) ⇒ bỏ chọn ở CẢ 2 tab + tắt highlight.</summary>
+        private void Grid_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key != System.Windows.Input.Key.Escape) return;
+            var src = e.OriginalSource as DependencyObject;
+            if (Up<TextBox>(src) != null || Up<ComboBox>(src) != null) return;
+            PaletteManager.Instance.ClearAllSelections();
+            e.Handled = true;
+        }
 
         /// <summary>Ctrl+C trong grid: copy các dòng ĐANG CHỌN (kèm header) để dán sang Excel.</summary>
         private void GridCopy_Executed(object sender, System.Windows.Input.ExecutedRoutedEventArgs e)

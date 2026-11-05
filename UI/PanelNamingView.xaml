@@ -33,6 +33,8 @@
             </ComboBox>
             <Button x:Name="BtnCopy" Content="Copy" Style="{StaticResource ToolbarButtonStyle}" Margin="8,0,0,0"
                     Click="BtnCopy_Click" ToolTip="Copy the table (or the selected rows) to the clipboard — paste straight into Excel"/>
+            <Button x:Name="BtnPick" Content="Pick" Style="{StaticResource ToolbarButtonStyle}"
+                    Click="BtnPick_Click" ToolTip="Click objects in the drawing to find their lines (Enter = done, Esc = clear the selection)"/>
         </WrapPanel>
 
         <TextBlock Grid.Row="1" Style="{StaticResource HelperTextStyle}" Margin="2,2,2,6"
@@ -43,13 +45,16 @@
                   MinRowHeight="24" RowHeaderWidth="0" CanUserResizeRows="False"
                   SelectionMode="Extended"
                   SelectionChanged="GridNaming_SelectionChanged"
-                  PreviewMouseLeftButtonDown="GridNaming_PreviewMouseDown">
+                  PreviewMouseLeftButtonDown="GridNaming_PreviewMouseDown"
+                  PreviewKeyDown="Grid_PreviewKeyDown">
             <DataGrid.CommandBindings>
                 <CommandBinding Command="ApplicationCommands.Copy" Executed="GridCopy_Executed"/>
             </DataGrid.CommandBindings>
             <DataGrid.ContextMenu>
                 <ContextMenu Opened="GridMenu_Opened">
                     <MenuItem Header="Zoom to Object" Click="MnuZoomTo_Click"/>
+                    <MenuItem Header="Pick in Drawing" Click="BtnPick_Click"
+                              ToolTip="Click objects in the drawing to find their lines (Enter = done, Esc = clear the selection)"/>
                     <Separator/>
                     <MenuItem Header="Del Name" Click="MnuDelName_Click"
                               ToolTip="Do not name the selected lines: they are hidden and the other lines are renumbered"/>

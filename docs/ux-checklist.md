@@ -95,3 +95,18 @@ built in a second drawing.
 | G14 | Look at the columns. | Name (editable, e.g. `T1`) and Size (read-only, e.g. `WEB 374x6.0/FLANGE 100x20.0`) are separate; Copy pastes them in separate columns. |
 | G15 | Click a Web row that has a flange (2D and after Build/Keep). | The web and its flange(s) highlight together. |
 | G16 | Select T3 and T4 → right-click Merge. Then Unmerge. | One row `T3`, Kind `Web (merged)`, T5 becomes T4…; Unmerge splits and renumbers back. Merging Web with HP, or T with L, is refused with a message. Survives Ctrl+S + reopen. |
+
+## H. Pick in drawing / Esc
+
+| # | Steps | Expected |
+|---|---|---|
+| H1 | Result tab → Pick → click 3 solids inside the 3D block, Enter. | The 3 rows are selected (scrolled to) and highlighted; the selection stays after Enter. |
+| H2 | Naming tab (2D panel from Select panel) → Pick → click a web polyline, then its flange. | The web line row is selected both times; web + flange highlight. |
+| H3 | Pick an object with no row (bracket on Naming, top plate…). | Nothing happens, no message; picking continues. |
+| H4 | During Pick press Esc. | Picking ends; CAD highlight and grid selection (both tabs) are cleared. |
+| H5 | Select rows, click in the drawing area, press Esc (no command). | Highlight off in CAD, no row selected on either tab. |
+| H6 | Esc on the grid (not editing a name / not in an open dropdown). | Same as H5. Esc while typing a name only cancels the typing. |
+| H7 | Start LINE, then click Pick on the palette. | A message asks to finish or cancel LINE first; the selection is kept. |
+| H8 | Click Pick, then click Pick (or Pick in Drawing) again before finishing. | "Already picking…" message; the first pick keeps working. |
+| H9 | Press Esc in another palette (e.g. Properties) or hold Esc down. | At most one clear; no slowdown. (Esc in other palettes also clears — accepted.) |
+| H10 | Pick 3 HP rows, change Tripping (or Collar / FB height) while the Pick prompt is still active, then press Enter in the drawing. | Status says the change is saved and the 3D rebuilds after picking; after Enter the panel rebuilds once with the new value. Same after ending with Esc (selection cleared, rebuild still runs). |
