@@ -74,3 +74,16 @@ built in a second drawing.
 | F3 | Clear the box and press Enter. | The FB returns to the Input tab height. |
 | F4 | Type a new height, then click away without pressing Enter. | The value is not saved and the old value comes back. |
 | F5 | Load 3D on an old drawing whose saved spec is `120*6`. | It rebuilds with height 120 and no error. |
+
+## G. Naming tab
+
+| # | Steps | Expected |
+|---|---|---|
+| G1 | Naming tab → Select panel… → pick a 2D panel (no 3D). | One row per Web/HP line and per flat bar, names T#/L#/HT#/HL#/BS; clicking a row highlights every piece of the line. |
+| G2 | Rename a line (type `T6a`, Enter), Ctrl+S, close and reopen the drawing, Select panel… again. | The name `T6a` is still there (blue); the other numbers are unchanged. |
+| G3 | Select 12 BS rows, type `BS1` on one of them and press Enter. | All 12 rows get `BS1`; the status shows the count. |
+| G4 | Right-click → Reset to auto on renamed rows. | They return to the generated names (black). |
+| G5 | Change Position to Starboard. | L/HL numbers reverse (top → bottom); T/HT stay; your own names stay. |
+| G6 | Select panel in drawing A, switch to drawing B, rename a row. | Nothing is saved; the status names drawing A. |
+| G7 | Build 3D (Keep), then open Naming; then change a Kind on Result (rebuild). | Naming lists the built panel and highlights its 3D solids; after the rebuild the rows and your names are still there. |
+| G8 | Type a name, then click another row without pressing Enter. | Only the edited row is renamed. |

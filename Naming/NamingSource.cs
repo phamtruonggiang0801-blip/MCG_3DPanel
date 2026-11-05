@@ -63,9 +63,17 @@ namespace MCG_3DPanel.Naming
                 Db = b.SourceBtrId.Database,
                 SourceBtrId = b.SourceBtrId,
                 Position = b.Position,
-                From3D = true,
+                From3D = b.Kept && !b.BlockRefId.IsNull,
                 Build = b,
             };
+            if (!p.From3D)
+            {
+                // Bỏ 3D (No) ⇒ block 2D vẫn còn: highlight polyline 2D.
+                Fill(p, b.ClassifiedParts, b.SourceTransform.Inverse(), part =>
+                    (part.IdPath != null && part.IdPath.Length > 0 ? part.IdPath : null, (Extents3d?)part.Bounds));
+                p.Recompute();
+                return p;
+            }
             var solidOf = new Dictionary<PanelPart, BuiltSolid>();
             foreach (var s in b.Solids)
                 if (s.Part != null && !s.Deleted && !s.SolidId.IsNull && !solidOf.ContainsKey(s.Part)) solidOf[s.Part] = s;
