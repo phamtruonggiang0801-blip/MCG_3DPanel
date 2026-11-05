@@ -62,6 +62,9 @@ namespace MCG_3DPanel.UI
             Built?.Invoke(builds);
         }
 
+        /// <summary>Thông số đang nhập (tab Naming cần để ghi quy cách WEB/FLANGE/HP/FB). Sai ⇒ false + thông báo.</summary>
+        public bool TryGetInput(out MCG_3DPanel.Models.PanelInput input, out string error) => TryReadInput(out input, out error);
+
         private bool TryReadInput(out MCG_3DPanel.Models.PanelInput input, out string error)
         {
             input = new MCG_3DPanel.Models.PanelInput();

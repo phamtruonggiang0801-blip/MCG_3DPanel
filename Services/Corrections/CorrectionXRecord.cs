@@ -14,6 +14,7 @@ namespace MCG_3DPanel.Services.Corrections
     {
         public const string CorrectionsKey = "MCG3D_CORRECTIONS";   // trên BTR 2D nguồn
         public const string SourceKey = "MCG3D_SOURCE";             // trên BTR 3D (metadata rebuild)
+        public const string NamesKey = "MCG3D_NAMES";               // trên BTR 2D nguồn — tên người dùng (tab Naming)
         private const int CHUNK = 250;
 
         public static string Read(Transaction tr, ObjectId btrId, string key)

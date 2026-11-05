@@ -22,6 +22,8 @@ namespace MCG_3DPanel.UI
         private PaletteSet _ps;
         private PanelInputView _input;
         private PanelResultView _result;
+        private PanelNamingView _naming;
+        private string _activeTab = "Input";
 
         private PaletteManager() { }
 
@@ -40,13 +42,17 @@ namespace MCG_3DPanel.UI
                 // WPF lồng bên trong — thanh tab trông giống hệt plugin Fitting.
                 _input = new PanelInputView();
                 _result = new PanelResultView();
+                _naming = new PanelNamingView();
+                _naming.InputProvider = _input.TryGetInput;   // quy cách WEB/FLANGE/HP/FB trong tên theo tab Input
                 _input.Built += r =>
                 {
                     _result.Load(r);
+                    _naming.Load(r);   // tab Naming: tên theo tuyến của panel vừa build (spec 2026-11-05)
                     if (r.Exists(b => b.Kept)) _ps.Activate(TabResult);   // giữ 3D → nhảy sang tab Result xem từng solid
                 };
                 // Rebuild 1 panel từ tab Result (sửa Kind / ⇄) → thay đúng panel đó trong danh sách, nạp lại bảng.
                 MCG_3DPanel.Commands.PanelCommands.Rebuilt += _result.OnRebuilt;
+                MCG_3DPanel.Commands.PanelCommands.Rebuilt += _naming.OnRebuilt;
                 // Đóng bản vẽ → bỏ dòng / correction / yêu cầu rebuild của nó TRƯỚC khi Database bị giải phóng
                 // (ObjectId cũ trỏ vào bộ nhớ đã free — chạm vào có thể làm AutoCAD crash).
                 Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.DocumentToBeDestroyed += (s, e) =>
@@ -55,7 +61,9 @@ namespace MCG_3DPanel.UI
                     MCG_3DPanel.Commands.PanelCommands.ForgetDatabase(db);
                     MCG_3DPanel.Commands.EntityHighlighter.ForgetDatabase(db);
                     MCG_3DPanel.Services.Corrections.CorrectionStore.ClearDatabase(db);
+                    MCG_3DPanel.Naming.NameStore.ClearDatabase(db);
                     _result.OnDocumentClosing(db);
+                    _naming.OnDocumentClosing(db);
                 };
                 // Đổi drawing: tắt highlight/marker KHI drawing cũ còn là current (Transient/Highlight gắn view của nó),
                 // rồi báo trên tab Result nếu bảng đang hiện panel của drawing khác (ux-guardrails, lỗi 2026-11-05).
@@ -64,10 +72,21 @@ namespace MCG_3DPanel.UI
                     MCG_3DPanel.Commands.EntityHighlighter.ClearPoint();
                     MCG_3DPanel.Commands.EntityHighlighter.Clear();
                 };
+                // Highlight dùng chung 1 trạng thái ⇒ tab ĐANG MỞ chạy SAU để vùng chọn của nó thắng.
                 Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.DocumentBecameCurrent += (s, e) =>
-                    _result.OnDocumentActivated(e.Document?.Database);
+                {
+                    var db = e.Document?.Database;
+                    if (_activeTab == "Naming") { _result.OnDocumentActivated(db); _naming.OnDocumentActivated(db); }
+                    else { _naming.OnDocumentActivated(db); _result.OnDocumentActivated(db); }
+                };
+                _ps.PaletteActivated += (s, e) =>
+                {
+                    _activeTab = e.Activated?.Name ?? _activeTab;
+                    if (_activeTab == "Naming") _naming.RefreshSizes();   // quy cách theo tab Input hiện tại
+                };
                 _ps.AddVisual("Input", _input);
                 _ps.AddVisual("Result", _result);
+                _ps.AddVisual("Naming", _naming);
                 _ps.Activate(TabInput);
 
                 // Cố định CẠNH TRÁI, chỉ cho dock trái (không dock phải/trên/dưới, hạn chế float tự do).

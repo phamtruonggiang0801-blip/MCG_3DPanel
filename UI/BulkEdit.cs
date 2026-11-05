@@ -48,5 +48,20 @@ namespace MCG_3DPanel.UI
             if (plan != null && plan.OtherDrawing > 0) s += $" · {plan.OtherDrawing} skipped (other drawing)";
             return s;
         }
+
+        /// <summary>Giữ phần tử ĐẦU TIÊN của mỗi khoá (thứ tự giữ nguyên); <paramref name="dropped"/> = số bị bỏ.
+        /// Tab Naming: 2 lần chèn cùng 1 block 2D dùng chung 1 bộ tên ⇒ chỉ liệt kê 1 lần (review I2).</summary>
+        public static List<T> OnePer<T>(IEnumerable<T> items, Func<T, string> key, out int dropped)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var kept = new List<T>();
+            dropped = 0;
+            foreach (var it in items ?? Enumerable.Empty<T>())
+            {
+                if (seen.Add(key(it) ?? "")) kept.Add(it);
+                else dropped++;
+            }
+            return kept;
+        }
     }
 }

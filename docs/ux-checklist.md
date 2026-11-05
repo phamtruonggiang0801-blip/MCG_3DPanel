@@ -74,3 +74,24 @@ built in a second drawing.
 | F3 | Clear the box and press Enter. | The FB returns to the Input tab height. |
 | F4 | Type a new height, then click away without pressing Enter. | The value is not saved and the old value comes back. |
 | F5 | Load 3D on an old drawing whose saved spec is `120*6`. | It rebuilds with height 120 and no error. |
+
+## G. Naming tab
+
+| # | Steps | Expected |
+|---|---|---|
+| G1 | Naming tab → Select panel… → pick a 2D panel (no 3D). | One row per Web/HP line and per flat bar, names T#/L#/HT#/HL#/BS; clicking a row highlights every piece of the line. |
+| G2 | Rename a line (type `T6a`, Enter), Ctrl+S, close and reopen the drawing, Select panel… again. | The name `T6a` is still there (blue); the other numbers are unchanged. |
+| G3 | Select 12 BS rows, type `BS1` on one of them and press Enter. | All 12 rows get `BS1`; the status shows the count. |
+| G4 | Right-click → Reset to auto on renamed rows. | They return to the generated names (black). |
+| G5 | Change Position to Starboard. | L/HL numbers reverse (top → bottom); T/HT stay; your own names stay. |
+| G6 | Select panel in drawing A, switch to drawing B, rename a row. | Nothing is saved; the status names drawing A. |
+| G7 | Build 3D (Keep), then open Naming; then change a Kind on Result (rebuild). | Naming lists the built panel and highlights its 3D solids; after the rebuild the rows and your names are still there. |
+| G8 | Type a name, then click another row without pressing Enter. | Only the edited row is renamed. |
+| G9 | Look at T1 and a web without flange, an HP and a BS row. | `T1 WEB 374x6.0/FLANGE 100x20.0`, `T2 WEB 374x6.0` (if no flange), `HL1 HP 120x6.0`, `BS FB 80x6.0`; only Panel/Name/Kind columns. |
+| G10 | Edit `T7 WEB …` to `T6a WEB …` (or just `T6a`), Enter. | Name becomes `T6a WEB 374x6.0/FLANGE …`; the size is never doubled. |
+| G11 | Select 2 stray rows → right-click Del Name. Then Restore deleted names (N). | Rows disappear and the rest renumber; Restore brings them back and renumbers again; survives Ctrl+S + reopen. |
+| G12 | A BS line split far apart (e.g. 947 + 8428 on one axis). | One row. |
+| G13 | Select panel… with an invalid value on the Input tab. | A message asks to fix the Input tab; nothing is selected. |
+| G14 | Look at the columns. | Name (editable, e.g. `T1`) and Size (read-only, e.g. `WEB 374x6.0/FLANGE 100x20.0`) are separate; Copy pastes them in separate columns. |
+| G15 | Click a Web row that has a flange (2D and after Build/Keep). | The web and its flange(s) highlight together. |
+| G16 | Select T3 and T4 → right-click Merge. Then Unmerge. | One row `T3`, Kind `Web (merged)`, T5 becomes T4…; Unmerge splits and renumbers back. Merging Web with HP, or T with L, is refused with a message. Survives Ctrl+S + reopen. |

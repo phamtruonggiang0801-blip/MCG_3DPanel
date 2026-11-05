@@ -46,6 +46,9 @@ namespace MCG_3DPanel.Services
 
         /// <summary>Từng solid CÒN LẠI trong block 3D (đã trừ GE hợp nhất vào Web) — nguồn của tab Result.</summary>
         public System.Collections.Generic.List<BuiltSolid> Solids { get; } = new System.Collections.Generic.List<BuiltSolid>();
+
+        /// <summary>Mọi part 2D đã phân loại của lần build này (kể cả part không ra solid) — nguồn của tab Naming.</summary>
+        public System.Collections.Generic.List<PanelPart> ClassifiedParts { get; } = new System.Collections.Generic.List<PanelPart>();
     }
 
     /// <summary>1 solid trong block 3D: id để highlight/zoom + part nguồn để gắn nhãn loại.</summary>
