@@ -174,9 +174,27 @@ namespace MCG_3DPanel.UI
 
         // ─── Correction → rebuild ─────────────────────────────────────────
 
+        /// <summary>Chỉ sửa correction khi panel thuộc drawing ĐANG MỞ (ux-guardrails luật 1). Không ⇒ KHÔNG lưu gì,
+        /// trả control về trạng thái thật (dropdown/toggle đã đổi trên màn hình) và báo người dùng.</summary>
+        private bool CanEdit(ResultRow row)
+        {
+            var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+            var db = row?.Build?.SourceRefId.Database;
+            if (doc != null && db != null && !row.Build.SourceRefId.IsNull && db == doc.Database) return true;
+            string msg = $"This panel is in drawing {(db != null ? DrawingName(db) : "(unknown)")} — switch to it to change {row?.Panel}.";
+            // Hoãn: đang ở giữa cập nhật binding của chính control đó.
+            Dispatcher.BeginInvoke(new System.Action(() =>
+            {
+                Load(_builds, row?.PanelKey, row?.SourceKey ?? row?.DeleteKey);
+                SetStatus(msg, error: true);
+            }));
+            return false;
+        }
+
         private void OnKindChanged(ResultRow row)
         {
             if (!row.KindEditable || string.IsNullOrEmpty(row.Kind)) return;
+            if (!CanEdit(row)) return;
             var c = CorrectionStore.Get(row.PanelKey, row.SourceKey) ?? new PartCorrection();
             if (c.OriginalKind == null) c.OriginalKind = row.DetectedKind;
             c.Kind = row.Kind == c.OriginalKind ? null : row.Kind;   // chọn lại Kind gốc ⇒ huỷ correction Kind
@@ -187,6 +205,7 @@ namespace MCG_3DPanel.UI
         private void BtnFlip_Click(object sender, RoutedEventArgs e)
         {
             if (!((sender as FrameworkElement)?.DataContext is ResultRow row) || !row.CanFlip) return;
+            if (!CanEdit(row)) return;
             var c = CorrectionStore.Get(row.PanelKey, row.SourceKey) ?? new PartCorrection { OriginalKind = row.DetectedKind };
             c.FlipDir = !c.FlipDir;
             CorrectionStore.Set(row.PanelKey, row.SourceKey, c);
@@ -198,6 +217,7 @@ namespace MCG_3DPanel.UI
         private void OnTripChanged(ResultRow row)
         {
             if (!row.CanTrip) return;
+            if (!CanEdit(row)) return;
             var c = CorrectionStore.Get(row.PanelKey, row.SourceKey) ?? new PartCorrection { OriginalKind = row.DetectedKind };
             c.Tripping = row.TripChoice == "On" ? true : row.TripChoice == "Off" ? false : (bool?)null;
             CorrectionStore.Set(row.PanelKey, row.SourceKey, c);
@@ -209,6 +229,7 @@ namespace MCG_3DPanel.UI
         private void BtnSnip_Click(object sender, RoutedEventArgs e)
         {
             if (!(sender is FrameworkElement fe) || !(fe.DataContext is ResultRow row) || !row.CanSnip) return;
+            if (!CanEdit(row)) return;
             bool lo = (fe.Tag as string) == "lo";
             var c = CorrectionStore.Get(row.PanelKey, row.SourceKey) ?? new PartCorrection { OriginalKind = row.DetectedKind };
             // Ép NGƯỢC trạng thái thực tế; giữ override tới khi Clear Correction (plan Part 2, Task 8).
@@ -241,6 +262,7 @@ namespace MCG_3DPanel.UI
         private void SetDeleted(bool deleted)
         {
             if (!(GridResult.SelectedItem is ResultRow row) || string.IsNullOrEmpty(row.DeleteKey)) return;
+            if (!CanEdit(row)) return;
             CorrectionStore.SetDeleted(row.PanelKey, row.DeleteKey, deleted);
             EntityHighlighter.Clear();
             Rebuild(row);
@@ -249,6 +271,7 @@ namespace MCG_3DPanel.UI
         private void MnuClearCorrection_Click(object sender, RoutedEventArgs e)
         {
             if (!(GridResult.SelectedItem is ResultRow row)) return;
+            if (!CanEdit(row)) return;
             if (CorrectionStore.Get(row.PanelKey, row.SourceKey) == null) { SetStatus("This row has no correction."); return; }
             CorrectionStore.Clear(row.PanelKey, row.SourceKey);
             Rebuild(row);

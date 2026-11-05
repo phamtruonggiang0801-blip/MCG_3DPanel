@@ -25,6 +25,9 @@ Nguyên tắc thiết kế giao diện cho mọi plugin AutoCAD của team (WPF 
    - Tham số: lưới 2 cột nhãn (`ParamLabelStyle`) | ô nhập (cao 24).
    - Trạng thái: `StatusTextStyle` dưới đáy MỖI tab, set qua `StatusText.Set` (xanh #005E9E / lỗi #C00000).
    - DataGrid: `PanelDataGridStyle` + ContextMenu + cột nút ⌖ zoom; dòng user sửa → chữ #0050C8 SemiBold.
+   - Control TRONG ô DataGrid: style `CellButton` / `CellToggle` / `CellCombo` + `ResultCellStyle` (cao 20, margin 0).
+
+**HÀNH VI (đa drawing, không lỗi im lặng, checklist trước khi báo xong): BẮT BUỘC đọc [[ux-guardrails]].**
 
 ## PaletteSet — quy tắc bắt buộc
 

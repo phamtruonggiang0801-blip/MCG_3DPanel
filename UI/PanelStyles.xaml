@@ -144,4 +144,82 @@
         <Setter Property="Margin" Value="0,0,0,4"/>
     </Style>
 
+    <!-- ── Control TRONG Ô grid: cùng cao 20, không margin (style chung Button 26 + margin dưới 5 /
+         ComboBox 24 + margin 4 làm nút lệch cao và combo bị bóp mất mũi tên — kỹ sư 2026-11-05). ── -->
+    <Style x:Key="CellButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Height" Value="20"/>
+        <Setter Property="MinWidth" Value="22"/>
+        <Setter Property="Margin" Value="0"/>
+        <Setter Property="Padding" Value="4,0"/>
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <!-- Nút bật/tắt cùng dáng CellButton; BẬT = nền xanh chữ trắng (rõ hơn ToggleButton mặc định). -->
+    <Style x:Key="CellToggle" TargetType="ToggleButton">
+        <Setter Property="Background" Value="#FFE1E1E1"/>
+        <Setter Property="Foreground" Value="#FF111111"/>
+        <Setter Property="BorderBrush" Value="#FFADADAD"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Height" Value="20"/>
+        <Setter Property="MinWidth" Value="36"/>
+        <Setter Property="Margin" Value="0"/>
+        <Setter Property="Padding" Value="4,0"/>
+        <Setter Property="FontSize" Value="10"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="2"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="BorderBrush" Value="#FF999999"/>
+                <Setter Property="Background" Value="#FFD0D0D0"/>
+            </Trigger>
+            <Trigger Property="IsChecked" Value="True">
+                <Setter Property="Background" Value="#FF005E9E"/>
+                <Setter Property="BorderBrush" Value="#FF004C82"/>
+                <Setter Property="Foreground" Value="#FFFFFFFF"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="CellCombo" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+        <Setter Property="Height" Value="20"/>
+        <Setter Property="Margin" Value="0"/>
+        <Setter Property="Padding" Value="4,0,2,0"/>
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+
+    <!-- Ô grid: nội dung căn giữa theo chiều đứng, đệm ngang đều. -->
+    <Style x:Key="ResultCellStyle" TargetType="DataGridCell">
+        <Setter Property="Padding" Value="3,0"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="DataGridCell">
+                    <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter VerticalAlignment="Center"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsSelected" Value="True">
+                <Setter Property="Background" Value="#FFCCE4F7"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
 </ResourceDictionary>
