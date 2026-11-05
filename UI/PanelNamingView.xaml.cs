@@ -296,11 +296,22 @@ namespace MCG_3DPanel.UI
                 return;
             }
             var p = sel[0].PanelData;
+            // Nhiều tên tự đặt khác nhau ⇒ giữ tên của dòng đầu tiên (thứ tự bảng) cho CẢ tuyến gộp, báo tên bị bỏ (review R2 #2).
+            var userNames = sel.Where(r => r.IsUserName).Select(r => r.Name).Distinct().ToList();
+            string firstKey = sel[0].Line.Pieces.First().Key;
             NameStore.Merge(p.PanelKey, sel.Select(r => r.Line));
-            var errors = SaveAll(new[] { p });
             p.Recompute();
+            string note = $"Merged {sel.Count} rows into one — renumbered (right-click → Unmerge to split)";
+            if (userNames.Count > 0)
+            {
+                var merged = p.Lines.FirstOrDefault(l => l.Pieces.Any(x => x.Key == firstKey));
+                if (merged != null) NameStore.SetLine(p.PanelKey, merged, userNames[0]);
+                p.ResolveNames();
+                if (userNames.Count > 1) note += $" · kept name {userNames[0]} ({string.Join(", ", userNames.Skip(1))} dropped)";
+            }
+            var errors = SaveAll(new[] { p });
             Rebind(sel.Select(r => r.Key).ToList());   // dòng gộp có đoạn đầu = đoạn đầu của 1 trong các dòng cũ
-            Report($"Merged {sel.Count} lines into one — renumbered (right-click → Unmerge to split)", errors);
+            Report(note, errors);
         }
 
         private void MnuUnmerge_Click(object sender, RoutedEventArgs e)
@@ -309,19 +320,36 @@ namespace MCG_3DPanel.UI
             if (sel.Count == 0) { SetStatus("No merged line selected."); return; }
             var plan = BulkEdit.Plan(sel[0], sel, r => true, InActiveDrawing);
             if (plan.Targets.Count == 0) { SetStatus(OtherDrawingText(sel[0]), error: true); return; }
+            // Tên tự đặt của tuyến gộp chỉ ở lại trên tuyến con chứa đoạn DÀI NHẤT; các tuyến con khác về tên tự sinh
+            // (review R2 #1 — tránh nhiều tuyến cùng 1 tên sau khi tách).
+            var keepOn = plan.Targets.Where(r => r.IsUserName)
+                .Select(r => (r.PanelData, keys: r.Line.Pieces.Select(x => x.Key).ToList(),
+                              longest: r.Line.Pieces.OrderByDescending(x => x.Length).First().Key)).ToList();
             foreach (var r in plan.Targets) NameStore.Unmerge(r.PanelData.PanelKey, r.Line);
             var touched = plan.Targets.Select(r => r.PanelData).Distinct().ToList();
-            var errors = SaveAll(touched);
             foreach (var p in touched) p.Recompute();
+            foreach (var (p, keys, longest) in keepOn)
+                foreach (var l in p.Lines.Where(l => l.Pieces.Any(x => keys.Contains(x.Key)) && l.Pieces.All(x => x.Key != longest)))
+                    NameStore.SetLine(p.PanelKey, l, null);
+            foreach (var p in touched) p.ResolveNames();
+            var errors = SaveAll(touched);
             Rebind(plan.Targets.Select(r => r.Key).ToList());
-            Report(BulkEdit.Describe(plan, "Unmerged") + " — renumbered", errors);
+            Report(BulkEdit.Describe(plan, "Unmerged") + " — renumbered" + (keepOn.Count > 0 ? " · your name stays on the longest part" : ""), errors);
         }
 
         private void GridMenu_Opened(object sender, RoutedEventArgs e)
         {
             var sel = Selected;
-            MnuMerge.IsEnabled = sel.Count > 1;
-            MnuUnmerge.Visibility = sel.Any(r => r.Line.IsMerged) ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+            // Không gộp được ⇒ mờ + lý do trên tooltip (ux-guardrails), thay vì chỉ báo lỗi khi bấm.
+            string why = sel.Count < 2 ? "Select two or more rows to merge."
+                : sel.Select(r => r.PanelData).Distinct().Count() > 1 ? "The selected rows belong to different panels."
+                : sel.Select(r => (r.Line.Kind, r.Line.Dir)).Distinct().Count() > 1 ? "Only lines of the same kind and direction can be merged."
+                : sel.Any(r => !InActiveDrawing(r)) ? "These rows are in another drawing."
+                : null;
+            MnuMerge.IsEnabled = why == null;
+            MnuMerge.ToolTip = why ?? "Combine the selected lines into one line with one name and one number; the others renumber";
+            ToolTipService.SetShowOnDisabled(MnuMerge, true);
+            MnuUnmerge.IsEnabled = sel.Any(r => r.Line.IsMerged);
             var adoc = AcadApp.DocumentManager.MdiActiveDocument;
             int n = _panels.Where(p => adoc != null && p.Db == adoc.Database).Sum(p => NameStore.Deleted(p.PanelKey).Count);
             MnuRestoreDeleted.Header = n > 0 ? $"Restore deleted names ({n})" : "Restore deleted names";

@@ -33,7 +33,7 @@ namespace MCG_3DPanel.UI
         public string AutoName => Line.AutoName;
         public bool IsUserName => Line.IsUserName;
         public string Kind => Line.Kind.ToString();
-        /// <summary>Cột Kind: "Web" / "Web (merged ×3)".</summary>
+        /// <summary>Cột Kind: "Web" / "Web (merged)".</summary>
         public string KindText => Line.IsMerged ? $"{Kind} (merged)" : Kind;
 
         public string NameTip => IsUserName
