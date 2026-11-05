@@ -116,3 +116,4 @@ built in a second drawing.
 > right-click menu and Ctrl+C.
 | H11 | Pick → click empty space and drag left→right over a few solids/lines, then right→left. | Window adds only objects fully inside; Crossing adds objects touching the box. Works in plan and in a rotated 3D view. Diagonal members may be over-selected by Crossing (bounding box). |
 | H12 | During Pick: Shift + click a selected object; Shift + drag a window; type R, click, then A, click. | Shift (or Remove mode) unselects those rows and their highlight; A returns to adding. Shift on a row that is not selected does nothing. |
+| H13 | Turn Ortho (F8) and OSnap (F3) on, set LASTPOINT far from the panel (e.g. draw a line at 0,0). Pick → hold Shift, click empty space, drag. | The window starts exactly where you clicked (no jump to 0,0), corners don't snap; after Enter/Esc, Ortho, OSnap and Shift-override are back as before. |

@@ -35,6 +35,11 @@ namespace MCG_3DPanel.Commands
             if (!string.IsNullOrEmpty(doc.CommandInProgress))
                 return $"Finish or cancel the current command ({doc.CommandInProgress}) first, then click Pick again.";
             IsPicking = true;
+            // Prompt LẤY ĐIỂM: Shift = tạm bật Ortho (TEMPOVERRIDES) ⇒ không có điểm gốc thì khoá theo LASTPOINT (thường 0,0)
+            // ⇒ góc khung nhảy về gốc (lỗi 2026-11-05). Tạm tắt Shift-override, Ortho, OSnap như lệnh chọn của AutoCAD; trả lại
+            // đúng giá trị cũ ở finally.
+            System.Collections.Generic.Dictionary<string, object> saved;
+            using (doc.LockDocument()) saved = SuspendPointAids();   // ORTHOMODE là biến của bản vẽ ⇒ cần khoá khi gọi từ palette
             try
             {
                 try { Autodesk.AutoCAD.Internal.Utils.SetFocusToDwgView(); }
@@ -75,7 +80,41 @@ namespace MCG_3DPanel.Commands
                     hits += onWindow(WindowTest(ed, p.Value, c.Value), remove || ShiftDown());
                 }
             }
-            finally { IsPicking = false; }
+            finally
+            {
+                try { using (doc.LockDocument()) RestorePointAids(saved); }
+                catch (System.Exception ex) { doc.Editor.WriteMessage($"\n[MCG_3DPanel] Could not restore ORTHOMODE / OSMODE / TEMPOVERRIDES after Pick ({ex.Message}) — check them.\n"); }
+                IsPicking = false;
+            }
+        }
+
+        private static readonly string[] AidVars = { "TEMPOVERRIDES", "ORTHOMODE", "OSMODE" };
+
+        /// <summary>Tắt tạm TEMPOVERRIDES=0, ORTHOMODE=0, OSMODE bật bit 16384 (OSnap off). Trả giá trị cũ (biến không đọc được ⇒ bỏ qua).</summary>
+        private static System.Collections.Generic.Dictionary<string, object> SuspendPointAids()
+        {
+            var old = new System.Collections.Generic.Dictionary<string, object>();
+            foreach (var v in AidVars)
+            {
+                try
+                {
+                    object cur = AcadApp.GetSystemVariable(v);
+                    old[v] = cur;
+                    object off = v == "OSMODE" ? (object)(short)(System.Convert.ToInt32(cur) | 16384) : (short)0;
+                    AcadApp.SetSystemVariable(v, off);
+                }
+                catch (System.Exception ex) { System.Diagnostics.Debug.WriteLine($"[MCG_3DPanel] {v}: {ex.Message}"); }   // biến không có trên bản AutoCAD này ⇒ giữ nguyên
+            }
+            return old;
+        }
+
+        private static void RestorePointAids(System.Collections.Generic.Dictionary<string, object> old)
+        {
+            foreach (var kv in old)
+            {
+                try { AcadApp.SetSystemVariable(kv.Key, kv.Value); }
+                catch (System.Exception ex) { AcadApp.DocumentManager.MdiActiveDocument?.Editor.WriteMessage($"\n[MCG_3DPanel] Could not restore {kv.Key} to {kv.Value} after Pick ({ex.Message}).\n"); }
+            }
         }
 
         [System.Runtime.InteropServices.DllImport("user32.dll")]
