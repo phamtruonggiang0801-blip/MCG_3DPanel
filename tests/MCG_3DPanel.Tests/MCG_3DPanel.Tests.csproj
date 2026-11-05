@@ -19,6 +19,7 @@
     <Compile Include="..\..\Models\PanelPosition.cs" Link="PanelPosition.cs" />
     <Compile Include="..\..\Services\Builders\HpEndAtHpGeometry.cs" Link="HpEndAtHpGeometry.cs" />
     <Compile Include="..\..\Services\Builders\TrippingBracketRules.cs" Link="TrippingBracketRules.cs" />
+    <Compile Include="..\..\Services\Builders\WebThicknessChamferGeometry.cs" Link="WebThicknessChamferGeometry.cs" />
   </ItemGroup>
 
   <ItemGroup>
