@@ -169,6 +169,23 @@ namespace MCG_3DPanel.Services
                     }
                 }
 
+                // Vát 1:4 mối nối web thẳng hàng khác chiều dày (kỹ sư 2026-11-05) — SAU khi gộp GE/GB vào web: part
+                // GE/GB đã gộp dùng solid web chứa nó. Xem WebChamferBuilder / skill web-thickness-chamfer.
+                var chamferWebs = new List<(PanelPart part, Solid3d sol)>();
+                foreach (var kv in builtMap)
+                {
+                    var t = kv.Key.Type;
+                    if (t != PartType.Web && t != PartType.ClosedPlate && t != PartType.GirderEnd) continue;
+                    Solid3d s = kv.Value.sol;
+                    if ((s == null || s.IsErased) && kv.Key.JoinWithWeb != null && builtMap.TryGetValue(kv.Key.JoinWithWeb, out var host))
+                        s = host.sol;
+                    if (s == null || s.IsErased) continue;
+                    chamferWebs.Add((kv.Key, s));
+                }
+                var chamfered = WebChamferBuilder.Apply(ctx, chamferWebs);
+                foreach (var kv in builtMap)
+                    if (chamfered.Contains(kv.Value.sol)) FillGeometry(kv.Value.info, kv.Value.sol);   // bbox/thể tích SAU khi vát
+
                 // Collar Plate / LUG B1R — SOLID MỚI (không boolean) hàn phía bụng HP quanh lỗ CO, tại
                 // 2 lỗ gần mỗi junction web-ngang × web-dọc, chỉ khi WebHeight < 300. Xem skill web-hp-cutout §7.
                 foreach (var (collar, tag, ckey) in WebCollarPlateBuilder.BuildCollarPlates(ctx))
