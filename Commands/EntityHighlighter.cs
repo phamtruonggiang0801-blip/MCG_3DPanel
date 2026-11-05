@@ -19,7 +19,9 @@ namespace MCG_3DPanel.Commands
         private static ObjectId[] _last;   // đường dẫn đang sáng — để tắt trước khi bật cái mới
 
         /// <summary>Tắt highlight cũ, bật highlight + zoom entity ở <paramref name="path"/>.</summary>
-        public static void Show(ObjectId[] path, Extents3d bounds)
+        /// <summary>Highlight solid theo <paramref name="path"/>; <paramref name="zoom"/> = true ⇒ zoom vào bbox (nút ⌖ / menu
+        /// Zoom to Object). Chọn dòng trên tab Result chỉ highlight, KHÔNG zoom (kỹ sư 2026-11-05).</summary>
+        public static void Show(ObjectId[] path, Extents3d bounds, bool zoom = true)
         {
             Document doc = AcadApp.DocumentManager.MdiActiveDocument;
             if (doc == null || path == null || path.Length == 0) return;
@@ -31,7 +33,7 @@ namespace MCG_3DPanel.Commands
                     ClearCore(doc);
                     SetHighlight(doc, path, true);
                     _last = path;
-                    ZoomTo(doc.Editor, bounds);
+                    if (zoom) ZoomTo(doc.Editor, bounds);
                 }
                 doc.Editor.UpdateScreen();
             }

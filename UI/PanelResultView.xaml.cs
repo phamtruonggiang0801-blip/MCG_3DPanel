@@ -212,7 +212,7 @@ namespace MCG_3DPanel.UI
 
         // ─── Highlight / zoom ─────────────────────────────────────────────
 
-        private void Show(ResultRow row)
+        private void Show(ResultRow row, bool zoom)
         {
             if (row.Deleted) { SetStatus("Deleted — right-click Restore to bring it back."); return; }
             // Sau Ctrl+Z (undo rebuild) solid của bảng có thể đã bị xoá — không highlight, chỉ báo.
@@ -221,12 +221,12 @@ namespace MCG_3DPanel.UI
                 SetStatus("Solid no longer exists — rebuild or re-run Build 3D.", error: true);
                 return;
             }
-            EntityHighlighter.Show(row.Path, row.Bounds);
+            EntityHighlighter.Show(row.Path, row.Bounds, zoom);
         }
 
         private void GridResult_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (GridResult.SelectedItem is ResultRow row) Show(row);
+            if (GridResult.SelectedItem is ResultRow row) Show(row, zoom: false);   // chỉ highlight — zoom bằng nút ⌖
         }
 
         private void BtnZoomRow_Click(object sender, RoutedEventArgs e)
@@ -234,13 +234,13 @@ namespace MCG_3DPanel.UI
             if ((sender as FrameworkElement)?.DataContext is ResultRow row)
             {
                 GridResult.SelectedItem = row;               // đồng bộ dòng chọn với object đang sáng
-                Show(row);
+                Show(row, zoom: true);
             }
         }
 
         private void MnuZoomTo_Click(object sender, RoutedEventArgs e)
         {
-            if (GridResult.SelectedItem is ResultRow row) Show(row);
+            if (GridResult.SelectedItem is ResultRow row) Show(row, zoom: true);
         }
 
         // ─── Load 3D… (sau khi mở lại bản vẽ) ─────────────────────────────
