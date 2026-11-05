@@ -80,3 +80,21 @@ and T7. Rules cannot guess that, so the user renames it.
 ## Left to the builder
 - Exact UI layout of the tab, reusing Result's styles and helpers.
 - How the build path hands its classified parts to the tab (e.g. keep `cls.Parts` on `BuildResult`).
+
+## Revision 1 (engineer, 2026-11-05, after the first build)
+
+1. **The name carries the size.** Displayed and copied as `<tag> <size>`, e.g. `T1 WEB 374x6.0/FLANGE 100x20.0`,
+   `HL3 HP 120x6.0`, `BS FB 80x6.0`. Size of the **longest** piece only:
+   - Web: `WEB <web height (Input)>x<web thickness (2D)>` + `/FLANGE <flange width (2D)>x<flange thk (Input)>` when a
+     Flange (AM_11 rectangle) lies on the web's centre line (centre within half the flange width + 15 mm). No flange ⇒
+     `WEB 374x6.0`.
+   - HP: the HP chosen on the Input tab, `HP 120x6.0`. FB: `FB <its own height (Result correction) or Input>x<t (2D)>`.
+   - Heights print with no trailing zeros, thicknesses with one decimal.
+   - *My call:* the user edits only the tag; the size is always appended. If the typed text ends with the current
+     size it is stripped.
+2. **Columns:** Panel (several panels only), Name, Kind. Zoom moves to the right-click menu.
+3. **Del Name** (one or many rows): the line is hidden from the table and gets no number; the others renumber.
+   Stored in `MCG3D_NAMES` (deleted piece keys) like names. A line is deleted when any of its pieces is.
+   *My call:* right-click **Restore deleted names (N)** brings back every deleted line of the listed panels.
+4. **Collinear BS / HP are one row even far apart** (e.g. BS 947 + BS 8428 on one line). The 30 mm FB gap rule is
+   dropped; FB still never merges with Web/HP.
