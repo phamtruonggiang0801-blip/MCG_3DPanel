@@ -199,7 +199,7 @@ namespace MCG_3DPanel.Services
                     ctx.Report.Add($"[BracketB] solid {ch} = {tag}");
                 }
 
-                // Tripping Bracket — bracket B dưới HP gần giữa mỗi đoạn dầm có ≥ 3 HP liên tục (kỹ sư 2026-11-04).
+                // Tripping Bracket — bracket B dưới HP, khoảng gối dọc đoạn dầm ≤ 3 × bước stiffener max (kỹ sư 2026-11-05).
                 // Đảo phía trên tab Result qua FlipKey (= DeleteKey). Xem TrippingBracketBuilder / skill tripping-bracket.
                 foreach (var (tb, tag, tkey) in TrippingBracketBuilder.Build(ctx))
                 {

@@ -88,7 +88,7 @@ namespace MCG_3DPanel.UI
             }
 
             var rows = kept.SelectMany(b => ResultRow.From(b)).ToList();
-            foreach (var r in rows) r.KindChanged += OnKindChanged;
+            foreach (var r in rows) { r.KindChanged += OnKindChanged; r.TripChanged += OnTripChanged; }
             GridResult.ItemsSource = rows;
 
             string report = _builds.Select(b => b.ReportPath).FirstOrDefault(p => p != null);
@@ -141,13 +141,13 @@ namespace MCG_3DPanel.UI
             Rebuild(row);
         }
 
-        // ─── Tripping bracket theo HP: Auto → On → Off → Auto ─────────────
+        // ─── Tripping bracket theo HP: dropdown Auto / On / Off ─────────────
 
-        private void BtnTrip_Click(object sender, RoutedEventArgs e)
+        private void OnTripChanged(ResultRow row)
         {
-            if (!((sender as FrameworkElement)?.DataContext is ResultRow row) || !row.CanTrip) return;
+            if (!row.CanTrip) return;
             var c = CorrectionStore.Get(row.PanelKey, row.SourceKey) ?? new PartCorrection { OriginalKind = row.DetectedKind };
-            c.Tripping = c.Tripping == null ? true : c.Tripping == true ? false : (bool?)null;
+            c.Tripping = row.TripChoice == "On" ? true : row.TripChoice == "Off" ? false : (bool?)null;
             CorrectionStore.Set(row.PanelKey, row.SourceKey, c);
             Rebuild(row);
         }

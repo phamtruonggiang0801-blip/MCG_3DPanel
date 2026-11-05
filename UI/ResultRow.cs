@@ -55,11 +55,25 @@ namespace MCG_3DPanel.UI
         }
         public string DirText => CanFlip ? (Flipped ? "flipped" : "") : "";
 
-        // ─── Sniped End từng đầu (HP/FB) — nút bật/tắt trên grid ───
         // ─── Tripping bracket ép theo HP (Auto / On / Off) — kỹ sư 2026-11-05 ───
         public bool CanTrip { get; set; }
-        public string TripLabel { get; set; }
+        private static readonly string[] TripItems = { "Auto", "On", "Off" };
+        public IReadOnlyList<string> TripOptions => TripItems;
+        private string _trip = "Auto";
+        /// <summary>Lựa chọn Tripping (Auto / On / Off). Người dùng đổi ⇒ <see cref="TripChanged"/> (view lưu + rebuild).</summary>
+        public string TripChoice
+        {
+            get => _trip;
+            set
+            {
+                if (_trip == value || string.IsNullOrEmpty(value)) return;
+                _trip = value;
+                Raise(nameof(TripChoice));
+                if (!_loading) TripChanged?.Invoke(this);
+            }
+        }
 
+        // ─── Sniped End từng đầu (HP/FB) — nút bật/tắt trên grid ───
         public bool CanSnip { get; set; }
         public string SnipLoLabel { get; set; }
         public string SnipHiLabel { get; set; }
@@ -74,6 +88,7 @@ namespace MCG_3DPanel.UI
 
         public event PropertyChangedEventHandler PropertyChanged;
         internal event Action<ResultRow> KindChanged;
+        internal event Action<ResultRow> TripChanged;
         private bool _loading = true;
         internal void EndLoad() => _loading = false;
         private void Raise(string n) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
@@ -146,7 +161,7 @@ namespace MCG_3DPanel.UI
                 if (p.Type == PartType.HP)
                 {
                     row.CanTrip = true;
-                    row.TripLabel = corr?.Tripping == true ? "On" : corr?.Tripping == false ? "Off" : "Auto";
+                    row.TripChoice = corr?.Tripping == true ? "On" : corr?.Tripping == false ? "Off" : "Auto";
                 }
             }
             row.EndLoad();

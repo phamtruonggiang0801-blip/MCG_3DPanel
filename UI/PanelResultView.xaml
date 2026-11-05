@@ -35,6 +35,92 @@
                 <Setter Property="ToolTip" Value="{Binding Tooltip}"/>
                 <Setter Property="ToolTipService.ShowOnDisabled" Value="True"/>
             </Style>
+
+            <!-- ── Control TRONG Ô grid: cùng cao 20, không margin (style chung Button 26 + margin dưới 5 /
+                 ComboBox 24 + margin 4 làm nút lệch cao và combo bị bóp mất mũi tên — kỹ sư 2026-11-05). ── -->
+            <Style x:Key="CellButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="Height" Value="20"/>
+                <Setter Property="MinWidth" Value="22"/>
+                <Setter Property="Margin" Value="0"/>
+                <Setter Property="Padding" Value="4,0"/>
+                <Setter Property="FontSize" Value="11"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+            </Style>
+
+            <!-- Nút bật/tắt cùng dáng CellButton; BẬT = nền xanh chữ trắng (rõ hơn ToggleButton mặc định). -->
+            <Style x:Key="CellToggle" TargetType="ToggleButton">
+                <Setter Property="Background" Value="#FFE1E1E1"/>
+                <Setter Property="Foreground" Value="#FF111111"/>
+                <Setter Property="BorderBrush" Value="#FFADADAD"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Height" Value="20"/>
+                <Setter Property="MinWidth" Value="36"/>
+                <Setter Property="Margin" Value="0"/>
+                <Setter Property="Padding" Value="4,0"/>
+                <Setter Property="FontSize" Value="10"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ToggleButton">
+                            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="2"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+                <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="BorderBrush" Value="#FF999999"/>
+                        <Setter Property="Background" Value="#FFD0D0D0"/>
+                    </Trigger>
+                    <Trigger Property="IsChecked" Value="True">
+                        <Setter Property="Background" Value="#FF005E9E"/>
+                        <Setter Property="BorderBrush" Value="#FF004C82"/>
+                        <Setter Property="Foreground" Value="#FFFFFFFF"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="CellCombo" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+                <Setter Property="Height" Value="20"/>
+                <Setter Property="Margin" Value="0"/>
+                <Setter Property="Padding" Value="4,0,2,0"/>
+                <Setter Property="FontSize" Value="11"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="Cursor" Value="Hand"/>
+            </Style>
+
+            <!-- Kind chỉ đọc: chữ xám nhạt hơn để phân biệt với ô có dropdown. -->
+            <Style x:Key="ReadOnlyKindText" TargetType="TextBlock">
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="Margin" Value="5,0"/>
+                <Setter Property="Foreground" Value="#FF555555"/>
+                <Setter Property="ToolTip" Value="This kind is fixed by the tool and cannot be changed here"/>
+            </Style>
+
+            <!-- Ô grid: nội dung căn giữa theo chiều đứng, đệm ngang đều. -->
+            <Style x:Key="ResultCellStyle" TargetType="DataGridCell">
+                <Setter Property="Padding" Value="3,0"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="DataGridCell">
+                            <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter VerticalAlignment="Center"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+                <Style.Triggers>
+                    <Trigger Property="IsSelected" Value="True">
+                        <Setter Property="Background" Value="#FFCCE4F7"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
         </ResourceDictionary>
     </UserControl.Resources>
 
@@ -60,11 +146,13 @@
         </WrapPanel>
 
         <TextBlock Grid.Row="1" Style="{StaticResource HelperTextStyle}" Margin="2,2,2,6"
-                   Text="Select a row to highlight. Change Kind or press ⇄ to correct; the panel rebuilds automatically."/>
+                   Text="Select a row to highlight it. Change Kind or Tripping in the dropdowns, or press ⇄ / the Sniped End buttons; the panel rebuilds automatically. Right-click for Delete / Restore."/>
 
         <!-- ===== Row 2: Bảng kết quả ===== -->
         <DataGrid x:Name="GridResult" Grid.Row="2" Style="{StaticResource PanelDataGridStyle}"
                   RowStyle="{StaticResource ResultRowStyle}"
+                  CellStyle="{StaticResource ResultCellStyle}"
+                  MinRowHeight="24" RowHeaderWidth="0" CanUserResizeRows="False"
                   SelectionMode="Single"
                   SelectionChanged="GridResult_SelectionChanged">
             <DataGrid.ContextMenu>
@@ -96,17 +184,23 @@
                     </DataGridTextColumn.ElementStyle>
                 </DataGridTextColumn>
 
-                <!-- Kind: dropdown (cùng họ) khi sửa được, chữ thường khi chỉ đọc. -->
-                <DataGridTemplateColumn Header="Kind" Width="*" MinWidth="90">
+                <!-- Kind: dropdown (cùng họ) khi sửa được, chữ xám khi chỉ đọc. -->
+                <DataGridTemplateColumn Header="Kind" Width="*" MinWidth="110">
+                    <DataGridTemplateColumn.HeaderStyle>
+                        <Style TargetType="DataGridColumnHeader">
+                            <Setter Property="ToolTip" Value="Structure kind. Rows with a dropdown can be changed; the panel rebuilds automatically."/>
+                        </Style>
+                    </DataGridTemplateColumn.HeaderStyle>
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <Grid>
-                                <TextBlock x:Name="KindText" Text="{Binding Kind}" VerticalAlignment="Center" Margin="2,0"/>
+                                <TextBlock x:Name="KindText" Text="{Binding Kind}" Style="{StaticResource ReadOnlyKindText}"/>
                                 <ComboBox x:Name="KindCombo" ItemsSource="{Binding Options}"
                                           SelectedValuePath="Text" DisplayMemberPath="Text"
                                           SelectedValue="{Binding Kind, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                           ItemContainerStyle="{StaticResource KindItemStyle}"
-                                          Padding="2,0" Height="18" FontSize="11"/>
+                                          Style="{StaticResource CellCombo}"
+                                          ToolTip="Change the kind of this object (rebuilds the panel)"/>
                             </Grid>
                             <DataTemplate.Triggers>
                                 <DataTrigger Binding="{Binding KindEditable}" Value="True">
@@ -123,56 +217,59 @@
 
                 <DataGridTextColumn Header="Size" Binding="{Binding Size}" Width="Auto" IsReadOnly="True"/>
 
-                <!-- Dir: ⇄ đảo bụng HP / hướng gấp Bracket — chỉ hiện ở dòng CanFlip. -->
-                <DataGridTemplateColumn Header="Dir" Width="Auto">
+                <!-- Dir: ⇄ đảo bụng HP / hướng gấp Bracket / phía Tripping B — chỉ hiện ở dòng CanFlip. -->
+                <DataGridTemplateColumn Header="Dir" Width="Auto" MinWidth="34">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <StackPanel Orientation="Horizontal"
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
                                         Visibility="{Binding CanFlip, Converter={StaticResource BoolToVis}}">
-                                <Button Content="⇄" Width="20" Height="18" Margin="0" Padding="0" FontSize="11"
-                                        ToolTip="Flip direction (HP belly / bracket fold) and rebuild" Click="BtnFlip_Click"/>
-                                <TextBlock Text="{Binding DirText}" Margin="3,0,0,0" VerticalAlignment="Center"/>
+                                <Button Content="⇄" Style="{StaticResource CellButton}" Width="24" Padding="0"
+                                        ToolTip="Flip direction (HP belly / bracket fold / tripping bracket side) and rebuild"
+                                        Click="BtnFlip_Click"/>
+                                <TextBlock Text="{Binding DirText}" Margin="4,0,0,0" VerticalAlignment="Center"
+                                           Foreground="#FF0050C8" FontStyle="Italic"/>
                             </StackPanel>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
 
-                <!-- Sniped End từng đầu (HP/FB): nút sáng = đầu đó đang vát. Rê chuột ⇒ đánh dấu đầu trên bản vẽ;
+                <!-- Sniped End từng đầu (HP/FB): nút XANH = đầu đó đang vát. Rê chuột ⇒ đánh dấu đầu trên bản vẽ;
                      bấm ⇒ đổi vát/không vát rồi tự rebuild. -->
                 <DataGridTemplateColumn Header="Sniped End" Width="Auto">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <StackPanel Orientation="Horizontal"
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
                                         Visibility="{Binding CanSnip, Converter={StaticResource BoolToVis}}">
                                 <ToggleButton Content="{Binding SnipLoLabel}" IsChecked="{Binding SnipLoOn, Mode=OneWay}"
-                                              Tag="lo" Height="18" MinWidth="34" Padding="2,0" FontSize="10" Margin="0,0,2,0"
-                                              ToolTip="Sniped End at this end (on = sniped). Click to toggle and rebuild."
+                                              Tag="lo" Style="{StaticResource CellToggle}" Margin="0,0,3,0"
+                                              ToolTip="Sniped End at this end (blue = sniped). Click to toggle and rebuild."
                                               Click="BtnSnip_Click" MouseEnter="BtnSnip_MouseEnter" MouseLeave="BtnSnip_MouseLeave"/>
                                 <ToggleButton Content="{Binding SnipHiLabel}" IsChecked="{Binding SnipHiOn, Mode=OneWay}"
-                                              Tag="hi" Height="18" MinWidth="34" Padding="2,0" FontSize="10"
-                                              ToolTip="Sniped End at this end (on = sniped). Click to toggle and rebuild."
+                                              Tag="hi" Style="{StaticResource CellToggle}"
+                                              ToolTip="Sniped End at this end (blue = sniped). Click to toggle and rebuild."
                                               Click="BtnSnip_Click" MouseEnter="BtnSnip_MouseEnter" MouseLeave="BtnSnip_MouseLeave"/>
                             </StackPanel>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
 
-                <!-- Tripping bracket theo HP (kỹ sư 2026-11-05): Auto → On (mọi dầm HP xuyên qua) → Off; bấm ⇒ rebuild. -->
-                <DataGridTemplateColumn Header="Tripping" Width="Auto">
+                <!-- Tripping bracket theo HP (kỹ sư 2026-11-05): dropdown Auto / On / Off — chọn ⇒ rebuild 1 lần. -->
+                <DataGridTemplateColumn Header="Tripping" Width="Auto" MinWidth="64">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <Button Content="{Binding TripLabel}" Height="18" MinWidth="34" Padding="2,0" FontSize="10"
-                                    Visibility="{Binding CanTrip, Converter={StaticResource BoolToVis}}"
-                                    ToolTip="Tripping bracket on this HP: Auto → On (every beam it passes through) → Off. Click to change and rebuild."
-                                    Click="BtnTrip_Click"/>
+                            <ComboBox ItemsSource="{Binding TripOptions}"
+                                      SelectedItem="{Binding TripChoice, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      Style="{StaticResource CellCombo}" MinWidth="58"
+                                      Visibility="{Binding CanTrip, Converter={StaticResource BoolToVis}}"
+                                      ToolTip="Tripping bracket on this HP. Auto = by the 3 × max stiffener spacing rule; On = at every beam it passes through; Off = none. Rebuilds the panel."/>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
 
-                <DataGridTemplateColumn Header="" Width="26">
+                <DataGridTemplateColumn Header="" Width="30">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <Button Content="⌖" Width="20" Height="18" Margin="0" Padding="0" FontSize="12"
+                            <Button Content="⌖" Style="{StaticResource CellButton}" Width="24" Padding="0" FontSize="12"
                                     ToolTip="Zoom to and highlight this object" Click="BtnZoomRow_Click"/>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
