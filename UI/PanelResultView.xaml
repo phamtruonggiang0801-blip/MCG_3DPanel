@@ -29,13 +29,6 @@
                 </Style.Triggers>
             </Style>
 
-            <!-- Mục dropdown Kind: mờ + tooltip khi không áp được (vd không có mốc toe GB). -->
-            <Style x:Key="KindItemStyle" TargetType="ComboBoxItem">
-                <Setter Property="IsEnabled" Value="{Binding Enabled}"/>
-                <Setter Property="ToolTip" Value="{Binding Tooltip}"/>
-                <Setter Property="ToolTipService.ShowOnDisabled" Value="True"/>
-            </Style>
-
             <!-- ── Control TRONG Ô grid: cùng cao 20, không margin (style chung Button 26 + margin dưới 5 /
                  ComboBox 24 + margin 4 làm nút lệch cao và combo bị bóp mất mũi tên — kỹ sư 2026-11-05). ── -->
             <Style x:Key="CellButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
@@ -94,14 +87,6 @@
                 <Setter Property="Cursor" Value="Hand"/>
             </Style>
 
-            <!-- Kind chỉ đọc: chữ xám nhạt hơn để phân biệt với ô có dropdown. -->
-            <Style x:Key="ReadOnlyKindText" TargetType="TextBlock">
-                <Setter Property="VerticalAlignment" Value="Center"/>
-                <Setter Property="Margin" Value="5,0"/>
-                <Setter Property="Foreground" Value="#FF555555"/>
-                <Setter Property="ToolTip" Value="This kind is fixed by the tool and cannot be changed here"/>
-            </Style>
-
             <!-- Ô grid: nội dung căn giữa theo chiều đứng, đệm ngang đều. -->
             <Style x:Key="ResultCellStyle" TargetType="DataGridCell">
                 <Setter Property="Padding" Value="3,0"/>
@@ -146,7 +131,7 @@
         </WrapPanel>
 
         <TextBlock Grid.Row="1" Style="{StaticResource HelperTextStyle}" Margin="2,2,2,6"
-                   Text="Select a row to highlight it. Change Kind or Tripping in the dropdowns, or press ⇄ / the Sniped End buttons; the panel rebuilds automatically. Right-click for Delete / Restore."/>
+                   Text="Select a row to highlight it. Use the Tripping dropdown, ⇄ or the Sniped End buttons to correct; the panel rebuilds automatically. Right-click for Delete / Restore."/>
 
         <!-- ===== Row 2: Bảng kết quả ===== -->
         <DataGrid x:Name="GridResult" Grid.Row="2" Style="{StaticResource PanelDataGridStyle}"
@@ -184,36 +169,8 @@
                     </DataGridTextColumn.ElementStyle>
                 </DataGridTextColumn>
 
-                <!-- Kind: dropdown (cùng họ) khi sửa được, chữ xám khi chỉ đọc. -->
-                <DataGridTemplateColumn Header="Kind" Width="*" MinWidth="110">
-                    <DataGridTemplateColumn.HeaderStyle>
-                        <Style TargetType="DataGridColumnHeader">
-                            <Setter Property="ToolTip" Value="Structure kind. Rows with a dropdown can be changed; the panel rebuilds automatically."/>
-                        </Style>
-                    </DataGridTemplateColumn.HeaderStyle>
-                    <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate>
-                            <Grid>
-                                <TextBlock x:Name="KindText" Text="{Binding Kind}" Style="{StaticResource ReadOnlyKindText}"/>
-                                <ComboBox x:Name="KindCombo" ItemsSource="{Binding Options}"
-                                          SelectedValuePath="Text" DisplayMemberPath="Text"
-                                          SelectedValue="{Binding Kind, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                          ItemContainerStyle="{StaticResource KindItemStyle}"
-                                          Style="{StaticResource CellCombo}"
-                                          ToolTip="Change the kind of this object (rebuilds the panel)"/>
-                            </Grid>
-                            <DataTemplate.Triggers>
-                                <DataTrigger Binding="{Binding KindEditable}" Value="True">
-                                    <Setter TargetName="KindText" Property="Visibility" Value="Collapsed"/>
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding KindEditable}" Value="False">
-                                    <Setter TargetName="KindCombo" Property="Visibility" Value="Collapsed"/>
-                                    <Setter TargetName="KindText" Property="Visibility" Value="Visible"/>
-                                </DataTrigger>
-                            </DataTemplate.Triggers>
-                        </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
+                <!-- Kind: CHỈ ĐỌC (kỹ sư 2026-11-05 — người dùng không cần sửa Kind trên tab Result). -->
+                <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="*" MinWidth="110" IsReadOnly="True"/>
 
                 <DataGridTextColumn Header="Size" Binding="{Binding Size}" Width="Auto" IsReadOnly="True"/>
 
