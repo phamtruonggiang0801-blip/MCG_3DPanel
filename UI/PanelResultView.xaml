@@ -157,6 +157,18 @@
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
 
+                <!-- Tripping bracket theo HP (kỹ sư 2026-11-05): Auto → On (mọi dầm HP xuyên qua) → Off; bấm ⇒ rebuild. -->
+                <DataGridTemplateColumn Header="Tripping" Width="Auto">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Button Content="{Binding TripLabel}" Height="18" MinWidth="34" Padding="2,0" FontSize="10"
+                                    Visibility="{Binding CanTrip, Converter={StaticResource BoolToVis}}"
+                                    ToolTip="Tripping bracket on this HP: Auto → On (every beam it passes through) → Off. Click to change and rebuild."
+                                    Click="BtnTrip_Click"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
                 <DataGridTemplateColumn Header="" Width="26">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>

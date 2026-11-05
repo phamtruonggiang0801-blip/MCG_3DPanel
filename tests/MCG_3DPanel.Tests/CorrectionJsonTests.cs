@@ -31,6 +31,22 @@ namespace MCG_3DPanel.Tests
             Assert.Equal(new HashSet<string>(deleted), d2);
         }
 
+        // Tripping bracket ép theo HP (kỹ sư 2026-11-05): null = Auto, true = On, false = Off.
+        [Fact]
+        public void RoundTrip_Tripping()
+        {
+            var parts = new Dictionary<string, PartCorrection>
+            {
+                ["218DA#0"] = new PartCorrection { Tripping = true },
+                ["218E4#0"] = new PartCorrection { Tripping = false },
+            };
+            CorrectionJson.Deserialize(CorrectionJson.Serialize(parts, new string[0]), out var p2, out _);
+            Assert.True(p2["218DA#0"].Tripping);
+            Assert.False(p2["218E4#0"].Tripping);
+            Assert.False(new PartCorrection { Tripping = false }.IsEmpty);
+            Assert.True(new PartCorrection().IsEmpty);
+        }
+
         [Theory]
         [InlineData(null)]
         [InlineData("")]

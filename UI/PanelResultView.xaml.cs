@@ -141,6 +141,17 @@ namespace MCG_3DPanel.UI
             Rebuild(row);
         }
 
+        // ─── Tripping bracket theo HP: Auto → On → Off → Auto ─────────────
+
+        private void BtnTrip_Click(object sender, RoutedEventArgs e)
+        {
+            if (!((sender as FrameworkElement)?.DataContext is ResultRow row) || !row.CanTrip) return;
+            var c = CorrectionStore.Get(row.PanelKey, row.SourceKey) ?? new PartCorrection { OriginalKind = row.DetectedKind };
+            c.Tripping = c.Tripping == null ? true : c.Tripping == true ? false : (bool?)null;
+            CorrectionStore.Set(row.PanelKey, row.SourceKey, c);
+            Rebuild(row);
+        }
+
         // ─── Sniped End từng đầu ──────────────────────────────────────────
 
         private void BtnSnip_Click(object sender, RoutedEventArgs e)

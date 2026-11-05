@@ -16,8 +16,11 @@ namespace MCG_3DPanel.Services.Corrections
         /// null = để tool tự quyết; true = vát; false = để vuông (End 30 cũng không ép bracket B).</summary>
         public bool? SnipLo { get; set; }
         public bool? SnipHi { get; set; }
+        /// <summary>Tripping bracket ép theo HP (kỹ sư 2026-11-05): null = Auto (luật 3 × bước max); true = đặt ở
+        /// MỌI giao điểm HP xuyên web dầm có flange; false = bỏ hết bracket trên HP này. Không tính lại Auto.</summary>
+        public bool? Tripping { get; set; }
 
         [System.Text.Json.Serialization.JsonIgnore]
-        public bool IsEmpty => string.IsNullOrWhiteSpace(Kind) && !FlipDir && SnipLo == null && SnipHi == null;
+        public bool IsEmpty => string.IsNullOrWhiteSpace(Kind) && !FlipDir && SnipLo == null && SnipHi == null && Tripping == null;
     }
 }

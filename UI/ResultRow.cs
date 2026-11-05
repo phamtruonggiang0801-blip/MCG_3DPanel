@@ -56,6 +56,10 @@ namespace MCG_3DPanel.UI
         public string DirText => CanFlip ? (Flipped ? "flipped" : "") : "";
 
         // ─── Sniped End từng đầu (HP/FB) — nút bật/tắt trên grid ───
+        // ─── Tripping bracket ép theo HP (Auto / On / Off) — kỹ sư 2026-11-05 ───
+        public bool CanTrip { get; set; }
+        public string TripLabel { get; set; }
+
         public bool CanSnip { get; set; }
         public string SnipLoLabel { get; set; }
         public string SnipHiLabel { get; set; }
@@ -139,6 +143,11 @@ namespace MCG_3DPanel.UI
                 row.SnipHiOn = p.SnipHi;
                 row.EndLo = aIsLo ? a : b;
                 row.EndHi = aIsLo ? b : a;
+                if (p.Type == PartType.HP)
+                {
+                    row.CanTrip = true;
+                    row.TripLabel = corr?.Tripping == true ? "On" : corr?.Tripping == false ? "Off" : "Auto";
+                }
             }
             row.EndLoad();
             return row;
