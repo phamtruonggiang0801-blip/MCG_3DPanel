@@ -68,7 +68,10 @@ namespace MCG_3DPanel.Naming
         public static IReadOnlyList<NamingLine> Lines(IEnumerable<NamingPiece> pieces, PanelPosition pos,
             ICollection<string> deleted = null)
         {
-            var all = (pieces ?? Enumerable.Empty<NamingPiece>()).Where(p => p != null).ToList();
+            // Đoạn đã Del Name bị bỏ TRƯỚC khi gom tuyến — 1 đoạn đã xoá nhập vào tuyến khác (sửa Kind, vẽ lại 2D) không
+            // kéo theo ẩn tuyến đó (review R1 #3).
+            var all = (pieces ?? Enumerable.Empty<NamingPiece>())
+                .Where(p => p != null && (deleted == null || p.Key == null || !deleted.Contains(p.Key))).ToList();
             var flanges = all.Where(p => p.Kind == NamingKind.Flange).ToList();
             var lines = new List<NamingLine>();
 
@@ -86,8 +89,6 @@ namespace MCG_3DPanel.Naming
                 foreach (var cl in Cluster(all.Where(p => p.Kind == NamingKind.FB && p.Dir == dir)))
                     lines.Add(Make(NamingKind.FB, dir, cl, cl, flanges));
             }
-            if (deleted != null && deleted.Count > 0)
-                lines.RemoveAll(l => l.Pieces.Any(p => p.Key != null && deleted.Contains(p.Key)));
 
             bool lDesc = pos == PanelPosition.Starboard;
             var ordered = new List<NamingLine>();
@@ -184,6 +185,9 @@ namespace MCG_3DPanel.Naming
             string t = (typed ?? "").Trim();
             if (!string.IsNullOrEmpty(spec) && t.EndsWith(spec, StringComparison.OrdinalIgnoreCase))
                 t = t.Substring(0, t.Length - spec.Length).Trim();
+            // Gõ quy cách KHÁC / xoá dở (review R1 #1): cắt từ token "WEB|HP|FB <số>" đầu tiên — quy cách luôn tự sinh.
+            t = System.Text.RegularExpressions.Regex.Replace(t, @"(?:^|\s+)(?:WEB|HP|FB)\s+\d.*$", "",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
             return t;
         }
     }

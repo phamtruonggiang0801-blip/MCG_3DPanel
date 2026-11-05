@@ -44,9 +44,9 @@ Nguồn: `CAS.dump.json` panel 7D-16C — người vẽ ghi Text cạnh mặt c�
 ## Revision 1 (kỹ sư 2026-11-05)
 - Tên hiển thị/xuất = `<tag> <quy cách>` của đoạn DÀI NHẤT: `T1 WEB 374x6.0/FLANGE 100x20.0` (web cao Input × dày 2D;
   flange rộng 2D × dày Input, flange = Flange AM_11 có tâm trong nửa bề rộng + 15 quanh đường tâm web), `HL1 HP 120x6.0`
-  (HP tab Input), `BS FB 80x6.0` (FB cao riêng/Input × dày 2D). Người dùng chỉ sửa tag (`StripSpec`).
+  (HP tab Input), `BS FB 80x6.0` (FB cao riêng/Input × dày 2D). Người dùng chỉ sửa tag (`StripSpec` cắt từ token `WEB|HP|FB <số>`). Panel Select panel lấy lại quy cách theo tab Input mỗi lần mở tab Naming.
 - Grid chỉ Panel / Name / Kind; Zoom qua chuột phải.
-- **Del Name**: ẩn tuyến + đánh số lại; lưu `Deleted` (SourceKey) trong `MCG3D_NAMES`; tuyến có BẤT KỲ đoạn nào bị xoá
-  là bị xoá. "Restore deleted names (N)" trả lại mọi tuyến của các panel thuộc drawing đang mở. Đây cũng là cách xử lý
+- **Del Name**: ẩn tuyến + đánh số lại; lưu `Deleted` (SourceKey MỌI đoạn) trong `MCG3D_NAMES`; đoạn đã xoá bị BỎ TRƯỚC khi gom
+  tuyến (đoạn xoá nhập vào tuyến khác không ẩn tuyến đó). "Restore deleted names (N)" trả lại mọi tuyến của các panel thuộc drawing đang mở. Đây cũng là cách xử lý
   đoạn ngắn lạc làm dịch số.
 - BS/HP thẳng hàng cách xa vẫn 1 dòng (bỏ luật khe 30 mm của FB).

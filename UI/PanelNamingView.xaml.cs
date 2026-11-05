@@ -142,6 +142,26 @@ namespace MCG_3DPanel.UI
 
         private void RestoreSummary() => SetStatus(Summary());
 
+        /// <summary>Mở lại tab Naming: panel chọn bằng Select panel (chưa build) lấy lại quy cách theo tab Input HIỆN TẠI
+        /// (review R1 #2 — tên không giữ số cũ sau khi sửa tab Input). Panel từ Build giữ thông số của lần build.</summary>
+        public void RefreshSizes()
+        {
+            var twoD = _panels.Where(p => p.Build == null).ToList();
+            if (twoD.Count == 0 || InputProvider == null) return;
+            if (!InputProvider(out var input, out string err))
+            {
+                SetStatus($"Sizes in the names may be out of date — fix the Input tab: {err}", error: true);
+                return;
+            }
+            var old = twoD[0].Input;
+            if (old != null && old.WebHeight == input.WebHeight && old.FlangeThickness == input.FlangeThickness
+                && old.HpSpec == input.HpSpec && old.FlatBarHeight == input.FlatBarHeight) return;
+            var keep = Selected.Select(r => r.Key).ToList();
+            foreach (var p in twoD) { NamingSource.ApplySizes(p, input); p.Recompute(); }
+            Rebind(keep);
+            SetStatus("Sizes updated from the Input tab.  ·  " + Summary());
+        }
+
         private void CmbPosition_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_suspendPosition || _panels == null || _panels.Count == 0 || TxtStatus == null) return;
@@ -274,12 +294,14 @@ namespace MCG_3DPanel.UI
         {
             var adoc = AcadApp.DocumentManager.MdiActiveDocument;
             var panels = _panels.Where(p => adoc != null && p.Db == adoc.Database).ToList();
+            int before = panels.Sum(p => p.Lines.Count);
             int n = panels.Sum(p => NameStore.RestoreAll(p.PanelKey));
             if (n == 0) { SetStatus("Nothing to restore in this drawing."); return; }
             var errors = SaveAll(panels);
             foreach (var p in panels) p.Recompute();
             Rebind(Selected.Select(r => r.Key).ToList());
-            Report($"Restored {n} deleted piece name(s) — renumbered", errors);
+            int back = panels.Sum(p => p.Lines.Count) - before;   // đếm TUYẾN hiện lại, không đếm đoạn (review R1)
+            Report(back > 0 ? $"Restored {back} line(s) — renumbered" : "Restored — the deleted pieces no longer exist in this panel", errors);
         }
 
         // ─── Vùng chọn / drawing ──────────────────────────────────────────

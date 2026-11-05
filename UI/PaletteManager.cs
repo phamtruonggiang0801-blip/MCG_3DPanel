@@ -79,7 +79,11 @@ namespace MCG_3DPanel.UI
                     if (_activeTab == "Naming") { _result.OnDocumentActivated(db); _naming.OnDocumentActivated(db); }
                     else { _naming.OnDocumentActivated(db); _result.OnDocumentActivated(db); }
                 };
-                _ps.PaletteActivated += (s, e) => _activeTab = e.Activated?.Name ?? _activeTab;
+                _ps.PaletteActivated += (s, e) =>
+                {
+                    _activeTab = e.Activated?.Name ?? _activeTab;
+                    if (_activeTab == "Naming") _naming.RefreshSizes();   // quy cách theo tab Input hiện tại
+                };
                 _ps.AddVisual("Input", _input);
                 _ps.AddVisual("Result", _result);
                 _ps.AddVisual("Naming", _naming);

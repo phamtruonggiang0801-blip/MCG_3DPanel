@@ -26,6 +26,8 @@ namespace MCG_3DPanel.Naming
         public bool From3D { get; set; }
         /// <summary>BuildResult gốc (panel từ Build) — để thay đúng panel khi rebuild.</summary>
         public BuildResult Build { get; set; }
+        /// <summary>Thông số đã dùng cho quy cách trong tên.</summary>
+        public PanelInput Input { get; set; }
 
         /// <summary>Tính lại tuyến + tên (tự sinh, rồi tên người dùng đã lưu).</summary>
         public void Recompute()
@@ -116,9 +118,6 @@ namespace MCG_3DPanel.Naming
         private static void Fill(NamingPanel p, IEnumerable<PanelPart> parts, Matrix3d toBlock, PanelInput input,
             System.Func<PanelPart, (ObjectId[] path, Extents3d? bounds)> pathOf)
         {
-            input = input ?? new PanelInput();
-            PanelInput.TryParseSpec(input.HpSpec, out double hpH, out double hpT);
-            var corr = CorrectionStore.For(p.PanelKey);
             foreach (var part in parts ?? Enumerable.Empty<PanelPart>())
             {
                 var kind = KindOf(part.Type);
@@ -134,16 +133,6 @@ namespace MCG_3DPanel.Naming
                     X0 = a.X, Y0 = a.Y, X1 = b.X, Y1 = b.Y,
                     Thickness = part.FootprintThickness,
                 };
-                switch (kind.Value)
-                {
-                    case NamingKind.Web: piece.Height = input.WebHeight; break;
-                    case NamingKind.Flange: piece.Height = input.FlangeThickness; break;
-                    case NamingKind.HP: piece.Height = hpH; piece.Thickness = hpT; break;
-                    case NamingKind.FB:
-                        piece.Height = part.SourceKey != null && corr.TryGetValue(part.SourceKey, out var c)
-                                       && c?.FbHeight is double h && h > 0 ? h : input.FlatBarHeight;
-                        break;
-                }
                 p.Pieces.Add(piece);
                 if (kind == NamingKind.Flange) continue;   // flange không có dòng riêng ⇒ không cần highlight
                 var (path, bounds) = pathOf(part);
@@ -154,6 +143,30 @@ namespace MCG_3DPanel.Naming
                 {
                     if (p.Bounds.TryGetValue(part.SourceKey, out var old)) { old.AddExtents(e); p.Bounds[part.SourceKey] = old; }
                     else p.Bounds[part.SourceKey] = e;
+                }
+            }
+            ApplySizes(p, input);
+        }
+
+        /// <summary>Gán quy cách theo <paramref name="input"/> (gọi lại khi tab Input đổi — review R1 #2). HP: quy cách
+        /// Input (cả chiều dày); Web/FB/Flange: chiều dày/bề rộng giữ theo 2D.</summary>
+        public static void ApplySizes(NamingPanel p, PanelInput input)
+        {
+            input = input ?? new PanelInput();
+            p.Input = input;
+            PanelInput.TryParseSpec(input.HpSpec, out double hpH, out double hpT);
+            var corr = CorrectionStore.For(p.PanelKey);
+            foreach (var piece in p.Pieces)
+            {
+                switch (piece.Kind)
+                {
+                    case NamingKind.Web: piece.Height = input.WebHeight; break;
+                    case NamingKind.Flange: piece.Height = input.FlangeThickness; break;
+                    case NamingKind.HP: piece.Height = hpH; piece.Thickness = hpT; break;
+                    case NamingKind.FB:
+                        piece.Height = corr.TryGetValue(piece.Key, out var c) && c?.FbHeight is double h && h > 0
+                            ? h : input.FlatBarHeight;
+                        break;
                 }
             }
         }

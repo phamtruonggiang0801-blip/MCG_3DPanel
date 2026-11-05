@@ -151,10 +151,23 @@ namespace MCG_3DPanel.Tests
         [Fact]
         public void Deleted_HiddenAndRenumbered()
         {
-            var l = StructureNaming.Lines(Cas7D16C(), PanelPosition.Center, new HashSet<string> { "T3a" });
+            // Del Name xoá MỌI đoạn của tuyến (NameStore.DeleteLine)
+            var pieces = Cas7D16C();
+            var t3 = Line(StructureNaming.Lines(pieces, PanelPosition.Center), "T3").Pieces.Select(p => p.Key).ToList();
+            var l = StructureNaming.Lines(pieces, PanelPosition.Center, new HashSet<string>(t3));
             Assert.Equal(new[] { "T1", "T2", "T3", "T4", "T5", "T6", "T7" }, Names(l, NamingKind.Web, NamingDir.T));
             Assert.Equal(6363, Line(l, "T3").Center, 0);   // T4 cũ → T3
             Assert.DoesNotContain(l, x => x.Pieces.Any(p => p.Key == "T3a"));
+        }
+
+        [Fact]
+        public void Deleted_PieceJoiningAnotherLine_DoesNotHideIt()   // review R1 #3
+        {
+            var l = StructureNaming.Lines(new[]
+            {
+                Web(VY(NamingKind.Web, 1000, 0, 5000, key: "keep")), Web(VY(NamingKind.Web, 1005, 6000, 6300, key: "stub")),
+            }, PanelPosition.Center, new HashSet<string> { "stub" });
+            Assert.Equal("keep", l.Single().Pieces.Single().Key);
         }
 
         [Theory]
@@ -162,6 +175,12 @@ namespace MCG_3DPanel.Tests
         [InlineData("T6a", "T6a")]
         [InlineData("  T6a  WEB 374x6.0 ", "T6a")]
         [InlineData("WEB 374x6.0", "")]
+        [InlineData("T6a WEB 400x8.0", "T6a")]                 // review R1 #1: gõ quy cách khác ⇒ vẫn chỉ giữ tên
+        [InlineData("T6a WEB 374x6.0/FLANGE", "T6a")]          // xoá dở phần flange
+        [InlineData("T6a web 374x6", "T6a")]
+        [InlineData("HL3 HP 120x6", "HL3")]
+        [InlineData("BS FB 80x6.0", "BS")]
+        [InlineData("WEBX1", "WEBX1")]                          // không phải token quy cách
         public void StripSpec_KeepsTagOnly(string typed, string tag)
             => Assert.Equal(tag, StructureNaming.StripSpec(typed, "WEB 374x6.0"));
 
