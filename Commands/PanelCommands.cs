@@ -165,6 +165,7 @@ namespace MCG_3DPanel.Commands
             cls.DeletedKeys = CorrectionStore.Deleted(panelKey);
             BuildResult build = new Build3DService().Build(db, cls, input, position);
             build.PanelBlockName = cls.PanelBlockName;
+            build.ClassifiedParts.AddRange(cls.Parts);
             build.SourceRefId = src2D;
             build.SourceBtrId = btr2D;
             build.SourceTransform = xform;
@@ -491,6 +492,46 @@ namespace MCG_3DPanel.Commands
                 catch { }
                 tr.Commit();
             }
+        }
+
+        /// <summary>
+        /// Nút "Select panel…" (tab Naming): chọn block 2D → CHỈ phân loại (kèm correction đã lưu), không dựng 3D.
+        /// Panel lỗi không chặn panel khác — lỗi gom vào <paramref name="errors"/> (tab hiện lên thanh trạng thái).
+        /// Trả null nếu huỷ chọn.
+        /// </summary>
+        public static List<MCG_3DPanel.Naming.NamingPanel> ClassifyOnly(PanelPosition position, List<string> errors)
+        {
+            if (!TryPickPanels(out Document doc, out ObjectId[] ids)) return null;
+            Database db = doc.Database;
+            var panels = new List<MCG_3DPanel.Naming.NamingPanel>();
+            using (doc.LockDocument())
+            {
+                foreach (ObjectId id in ids)
+                {
+                    try
+                    {
+                        string panelKey;
+                        using (Transaction tr = db.TransactionManager.StartTransaction())
+                        {
+                            var br = (BlockReference)tr.GetObject(id, OpenMode.ForRead);
+                            CorrectionStore.EnsureLoaded(tr, br.BlockTableRecord);
+                            panelKey = CorrectionStore.PanelKey(br.BlockTableRecord);
+                            tr.Commit();
+                        }
+                        var cls = new ClassificationService().Classify(id, position, CorrectionStore.For(panelKey));
+                        using (Transaction tr = db.TransactionManager.StartTransaction())
+                        {
+                            panels.Add(MCG_3DPanel.Naming.NamingSource.FromBlock(tr, id, position, cls));
+                            tr.Commit();
+                        }
+                    }
+                    catch (System.Exception ex)
+                    {
+                        errors?.Add($"Panel {id.Handle}: {ex.Message}");
+                    }
+                }
+            }
+            return panels;
         }
 
         /// <summary>Quét chọn (click / window / crossing) 1 hoặc nhiều Block Reference — filter INSERT nên
