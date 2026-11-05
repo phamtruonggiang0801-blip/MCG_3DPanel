@@ -22,47 +22,18 @@ namespace MCG_3DPanel.UI
     public partial class PanelNamingView : UserControl
     {
         private List<NamingPanel> _panels = new List<NamingPanel>();
-        private bool _suspendPosition;
 
-        public delegate bool TryInput(out PanelInput input, out string error);
-        /// <summary>Thông số tab Input (PaletteManager gán) — cho nút Select panel.</summary>
-        public TryInput InputProvider { get; set; }
+        /// <summary>Position của tab Input (PaletteManager gán) — kỹ sư 2026-11-05: tab Naming không có ô Position riêng.</summary>
+        public Func<PanelPosition> PositionProvider { get; set; }
 
         public PanelNamingView()
         {
             InitializeComponent();
         }
 
-        private PanelPosition Position => (PanelPosition)Math.Max(0, CmbPosition.SelectedIndex);
+        private PanelPosition Position => PositionProvider?.Invoke() ?? PanelPosition.Center;
 
-        private void SetPositionSilently(PanelPosition pos)
-        {
-            _suspendPosition = true;
-            try { CmbPosition.SelectedIndex = (int)pos; }
-            finally { _suspendPosition = false; }
-        }
-
-        // ─── Nạp panel ────────────────────────────────────────────────────
-
-        private void BtnSelect_Click(object sender, RoutedEventArgs e)
-        {
-            if (AcadApp.DocumentManager.MdiActiveDocument == null) { SetStatus("No active drawing.", error: true); return; }
-            // Quy cách WEB/FLANGE/HP/FB lấy theo tab Input (revision 1) — thông số sai thì báo, không đoán.
-            PanelInput input = null;
-            string inputErr = null;
-            if (InputProvider == null || !InputProvider(out input, out inputErr))
-            {
-                SetStatus($"Check the Input tab first (sizes in the names come from it): {inputErr ?? "no input"}", error: true);
-                return;
-            }
-            SetStatus("Select one or more 2D panel blocks to name…");
-            var errors = new List<string>();
-            var panels = PanelCommands.ClassifyOnly(Position, input, errors);
-            if (panels == null) { SetStatus("Selection cancelled.", error: true); return; }
-            SetPanels(panels, null);
-            if (errors.Count > 0)
-                SetStatus($"{errors.Count} panel(s) could not be classified: {string.Join(" · ", errors)}", error: true);
-        }
+        // ─── Nạp panel (sau Build 3D / rebuild / Load 3D) ─────────────────
 
         /// <summary>Sau Build 3D (tab Input): nạp các panel vừa build (thay cả bảng, giống tab Result).</summary>
         public void Load(List<BuildResult> builds)
@@ -75,11 +46,12 @@ namespace MCG_3DPanel.UI
                 try
                 {
                     var p = WithDb(b.SourceBtrId.Database, tr => NamingSource.FromBuild(tr, b));
-                    if (p != null) panels.Add(p);
+                    if (p == null) continue;
+                    if (p.Position != Position) { p.Position = Position; p.Recompute(); }
+                    panels.Add(p);
                 }
                 catch (System.Exception ex) { errors.Add($"{b.PanelBlockName}: {ex.Message}"); }
             }
-            if (panels.Count > 0) SetPositionSilently(panels[0].Position);
             SetPanels(panels, null);
             if (errors.Count > 0) SetStatus($"{errors.Count} panel(s) could not be named: {string.Join(" · ", errors)}", error: true);
         }
@@ -133,42 +105,25 @@ namespace MCG_3DPanel.UI
         private string Summary()
         {
             var rows = Rows;
-            if (_panels.Count == 0) return "No panel yet. Click Select panel… or run Build 3D.";
+            if (_panels.Count == 0) return "No panel yet. Run Build 3D (Input tab) or Load 3D (Result tab).";
             int user = rows.Count(r => r.IsUserName);
             string where = _panels.Count > 1 ? $"{_panels.Count} panels" : _panels[0].PanelName;
             var by = rows.GroupBy(r => r.Kind).Select(g => $"{g.Key}×{g.Count()}");
-            return $"{rows.Count} lines ({string.Join(", ", by)})  ·  {user} renamed  ·  {where}";
+            return $"{rows.Count} lines ({string.Join(", ", by)})  ·  {user} renamed  ·  {where}  ·  {Position}";
         }
 
         private void RestoreSummary() => SetStatus(Summary());
 
-        /// <summary>Mở lại tab Naming: panel chọn bằng Select panel (chưa build) lấy lại quy cách theo tab Input HIỆN TẠI
-        /// (review R1 #2 — tên không giữ số cũ sau khi sửa tab Input). Panel từ Build giữ thông số của lần build.</summary>
-        public void RefreshSizes()
+        /// <summary>Mở tab Naming: Position tab Input đã đổi ⇒ đánh số lại (tên tự đặt giữ nguyên).</summary>
+        public void OnActivated()
         {
-            var twoD = _panels.Where(p => p.Build == null).ToList();
-            if (twoD.Count == 0 || InputProvider == null) return;
-            if (!InputProvider(out var input, out string err))
-            {
-                SetStatus($"Sizes in the names may be out of date — fix the Input tab: {err}", error: true);
-                return;
-            }
-            var old = twoD[0].Input;
-            if (old != null && old.WebHeight == input.WebHeight && old.FlangeThickness == input.FlangeThickness
-                && old.HpSpec == input.HpSpec && old.FlatBarHeight == input.FlatBarHeight) return;
+            var pos = Position;
+            var changed = _panels.Where(p => p.Position != pos).ToList();
+            if (changed.Count == 0) return;
             var keep = Selected.Select(r => r.Key).ToList();
-            foreach (var p in twoD) { NamingSource.ApplySizes(p, input); p.Recompute(); }
+            foreach (var p in changed) { p.Position = pos; p.Recompute(); }
             Rebind(keep);
-            SetStatus("Sizes updated from the Input tab.  ·  " + Summary());
-        }
-
-        private void CmbPosition_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (_suspendPosition || _panels == null || _panels.Count == 0 || TxtStatus == null) return;
-            var keep = Selected.Select(r => r.Key).ToList();
-            foreach (var p in _panels) { p.Position = Position; p.Recompute(); }
-            Rebind(keep);
-            SetStatus($"Renumbered for {Position}.  ·  " + Summary());
+            SetStatus($"Renumbered for {pos} (Input tab).  ·  " + Summary());
         }
 
         // ─── Đổi tên (Enter / rời ô) ──────────────────────────────────────
@@ -521,7 +476,7 @@ namespace MCG_3DPanel.UI
 
         private void BtnPick_Click(object sender, RoutedEventArgs e)
         {
-            if (Rows.Count == 0) { SetStatus("Nothing listed yet — click Select panel… or run Build 3D first.", error: true); return; }
+            if (Rows.Count == 0) { SetStatus("Nothing listed yet — run Build 3D first.", error: true); return; }
             SetStatus("Pick objects in the drawing… Enter = done, Esc = clear.");
             string err;
             int hits;

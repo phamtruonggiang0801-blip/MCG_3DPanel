@@ -62,8 +62,9 @@ namespace MCG_3DPanel.UI
             Built?.Invoke(builds);
         }
 
-        /// <summary>Thông số đang nhập (tab Naming cần để ghi quy cách WEB/FLANGE/HP/FB). Sai ⇒ false + thông báo.</summary>
-        public bool TryGetInput(out MCG_3DPanel.Models.PanelInput input, out string error) => TryReadInput(out input, out error);
+        /// <summary>Vị trí panel đang chọn — tab Naming đánh số theo đây (kỹ sư 2026-11-05).</summary>
+        public MCG_3DPanel.Models.PanelPosition Position =>
+            (MCG_3DPanel.Models.PanelPosition)System.Math.Max(0, CmbPanelPos.SelectedIndex);
 
         private bool TryReadInput(out MCG_3DPanel.Models.PanelInput input, out string error)
         {

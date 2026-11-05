@@ -497,62 +497,6 @@ namespace MCG_3DPanel.Commands
             }
         }
 
-        /// <summary>
-        /// Nút "Select panel…" (tab Naming): chọn block 2D → CHỈ phân loại (kèm correction đã lưu), không dựng 3D.
-        /// Panel lỗi không chặn panel khác — lỗi gom vào <paramref name="errors"/> (tab hiện lên thanh trạng thái).
-        /// Trả null nếu huỷ chọn.
-        /// </summary>
-        public static List<MCG_3DPanel.Naming.NamingPanel> ClassifyOnly(PanelPosition position, PanelInput input, List<string> errors)
-        {
-            if (!TryPickPanels(out Document doc, out ObjectId[] ids)) return null;
-            Database db = doc.Database;
-            var panels = new List<MCG_3DPanel.Naming.NamingPanel>();
-            using (doc.LockDocument())
-            {
-                foreach (ObjectId id in ids)
-                {
-                    try
-                    {
-                        string panelKey;
-                        using (Transaction tr = db.TransactionManager.StartTransaction())
-                        {
-                            var br = (BlockReference)tr.GetObject(id, OpenMode.ForRead);
-                            CorrectionStore.EnsureLoaded(tr, br.BlockTableRecord);
-                            panelKey = CorrectionStore.PanelKey(br.BlockTableRecord);
-                            tr.Commit();
-                        }
-                        var cls = new ClassificationService().Classify(id, position, CorrectionStore.For(panelKey));
-                        using (Transaction tr = db.TransactionManager.StartTransaction())
-                        {
-                            panels.Add(MCG_3DPanel.Naming.NamingSource.FromBlock(tr, id, position, input, cls));
-                            tr.Commit();
-                        }
-                    }
-                    catch (System.Exception ex)
-                    {
-                        errors?.Add($"{BlockNameOf(db, id)}: {ex.Message}");
-                    }
-                }
-            }
-            return panels;
-        }
-
-        /// <summary>Tên block 2D (để báo lỗi dễ hiểu); không đọc được ⇒ handle.</summary>
-        private static string BlockNameOf(Database db, ObjectId blockRef)
-        {
-            try
-            {
-                using (Transaction tr = db.TransactionManager.StartTransaction())
-                {
-                    var br = (BlockReference)tr.GetObject(blockRef, OpenMode.ForRead);
-                    string n = ((BlockTableRecord)tr.GetObject(br.BlockTableRecord, OpenMode.ForRead)).Name;
-                    tr.Commit();
-                    return n;
-                }
-            }
-            catch (System.Exception) { return "Panel " + blockRef.Handle; }   // chỉ để ghi tên trong thông báo lỗi
-        }
-
         /// <summary>Quét chọn (click / window / crossing) 1 hoặc nhiều Block Reference — filter INSERT nên
         /// đối tượng khác tự bị bỏ. GetSelection gọi NGOÀI LockDocument (interactive).</summary>
         private static bool TryPickPanels(out Document doc, out ObjectId[] ids)
