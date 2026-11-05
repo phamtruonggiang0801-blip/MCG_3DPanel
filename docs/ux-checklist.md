@@ -115,3 +115,4 @@ built in a second drawing.
 > come from Build 3D / Load 3D; change Position on the Input tab, then open Naming ⇒ L/HL renumber; Copy stays in the
 > right-click menu and Ctrl+C.
 | H11 | Pick → click empty space and drag left→right over a few solids/lines, then right→left. | Window adds only objects fully inside; Crossing adds objects touching the box. Works in plan and in a rotated 3D view. Diagonal members may be over-selected by Crossing (bounding box). |
+| H12 | During Pick: Shift + click a selected object; Shift + drag a window; type R, click, then A, click. | Shift (or Remove mode) unselects those rows and their highlight; A returns to adding. Shift on a row that is not selected does nothing. |

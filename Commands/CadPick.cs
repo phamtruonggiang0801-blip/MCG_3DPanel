@@ -17,15 +17,15 @@ namespace MCG_3DPanel.Commands
         /// <summary>Đang trong vòng Pick (nút Pick bấm lại / hook Esc bỏ qua).</summary>
         public static bool IsPicking { get; private set; }
 
-        /// <summary>Lặp chọn: mỗi lần trúng ⇒ <paramref name="onPick"/>(id chi tiết lồng); Enter/chuột phải ⇒ dừng, giữ
-        /// vùng chọn; Esc ⇒ <paramref name="onClear"/> rồi dừng. Trả thông báo lỗi (null nếu bình thường) — không ném,
-        /// không xoá vùng chọn khi prompt hỏng (review: chỉ Esc mới xoá).</summary>
-        public static string PickLoop(Func<ObjectId, bool> onPick, Action onClear, out int hits)
-            => PickLoop(onPick, null, onClear, out hits);
-
-        /// <summary>Như trên + quét chọn (kỹ sư 2026-11-05): click chỗ TRỐNG ⇒ kéo khung như AutoCAD (trái→phải Window = trọn
-        /// trong, phải→trái Crossing = chạm). <paramref name="onWindow"/>(phép thử hộp bao WCS) trả số dòng thêm được.</summary>
-        public static string PickLoop(Func<ObjectId, bool> onPick, Func<Func<Autodesk.AutoCAD.DatabaseServices.Extents3d, bool>, int> onWindow,
+        /// <summary>
+        /// Lặp chọn như AutoCAD (kỹ sư 2026-11-05): click trúng chi tiết ⇒ chọn lồng (như NENTSEL); click chỗ TRỐNG ⇒ kéo
+        /// khung (trái→phải Window = trọn trong, phải→trái Crossing = chạm). **Bỏ chọn**: giữ Shift khi click/kéo, hoặc gõ
+        /// R (Remove) — A (Add) để quay lại thêm. Enter/chuột phải ⇒ dừng, giữ vùng chọn; Esc ⇒ <paramref name="onClear"/>.
+        /// <paramref name="onPick"/>(id, remove) / <paramref name="onWindow"/>(phép thử hộp bao WCS, remove) trả số dòng đổi.
+        /// Trả thông báo lỗi (null nếu bình thường) — không ném, prompt hỏng không xoá vùng chọn (chỉ Esc mới xoá).
+        /// </summary>
+        public static string PickLoop(Func<ObjectId, bool, bool> onPick,
+            Func<Func<Autodesk.AutoCAD.DatabaseServices.Extents3d, bool>, bool, int> onWindow,
             Action onClear, out int hits)
         {
             hits = 0;
@@ -41,38 +41,24 @@ namespace MCG_3DPanel.Commands
                 catch (System.Exception ex) { System.Diagnostics.Debug.WriteLine("[MCG_3DPanel] SetFocusToDwgView: " + ex.Message); }   // tiện lợi: thiếu focus thì người dùng click bản vẽ trước
 
                 Editor ed = doc.Editor;
-                if (onWindow == null)
+                bool removeMode = false;
+                while (true)
                 {
-                    var opts = new PromptNestedEntityOptions("\nPick an object to find its row [Enter = done, Esc = clear]: ")
+                    var po = new PromptPointOptions(removeMode
+                        ? "\nRemove: pick an object or drag a window [Add] <Enter = done, Esc = clear>: "
+                        : "\nPick an object or drag a window, Shift = unselect [Remove] <Enter = done, Esc = clear>: ")
                     {
                         AllowNone = true,
                     };
-                    while (true)
-                    {
-                        PromptNestedEntityResult r = ed.GetNestedEntity(opts);
-                        if (r.Status == PromptStatus.OK)
-                        {
-                            if (onPick(r.ObjectId)) hits++;   // không có dòng ⇒ không báo gì (kỹ sư 2026-11-05)
-                            continue;
-                        }
-                        if (r.Status == PromptStatus.None) return null;               // Enter / chuột phải: giữ vùng chọn
-                        if (r.Status == PromptStatus.Cancel) { onClear?.Invoke(); return null; }   // Esc
-                        return $"Pick stopped ({r.Status}).";
-                    }
-                }
-
-                var po = new PromptPointOptions("\nPick an object, or click empty space to drag a window [Enter = done, Esc = clear]: ")
-                {
-                    AllowNone = true,
-                };
-                while (true)
-                {
+                    po.Keywords.Add(removeMode ? "Add" : "Remove");
                     PromptPointResult p = ed.GetPoint(po);
+                    if (p.Status == PromptStatus.Keyword) { removeMode = p.StringResult == "Remove"; continue; }
                     if (p.Status == PromptStatus.None) return null;
                     if (p.Status == PromptStatus.Cancel) { onClear?.Invoke(); return null; }
                     if (p.Status != PromptStatus.OK) return $"Pick stopped ({p.Status}).";
+                    bool remove = removeMode || ShiftDown();   // Shift + click = bỏ chọn, như AutoCAD
 
-                    // Trúng chi tiết tại điểm click ⇒ chọn lồng như NENTSEL; không trúng ⇒ góc 1 của khung.
+                    // Trúng chi tiết tại điểm click ⇒ chọn lồng; không trúng ⇒ góc 1 của khung.
                     var at = ed.GetNestedEntity(new PromptNestedEntityOptions("")
                     {
                         NonInteractivePickPoint = p.Value,
@@ -80,17 +66,24 @@ namespace MCG_3DPanel.Commands
                     });
                     if (at.Status == PromptStatus.OK)
                     {
-                        if (onPick(at.ObjectId)) hits++;
+                        if (onPick(at.ObjectId, remove)) hits++;   // không có dòng ⇒ không báo gì (kỹ sư 2026-11-05)
                         continue;
                     }
                     PromptPointResult c = ed.GetCorner(new PromptCornerOptions("\nOpposite corner: ", p.Value));
                     if (c.Status == PromptStatus.Cancel) { onClear?.Invoke(); return null; }
                     if (c.Status != PromptStatus.OK) continue;
-                    hits += onWindow(WindowTest(ed, p.Value, c.Value));
+                    hits += onWindow(WindowTest(ed, p.Value, c.Value), remove || ShiftDown());
                 }
             }
             finally { IsPicking = false; }
         }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern short GetKeyState(int vKey);
+        private const int VK_SHIFT = 0x10;
+
+        /// <summary>Shift đang giữ (đọc trạng thái phím Win32 — focus ở cửa sổ vẽ, không phải WPF).</summary>
+        private static bool ShiftDown() => (GetKeyState(VK_SHIFT) & 0x8000) != 0;
 
         /// <summary>Phép thử hộp bao (WCS) với khung 2 góc (UCS): chiếu lên mặt phẳng nhìn hiện tại (đúng cả góc nhìn 3D),
         /// Window/Crossing theo chiều kéo trên màn hình (<see cref="PickWindow"/>). Hộp bao ⇒ chi tiết chéo có thể dư khi Crossing.</summary>
