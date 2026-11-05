@@ -218,6 +218,9 @@ namespace MCG_3DPanel.Commands
             Document doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             if (!string.IsNullOrEmpty(doc.CommandInProgress)) return;   // còn lệnh khác → chờ Idle sau
+            // Đang Pick / Editor đang chờ nhập (prompt KHÔNG phải lệnh ⇒ CommandInProgress rỗng): gửi lúc này thì chuỗi lệnh bị
+            // gõ VÀO prompt và mất — lỗi 2026-11-05 "Pick, sửa Tripping, Enter ⇒ 3D không đổi". Chờ prompt xong.
+            if (CadPick.IsPicking || !doc.Editor.IsQuiescent) return;
             Application.Idle -= SendWhenIdle;
             _sendScheduled = false;
             doc.SendStringToExecute("MCG_Rebuild3DPanel ", true, false, false);

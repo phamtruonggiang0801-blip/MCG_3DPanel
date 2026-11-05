@@ -485,7 +485,9 @@ namespace MCG_3DPanel.UI
             _reselect = Keys(sel.Contains(clicked) ? sel : new List<ResultRow> { clicked });
             _bulkNote = note;
             var builds = targets.Select(r => r.Build).Where(b => b != null).Distinct().ToList();
-            SetStatus(builds.Count == 1 ? $"Rebuilding {targets[0].Panel}…" : $"Rebuilding {builds.Count} panels…");
+            SetStatus(CadPick.IsPicking
+                ? "Change saved — the 3D rebuilds as soon as you finish picking (Enter in the drawing)."
+                : builds.Count == 1 ? $"Rebuilding {targets[0].Panel}…" : $"Rebuilding {builds.Count} panels…");
             _pendingPanels.Clear();
             foreach (var b in builds) if (b.BlockName != null) _pendingPanels.Add(b.BlockName);
             foreach (var b in builds) PanelCommands.RequestRebuild(b);
@@ -558,7 +560,8 @@ namespace MCG_3DPanel.UI
             catch (System.Exception ex) { SetStatus("Pick failed: " + ex.Message, error: true); return; }
             if (err != null) { SetStatus(err, error: true); return; }
             if (_statusIsError) return;   // giữ lỗi highlight trong lúc pick (vd không highlight được)
-            if (Selected.Count > 0) SetStatus($"{Selected.Count} row(s) selected" + (hits > 0 ? $" · {hits} picked" : "") + ".");
+            if (_pendingPanels.Count > 0) SetStatus("Rebuilding the edited panel(s)…");   // sửa trong lúc Pick ⇒ rebuild chạy ngay sau
+            else if (Selected.Count > 0) SetStatus($"{Selected.Count} row(s) selected" + (hits > 0 ? $" · {hits} picked" : "") + ".");
             else RestoreSummary();
         }
 

@@ -56,3 +56,9 @@ Mọi handler sửa correction trên tab Result đi qua `PanelResultView.ApplyBu
 `BulkEdit.Plan` (thuần, test) → dòng không hỗ trợ / drawing khác bị BỎ + đếm → mỗi panel rebuild 1 lần
 (`RebuildMany`) → status `BulkEdit.Describe`. Control mới trên grid: viết `supports` + `apply`, KHÔNG tự lưu correction.
 Giá trị áp cho cả vùng chọn = giá trị MỚI của dòng được bấm (⇄ / Sniped End không "đảo từng dòng").
+
+## Lệnh gửi qua SendStringToExecute khi palette đang mở prompt (lỗi 2026-11-05)
+Prompt mở từ palette (`GetNestedEntity`, `GetSelection`… — vd nút Pick) KHÔNG phải lệnh ⇒ `CommandInProgress` rỗng.
+Gửi `SendStringToExecute` lúc đó ⇒ chuỗi lệnh bị gõ VÀO prompt và mất (Pick → sửa Tripping → 3D không đổi).
+**Luật:** mọi chỗ gửi lệnh từ Idle phải chờ `CommandInProgress` rỗng **và** `Editor.IsQuiescent` (và `CadPick.IsPicking`
+= false). Checklist H10.
