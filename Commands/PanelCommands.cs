@@ -171,6 +171,7 @@ namespace MCG_3DPanel.Commands
             build.SourceTransform = xform;
             build.Input = input;
             build.Position = position;
+            WritePanelMeta(db, build);   // SAU khi có Input/Position/SourceRefId — dữ liệu mở-lại-file cần đủ
             build.BuildSeconds = sw.Elapsed.TotalSeconds;
             return build;
         }
@@ -312,6 +313,7 @@ namespace MCG_3DPanel.Commands
                 }
                 tr.Commit();
             }
+            WritePanelMeta(db, neu);   // sau khi neu có BlockName/BtrId cuối; ghi lại để dữ liệu khớp bản vừa thay
             neu.Kept = true;
             doc.Editor.Regen();
             // Có part hỏng / cảnh báo ⇒ ghi report riêng cho lần rebuild này để thông báo "see …json" trỏ đúng file
@@ -322,6 +324,53 @@ namespace MCG_3DPanel.Commands
                 ? $"Rebuilt {neu.PanelBlockName} in {neu.BuildSeconds:0.0} s."
                 : $"Rebuilt {neu.PanelBlockName}, but the previous 3D block could not be replaced: {replaceError}";
             Rebuilt?.Invoke(old, neu, Tail(msg));
+        }
+        // ─── Dữ liệu panel lưu trong block 3D (XRecord MCG3D_PANEL) ─────────────
+
+        /// <summary>Ghi PanelMeta (nguồn 2D, input, vị trí, danh sách solid) vào BTR 3D để mở lại file vẫn điền được các tab.
+        /// Cần LockDocument; lỗi ghi KHÔNG làm hỏng build — chỉ thêm cảnh báo.</summary>
+        internal static void WritePanelMeta(Database db, BuildResult build)
+        {
+            if (build.BtrId.IsNull) return;   // không dựng được block 3D ⇒ không có chỗ ghi
+            try
+            {
+                var meta = new PanelMeta
+                {
+                    SourceRefHandle = build.SourceRefId.IsNull ? "" : build.SourceRefId.Handle.ToString(),
+                    SourceBtrHandle = build.SourceBtrId.IsNull ? "" : build.SourceBtrId.Handle.ToString(),
+                    Input = build.Input,
+                    Position = (int)build.Position,
+                };
+                foreach (BuiltSolid s in build.Solids)
+                {
+                    var ms = new PanelMetaSolid
+                    {
+                        Handle = s.SolidId.IsNull ? "" : s.SolidId.Handle.ToString(),
+                        Type = s.Type ?? "",
+                        PartKey = s.Part?.SourceKey,   // null với solid sinh thêm
+                        FlipKey = s.FlipKey ?? "",
+                        DeleteKey = s.DeleteKey ?? "",
+                        Code = s.Code ?? "",
+                        Deleted = s.Deleted,
+                    };
+                    ms.MergedCodes.AddRange(s.MergedCodes);
+                    meta.Solids.Add(ms);
+                }
+                // FromJson từ chối handle rỗng ⇒ ghi ra cũng vô dụng; coi là lỗi thay vì ghi file hỏng.
+                if (string.IsNullOrEmpty(meta.SourceRefHandle) || string.IsNullOrEmpty(meta.SourceBtrHandle)
+                    || meta.Solids.Any(x => string.IsNullOrEmpty(x.Handle)))
+                    throw new System.InvalidOperationException("missing source or solid handle");
+                using (Transaction tr = db.TransactionManager.StartTransaction())
+                {
+                    CorrectionXRecord.Write(tr, build.BtrId, CorrectionXRecord.PanelKey, meta.ToJson());
+                    tr.Commit();
+                }
+            }
+            catch (System.Exception ex)
+            {
+                build.Report.Add($"[PanelMeta] không ghi được: {ex.Message}");
+                build.Warnings.Add($"Panel data could not be saved: {ex.Message}. This panel will not fill the tabs when the file is reopened.");
+            }
         }
 
         /// <summary>Block reference 2D nguồn còn đọc được (kể cả đã xoá khi Keep) và định nghĩa block chưa bị PURGE.</summary>
