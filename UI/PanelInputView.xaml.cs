@@ -37,6 +37,9 @@ namespace MCG_3DPanel.UI
             public override string ToString() => MCG_3DPanel.Models.PanelInput.FormatSpec(Spec);
         }
 
+        // TẠM: nút Spike (xoá ở Task 7)
+        private void BtnSpike_Click(object sender, RoutedEventArgs e) => Spike3DFile.Run((m, err) => SetStatus(m, err));
+
         private void BtnBuild_Click(object sender, RoutedEventArgs e)
         {
             Document doc = AcadApp.DocumentManager.MdiActiveDocument;
