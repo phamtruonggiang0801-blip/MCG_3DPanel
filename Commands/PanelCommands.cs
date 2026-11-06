@@ -113,7 +113,7 @@ namespace MCG_3DPanel.Commands
             string file = Path.GetFileName(job.Target);
             Document doc = null;
             bool created = false;   // CHỈ bỏ file do chính lần này tạo — không bao giờ xoá file có sẵn của người dùng
-            bool bakExisted = File.Exists(Path.ChangeExtension(job.Target, ".bak"));   // .bak có từ trước có thể là bản cuối của người dùng
+            bool saving = false;    // đã dời .bak cũ ⇒ .bak đứng ở tên đó từ đây là do lần lưu này sinh ra
             try
             {
                 Panel3DFile.Create(source, job.RefId, job.Target);
@@ -136,6 +136,9 @@ namespace MCG_3DPanel.Commands
                     {
                         build.Kept = true;
                         RegenActive();
+                        string keptBak = Panel3DFile.MoveOldBakAside(job.Target);
+                        saving = true;
+                        if (keptBak != null) Say($"\n{LOG_PREFIX} The existing .bak of {file} was kept as {keptBak}.\n");
                         if (!Panel3DFile.Save(doc)) Say($"\n{LOG_PREFIX} {file} is saved, but AutoCAD may still ask to save it on close.\n");
                     }
                 }
@@ -155,7 +158,7 @@ namespace MCG_3DPanel.Commands
 
             if (created)   // ngoài using: document đang khoá thì không đóng được
             {
-                string error = Panel3DFile.Discard(doc, job.Target, bakExisted);
+                string error = Panel3DFile.Discard(doc, job.Target, saving);
                 if (error != null)
                 {
                     run.Problems.Add(error);

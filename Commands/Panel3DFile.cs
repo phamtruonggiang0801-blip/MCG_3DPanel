@@ -74,6 +74,21 @@ namespace MCG_3DPanel.Commands
             db = null;
         }
 
+        /// <summary>Gọi TRƯỚC lần lưu đầu của file vừa tạo: SaveAs với bBakAndRename sẽ đè .bak cùng tên, mà .bak đó có thể là bản cuối
+        /// của người dùng ⇒ dời sang &lt;name&gt;_3D.&lt;yyyyMMdd_HHmmss&gt;.bak. Trả tên mới, null nếu không có .bak. Không dời được ⇒ ném, không được lưu.</summary>
+        public static string MoveOldBakAside(string path)
+        {
+            string bak = Path.ChangeExtension(path, ".bak");
+            if (!File.Exists(bak)) return null;
+            string kept = Panel3DPath.NextFree(Path.ChangeExtension(path, $".{DateTime.Now:yyyyMMdd_HHmmss}.bak"), File.Exists);
+            try { File.Move(bak, kept, false); }
+            catch (System.Exception ex)
+            {
+                throw new InvalidOperationException($"Could not keep the existing {Path.GetFileName(bak)} ({ex.Message}), so the 3D file was not saved. Move that file away and build again.", ex);
+            }
+            return Path.GetFileName(kept);
+        }
+
         /// <summary>Lưu file 3D đang mở (document vẫn mở) rồi đưa DBMOD về 0 để đóng không bị hỏi lưu.
         /// Trả false nếu file đã lưu nhưng DBMOD chưa về 0. Ghi file lỗi ⇒ ném.</summary>
         public static bool Save(Document doc)
@@ -89,15 +104,15 @@ namespace MCG_3DPanel.Commands
         }
 
         /// <summary>Bỏ file 3D vừa tạo trong lần Build này: đóng không lưu (<paramref name="doc"/> có thể null), xoá file + file kèm.
-        /// <paramref name="bakExisted"/> = .bak có từ trước lần chạy này ⇒ giữ, có thể là bản cuối của người dùng.
+        /// <paramref name="ownBak"/> = đã qua <see cref="MoveOldBakAside"/>, nên .bak (nếu có) do lần lưu này sinh ra; ngược lại .bak không phải của lần này ⇒ giữ.
         /// Gọi NGOÀI LockDocument. Trả thông báo lỗi (null = OK), không ném.</summary>
-        public static string Discard(Document doc, string path, bool bakExisted)
+        public static string Discard(Document doc, string path, bool ownBak)
         {
             try
             {
                 doc?.CloseAndDiscard();
                 var files = new List<string> { path, Path.ChangeExtension(path, ".dwl"), Path.ChangeExtension(path, ".dwl2") };
-                if (!bakExisted) files.Add(Path.ChangeExtension(path, ".bak"));
+                if (ownBak) files.Add(Path.ChangeExtension(path, ".bak"));
                 foreach (string f in files)
                     if (File.Exists(f)) File.Delete(f);
                 return null;
