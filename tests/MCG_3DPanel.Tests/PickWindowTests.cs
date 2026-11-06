@@ -7,6 +7,24 @@ namespace MCG_3DPanel.Tests
     /// CHẠM khung. So theo hộp bao đã chiếu lên mặt phẳng nhìn.</summary>
     public class PickWindowTests
     {
+        // Khung (400,400)-(500,500) nằm giữa top plate 0..1000: Crossing KHÔNG chọn tấm vì không cạnh nào vào khung (hộp bao thì có).
+        private static readonly (double, double, double, double)[] Plate =
+            { (0, 0, 1000, 0), (1000, 0, 1000, 1000), (1000, 1000, 0, 1000), (0, 1000, 0, 0) };
+
+        [Fact] public void Edges_Crossing_WindowInsidePlate_NoHit() => Assert.False(PickWindow.HitEdges(500, 500, 400, 400, true, Plate));
+        [Fact] public void Edges_Crossing_EdgeThroughWindow_Hit() => Assert.True(PickWindow.HitEdges(450, 500, 400, 400, true, new[] { (0.0, 450.0, 1000.0, 450.0) }));
+        [Fact] public void Edges_Crossing_EdgeInsideWindow_Hit() => Assert.True(PickWindow.HitEdges(500, 500, 400, 400, true, new[] { (420.0, 420.0, 480.0, 480.0) }));
+
+        [Fact] public void Edges_Crossing_DiagonalMissesCorner_NoHit()
+        {
+            // Flange xiên: hộp bao 0..1000 chứa khung, đoạn thật đi qua góc khác.
+            Assert.False(PickWindow.HitEdges(900, 200, 800, 100, true, new[] { (0.0, 0.0, 1000.0, 1000.0) }));
+        }
+
+        [Fact] public void Edges_Window_AllInside_Hit() => Assert.True(PickWindow.HitEdges(400, 400, 500, 500, false, new[] { (420.0, 420.0, 480.0, 480.0) }));
+        [Fact] public void Edges_Window_OneEndOutside_NoHit() => Assert.False(PickWindow.HitEdges(400, 400, 500, 500, false, new[] { (420.0, 420.0, 480.0, 480.0), (480.0, 480.0, 600.0, 480.0) }));
+        [Fact] public void Edges_Empty_NoHit() => Assert.False(PickWindow.HitEdges(0, 0, 10, 10, true, new (double, double, double, double)[0]));
+
         [Fact]
         public void IsCrossing_RightToLeft()
         {

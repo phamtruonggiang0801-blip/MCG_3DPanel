@@ -552,7 +552,7 @@ namespace MCG_3DPanel.UI
 
         private void BtnPick_Click(object sender, RoutedEventArgs e)
         {
-            if (Rows.Count == 0) { SetStatus("Nothing listed yet — build or load a panel first.", error: true); return; }
+            if (Rows.Count == 0) { SetStatus("Nothing listed yet — run Build 3D first.", error: true); return; }
             SetStatus("Pick objects or drag a window in the drawing… Enter = done, Esc = clear.");
             string err;
             int hits;
@@ -578,13 +578,13 @@ namespace MCG_3DPanel.UI
             return true;
         }
 
-        /// <summary>Quét chọn trong Pick: THÊM mọi dòng (drawing đang mở, solid còn) có hộp bao khớp khung. Trả số dòng thêm.</summary>
-        public int SelectInWindow(Func<Autodesk.AutoCAD.DatabaseServices.Extents3d, bool> hit, bool remove)
+        /// <summary>Quét chọn trong Pick: THÊM mọi dòng (drawing đang mở, solid còn) có solid khớp khung. Trả số dòng thêm.</summary>
+        public int SelectInWindow(Func<Autodesk.AutoCAD.DatabaseServices.ObjectId[], Autodesk.AutoCAD.DatabaseServices.Extents3d, bool> hit, bool remove)
         {
             var adoc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
             if (adoc == null) return 0;
             var rows = Rows.Where(r => !r.Deleted && r.Solid != null && !r.Solid.SolidId.IsNull && !r.Solid.SolidId.IsErased
-                                       && r.Solid.SolidId.Database == adoc.Database && hit(r.Bounds)).ToList();
+                                       && r.Solid.SolidId.Database == adoc.Database && hit(r.Path, r.Bounds)).ToList();
             int added = 0;
             _suspendShow = true;
             try { foreach (var r in rows) { if (remove) { if (GridResult.SelectedItems.Contains(r)) { GridResult.SelectedItems.Remove(r); added++; } } else if (!GridResult.SelectedItems.Contains(r)) { GridResult.SelectedItems.Add(r); added++; } } }

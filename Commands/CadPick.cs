@@ -21,11 +21,11 @@ namespace MCG_3DPanel.Commands
         /// Lặp chọn như AutoCAD (kỹ sư 2026-11-05): click trúng chi tiết ⇒ chọn lồng (như NENTSEL); click chỗ TRỐNG ⇒ kéo
         /// khung (trái→phải Window = trọn trong, phải→trái Crossing = chạm). **Bỏ chọn**: giữ Shift khi click/kéo, hoặc gõ
         /// R (Remove) — A (Add) để quay lại thêm. Enter/chuột phải ⇒ dừng, giữ vùng chọn; Esc ⇒ <paramref name="onClear"/>.
-        /// <paramref name="onPick"/>(id, remove) / <paramref name="onWindow"/>(phép thử hộp bao WCS, remove) trả số dòng đổi.
+        /// <paramref name="onPick"/>(id, remove) / <paramref name="onWindow"/>(phép thử (đường dẫn entity, hộp bao), remove) trả số dòng đổi.
         /// Trả thông báo lỗi (null nếu bình thường) — không ném, prompt hỏng không xoá vùng chọn (chỉ Esc mới xoá).
         /// </summary>
         public static string PickLoop(Func<ObjectId, bool, bool> onPick,
-            Func<Func<Autodesk.AutoCAD.DatabaseServices.Extents3d, bool>, bool, int> onWindow,
+            Func<Func<ObjectId[], Autodesk.AutoCAD.DatabaseServices.Extents3d, bool>, bool, int> onWindow,
             Action onClear, out int hits)
         {
             hits = 0;
@@ -47,6 +47,7 @@ namespace MCG_3DPanel.Commands
 
                 Editor ed = doc.Editor;
                 bool removeMode = false;
+                var edgeCache = new System.Collections.Generic.Dictionary<ObjectId, Autodesk.AutoCAD.Geometry.Point3d[][]>();   // cạnh solid, sống trong 1 lần Pick
                 while (true)
                 {
                     var po = new PromptPointOptions(removeMode
@@ -77,7 +78,7 @@ namespace MCG_3DPanel.Commands
                     PromptPointResult c = ed.GetCorner(new PromptCornerOptions("\nOpposite corner: ", p.Value));
                     if (c.Status == PromptStatus.Cancel) { onClear?.Invoke(); return null; }
                     if (c.Status != PromptStatus.OK) continue;
-                    hits += onWindow(WindowTest(ed, p.Value, c.Value), remove || ShiftDown());
+                    hits += onWindow(WindowTest(ed, doc.Database, p.Value, c.Value, edgeCache), remove || ShiftDown());
                 }
             }
             finally
@@ -124,10 +125,11 @@ namespace MCG_3DPanel.Commands
         /// <summary>Shift đang giữ (đọc trạng thái phím Win32 — focus ở cửa sổ vẽ, không phải WPF).</summary>
         private static bool ShiftDown() => (GetKeyState(VK_SHIFT) & 0x8000) != 0;
 
-        /// <summary>Phép thử hộp bao (WCS) với khung 2 góc (UCS): chiếu lên mặt phẳng nhìn hiện tại (đúng cả góc nhìn 3D),
-        /// Window/Crossing theo chiều kéo trên màn hình (<see cref="PickWindow"/>). Hộp bao ⇒ chi tiết chéo có thể dư khi Crossing.</summary>
-        private static Func<Autodesk.AutoCAD.DatabaseServices.Extents3d, bool> WindowTest(Editor ed,
-            Autodesk.AutoCAD.Geometry.Point3d c1Ucs, Autodesk.AutoCAD.Geometry.Point3d c2Ucs)
+        /// <summary>Phép thử khung 2 góc (UCS) trên mặt phẳng nhìn hiện tại (đúng cả góc nhìn 3D). Solid so theo CẠNH THẬT: hộp bao top plate
+        /// phủ cả panel, flange xiên phồng to ⇒ quét đâu cũng dính (lỗi 2026-11-06). Thực thể khác (polyline 2D) so theo hộp bao.</summary>
+        private static Func<ObjectId[], Autodesk.AutoCAD.DatabaseServices.Extents3d, bool> WindowTest(Editor ed, Database db,
+            Autodesk.AutoCAD.Geometry.Point3d c1Ucs, Autodesk.AutoCAD.Geometry.Point3d c2Ucs,
+            System.Collections.Generic.Dictionary<ObjectId, Autodesk.AutoCAD.Geometry.Point3d[][]> cache)
         {
             var ucs = ed.CurrentUserCoordinateSystem;
             Autodesk.AutoCAD.Geometry.Matrix3d toEye;
@@ -140,18 +142,69 @@ namespace MCG_3DPanel.Commands
             var a = c1Ucs.TransformBy(ucs).TransformBy(toEye);
             var b = c2Ucs.TransformBy(ucs).TransformBy(toEye);
             bool crossing = PickWindow.IsCrossing(a.X, b.X);
-            return box =>
+            bool BoxHit(Autodesk.AutoCAD.DatabaseServices.Extents3d box, Autodesk.AutoCAD.Geometry.Matrix3d m)
             {
                 double x0 = double.MaxValue, y0 = double.MaxValue, x1 = double.MinValue, y1 = double.MinValue;
                 var lo = box.MinPoint; var hi = box.MaxPoint;
                 for (int i = 0; i < 8; i++)
                 {
                     var q = new Autodesk.AutoCAD.Geometry.Point3d((i & 1) == 0 ? lo.X : hi.X, (i & 2) == 0 ? lo.Y : hi.Y, (i & 4) == 0 ? lo.Z : hi.Z)
-                        .TransformBy(toEye);
+                        .TransformBy(m);
                     x0 = Math.Min(x0, q.X); y0 = Math.Min(y0, q.Y); x1 = Math.Max(x1, q.X); y1 = Math.Max(y1, q.Y);
                 }
                 return PickWindow.Hit(a.X, a.Y, b.X, b.Y, crossing, x0, y0, x1, y1);
+            }
+            return (path, box) =>
+            {
+                if (path == null || path.Length == 0) return BoxHit(box, toEye);
+                using (var tr = db.TransactionManager.StartOpenCloseTransaction())
+                {
+                    var id = path[path.Length - 1];
+                    if (id.IsErased || !(tr.GetObject(id, OpenMode.ForRead) is Solid3d solid)) return BoxHit(box, toEye);
+                    var m = toEye;
+                    for (int i = 0; i < path.Length - 1; i++)
+                        if (tr.GetObject(path[i], OpenMode.ForRead) is BlockReference br) m = m * br.BlockTransform;
+                    if (crossing && !BoxHit(box, m)) return false;   // hộp bao không chạm ⇒ chắc chắn không chạm, khỏi đọc cạnh
+                    var edges = SolidEdges(solid, cache, ed);
+                    if (edges == null) return BoxHit(box, m);
+                    var flat = new System.Collections.Generic.List<(double X0, double Y0, double X1, double Y1)>();
+                    foreach (var poly in edges)
+                        for (int i = 0; i + 1 < poly.Length; i++)
+                        {
+                            var p0 = poly[i].TransformBy(m); var p1 = poly[i + 1].TransformBy(m);
+                            flat.Add((p0.X, p0.Y, p1.X, p1.Y));
+                        }
+                    return PickWindow.HitEdges(a.X, a.Y, b.X, b.Y, crossing, flat);
+                }
             };
+        }
+
+        private const int EDGE_SAMPLES = 9;   // điểm lấy trên mỗi cạnh (cạnh cong: scallop, lỗ CO)
+
+        /// <summary>Cạnh solid (hệ block), mỗi cạnh là 1 dãy điểm. Lỗi đọc Brep ⇒ null, báo lên command line, caller dùng hộp bao.</summary>
+        private static Autodesk.AutoCAD.Geometry.Point3d[][] SolidEdges(Solid3d solid,
+            System.Collections.Generic.Dictionary<ObjectId, Autodesk.AutoCAD.Geometry.Point3d[][]> cache, Editor ed)
+        {
+            if (cache.TryGetValue(solid.ObjectId, out var known)) return known;
+            try
+            {
+                var list = new System.Collections.Generic.List<Autodesk.AutoCAD.Geometry.Point3d[]>();
+                using (var brep = new Autodesk.AutoCAD.BoundaryRepresentation.Brep(solid))
+                    foreach (var e in brep.Edges)
+                        using (var c = e.Curve)
+                        {
+                            var pts = c.GetSamplePoints(EDGE_SAMPLES);
+                            var arr = new Autodesk.AutoCAD.Geometry.Point3d[pts.Length];
+                            for (int i = 0; i < pts.Length; i++) arr[i] = pts[i].Point;
+                            list.Add(arr);
+                        }
+                return cache[solid.ObjectId] = list.ToArray();
+            }
+            catch (System.Exception ex)
+            {
+                ed.WriteMessage($"\n[MCG_3DPanel] Could not read the edges of solid {solid.Handle}, using its bounding box: {ex.Message}\n");
+                return cache[solid.ObjectId] = null;
+            }
         }
 
         // ─── Esc trên bản vẽ (không có lệnh) ⇒ tắt highlight + bỏ chọn grid ─────────────────────
