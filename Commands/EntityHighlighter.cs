@@ -42,7 +42,7 @@ namespace MCG_3DPanel.Commands
             {
                 Clear();
                 return (valid.Count == 1 ? "This row belongs" : "These rows belong")
-                       + " to another drawing — switch to that drawing, or run Build 3D / Load 3D here.";
+                       + " to another drawing — switch to that drawing, or run Build 3D here.";
             }
 
             try

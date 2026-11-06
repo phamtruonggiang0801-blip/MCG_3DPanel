@@ -32,7 +32,7 @@ namespace MCG_3DPanel.Naming
         /// <summary>Tính lại tuyến + tên (tự sinh, rồi tên người dùng đã lưu).</summary>
         public void Recompute()
         {
-            Lines = StructureNaming.Lines(Pieces, Position, NameStore.Deleted(PanelKey), NameStore.Merges(PanelKey));
+            Lines = StructureNaming.Lines(Pieces, Position, NameStore.Deleted(PanelKey), NameStore.Merges(PanelKey), NameStore.Splits(PanelKey));
             ResolveNames();
         }
 
@@ -57,7 +57,7 @@ namespace MCG_3DPanel.Naming
             }
         }
 
-        /// <summary>Panel từ 1 lần Build/rebuild/Load 3D — highlight theo solid 3D.</summary>
+        /// <summary>Panel từ 1 lần Build/rebuild — highlight theo solid 3D.</summary>
         public static NamingPanel FromBuild(Transaction tr, BuildResult b)
         {
             if (b == null || b.SourceBtrId.IsNull) return null;

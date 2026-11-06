@@ -121,13 +121,18 @@ namespace MCG_3DPanel.Naming
         /// <param name="merges">Nhóm SourceKey người dùng "Merge": các tuyến CÙNG loại + CÙNG phương có đoạn trong 1 nhóm
         /// gộp thành 1 tuyến (1 tên, 1 số) — revision 2. Nhóm trộn loại/phương khác ⇒ chỉ gộp phần cùng loại+phương.</param>
         public static IReadOnlyList<NamingLine> Lines(IEnumerable<NamingPiece> pieces, PanelPosition pos,
-            ICollection<string> deleted = null, IEnumerable<ICollection<string>> merges = null)
+            ICollection<string> deleted = null, IEnumerable<ICollection<string>> merges = null,
+            ICollection<string> splits = null)
         {
             // Đoạn đã Del Name bị bỏ TRƯỚC khi gom tuyến — 1 đoạn đã xoá nhập vào tuyến khác (sửa Kind, vẽ lại 2D) không
             // kéo theo ẩn tuyến đó (review R1 #3).
             var all = (pieces ?? Enumerable.Empty<NamingPiece>())
                 .Where(p => p != null && (deleted == null || p.Key == null || !deleted.Contains(p.Key))).ToList();
             var flanges = all.Where(p => p.Kind == NamingKind.Flange).ToList();
+            // Đoạn Split (Web/HP/FB có key trong splits) rời khỏi gom tuyến tự động — mỗi key 1 tuyến riêng (flange ở lại).
+            var splitPieces = splits == null || splits.Count == 0 ? new List<NamingPiece>()
+                : all.Where(p => p.Kind != NamingKind.Flange && p.Key != null && splits.Contains(p.Key)).ToList();
+            if (splitPieces.Count > 0) all = all.Where(p => !splitPieces.Contains(p)).ToList();
             var lines = new List<NamingLine>();
 
             foreach (NamingDir dir in new[] { NamingDir.T, NamingDir.L })
@@ -151,6 +156,15 @@ namespace MCG_3DPanel.Naming
             }
             foreach (var cl in ClusterSkew(all.Where(p => p.Kind == NamingKind.FB && p.IsSkew)))
                 lines.Add(Make(NamingKind.FB, cl.OrderByDescending(p => p.Length).First().Dir, cl, cl, flanges));
+
+            // Mỗi key Split = 1 tuyến (các đoạn cùng key ở cùng nhau); loại/phương theo đoạn dài nhất.
+            foreach (var g in splitPieces.GroupBy(p => p.Key))
+            {
+                var cl = g.ToList();
+                var longest = cl.OrderByDescending(p => p.Length).First();
+                var kind = longest.Kind == NamingKind.FB ? NamingKind.FB : WebOrHp(cl);
+                lines.Add(Make(kind, longest.Dir, cl, cl.Where(p => p.Kind == kind), flanges));
+            }
 
             foreach (var group in merges ?? Enumerable.Empty<ICollection<string>>())
             {
@@ -192,6 +206,24 @@ namespace MCG_3DPanel.Naming
             foreach (var l in ordered) { l.Name = l.AutoName; l.IsUserName = false; }
             return ordered;
         }
+
+        /// <summary>Mọi SourceKey của tuyến TỰ ĐỘNG (không merge, không split) có chứa một trong <paramref name="keys"/> —
+        /// dùng cho Reset to auto: bỏ Split của CẢ tuyến để các đoạn nhập lại.</summary>
+        public static HashSet<string> AutoLineKeys(IEnumerable<NamingPiece> pieces, PanelPosition pos,
+            ICollection<string> deleted, IEnumerable<string> keys)
+        {
+            var want = new HashSet<string>(keys ?? Enumerable.Empty<string>());
+            var res = new HashSet<string>();
+            if (want.Count == 0) return res;
+            foreach (var l in Lines(pieces, pos, deleted))
+                if (l.Pieces.Any(p => p.Key != null && want.Contains(p.Key)))
+                    foreach (var p in l.Pieces) if (p.Key != null) res.Add(p.Key);
+            return res;
+        }
+
+        /// <summary>Tuyến tách được (Split): không phải tuyến Merge và có từ 2 SourceKey khác nhau trở lên.</summary>
+        public static bool CanSplit(NamingLine line)
+            => line != null && !line.IsMerged && line.Pieces.Where(p => p.Key != null).Select(p => p.Key).Distinct().Skip(1).Any();
 
         /// <summary>Gắn tên người dùng đã lưu (theo SourceKey từng đoạn). Nhiều tên khác nhau ⇒ tên nhiều đoạn nhất
         /// (hoà ⇒ theo thứ tự đoạn). Không có ⇒ về tên tự sinh. Khoá không còn đoạn nào ⇒ bỏ qua.</summary>

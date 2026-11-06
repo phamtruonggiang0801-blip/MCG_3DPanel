@@ -37,7 +37,7 @@ Nguồn: `CAS.dump.json` panel 7D-16C — người vẽ ghi Text cạnh mặt c�
   khi test thật).
 
 ## UI (`UI/PanelNamingView`)
-- Select panel… = chỉ phân loại 2D (`PanelCommands.ClassifyOnly`); sau Build/rebuild/Load 3D tab tự nạp (`BuildResult.ClassifiedParts`).
+- Select panel… = chỉ phân loại 2D (`PanelCommands.ClassifyOnly`); sau Build/rebuild tab tự nạp (`BuildResult.ClassifiedParts`).
 - Highlight: solid 3D nếu panel đã Keep, polyline 2D nếu chưa/bỏ 3D. Enter = đổi tên cả vùng chọn; rời ô = chỉ dòng đó.
 - ux-guardrails: dòng của drawing khác không ghi gì và báo tên drawing; checklist mục G.
 
@@ -57,9 +57,9 @@ Nguồn: `CAS.dump.json` panel 7D-16C — người vẽ ghi Text cạnh mặt c�
   1 đoạn web thẳng và chồng trục. Flange xiên: **song song** (1°) với web xiên, khoảng cách vuông góc từ trung điểm tới đường web ≤ nửa bề rộng + 15, chồng theo trục web.
   Flange xiên không bao giờ gắn web thẳng và ngược lại; tấm nối (junction plate) đi theo tuyến song song của nó. Quy cách FLANGE ưu tiên flange trên đoạn web dài nhất.
 - **Merge**: các dòng CÙNG loại + CÙNG phương trong 1 panel ⇒ 1 tuyến, 1 tên, 1 số (đánh số lại); lưu `Merges` (nhóm
-  SourceKey) trong `MCG3D_NAMES`; nhóm chạm nhau thì nhập. **Unmerge** bỏ nhóm chứa dòng đó. Kind hiện "Web (merged)".
+  SourceKey) trong `MCG3D_NAMES`; nhóm chạm nhau thì nhập. **Unmerge** TÁCH dòng tự động: khoá tách lưu `Splits` trong `MCG3D_NAMES`, dòng ra khỏi nhóm tự động (và nhóm Merge chứa nó). **Reset to auto** trên 1 dòng đã tách nhập lại CẢ tuyến tự động chứa nó (`StructureNaming.AutoLineKeys` → xoá `Splits` của mọi key) và bỏ nhóm Merge chạm các key đó; Reset trên dòng Merge KHÔNG có key Split thì giữ nguyên như cũ. **Unmerge** luôn gỡ nhóm Merge còn sót trước khi Split (không để dòng gộp quay lại). **Merge** nhập lại các dòng đã tách. Kind hiện "Web (merged)".
 
 ## 2026-11-05 (sau revision 2)
 - Bỏ nút **Select panel…** (và đường phân loại-2D-only `ClassifyOnly`/`FromBlock`), nút **Copy** trên thanh công cụ
-  (Copy vẫn ở chuột phải + Ctrl+C) và ô **Position**: tab chỉ nạp panel từ Build 3D / rebuild / Load 3D, đánh số theo
+  (Copy vẫn ở chuột phải + Ctrl+C) và ô **Position**: tab chỉ nạp panel từ Build 3D / rebuild, đánh số theo
   Position của **tab Input** (`PositionProvider`); mở tab Naming sau khi đổi Position ⇒ đánh số lại (`OnActivated`).

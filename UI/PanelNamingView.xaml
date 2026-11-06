@@ -51,11 +51,10 @@
                               ToolTip="Bring back every line removed with Del Name in the listed panels, then renumber"/>
                     <MenuItem x:Name="MnuMerge" Header="Merge" Click="MnuMerge_Click"
                               ToolTip="Combine the selected lines of the same kind and direction into one line with one name and one number; the others renumber"/>
-                    <MenuItem x:Name="MnuUnmerge" Header="Unmerge" Click="MnuUnmerge_Click"
-                              ToolTip="Split the selected merged lines back into their own lines, then renumber"/>
+                    <MenuItem x:Name="MnuUnmerge" Header="Unmerge" Click="MnuUnmerge_Click"/>
                     <Separator/>
                     <MenuItem Header="Reset to auto" Click="MnuReset_Click"
-                              ToolTip="Drop your names on the selected rows and go back to the generated names"/>
+                              ToolTip="Drop your names and splits on the selected rows and go back to the generated names and grouping"/>
                     <Separator/>
                     <MenuItem Header="Copy" Click="BtnCopy_Click"/>
                 </ContextMenu>
@@ -84,6 +83,6 @@
         </DataGrid>
 
         <TextBlock Grid.Row="3" x:Name="TxtStatus" Style="{StaticResource StatusTextStyle}"
-                   Text="No panel yet. Run Build 3D (Input tab) or Load 3D (Result tab)."/>
+                   Text="No panel yet. Run Build 3D (Input tab)."/>
     </Grid>
 </UserControl>

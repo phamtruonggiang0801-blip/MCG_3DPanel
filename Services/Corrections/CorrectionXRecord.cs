@@ -13,7 +13,6 @@ namespace MCG_3DPanel.Services.Corrections
     internal static class CorrectionXRecord
     {
         public const string CorrectionsKey = "MCG3D_CORRECTIONS";   // trên BTR 2D nguồn
-        public const string SourceKey = "MCG3D_SOURCE";             // trên BTR 3D (metadata rebuild)
         public const string NamesKey = "MCG3D_NAMES";               // trên BTR 2D nguồn — tên người dùng (tab Naming)
         private const int CHUNK = 250;
 
@@ -32,25 +31,8 @@ namespace MCG_3DPanel.Services.Corrections
             return sb.ToString();
         }
 
-        /// <summary>Đọc tham chiếu pointer (DxfCode.SoftPointerId 330) đầu tiên của XRecord — AutoCAD tự ánh xạ lại khi
-        /// copy/WBLOCK sang bản vẽ khác (handle dạng chuỗi thì không). Null nếu không có.</summary>
-        public static ObjectId ReadPointer(Transaction tr, ObjectId btrId, string key)
-        {
-            if (btrId.IsNull || btrId.IsErased) return ObjectId.Null;
-            var obj = tr.GetObject(btrId, OpenMode.ForRead);
-            if (obj.ExtensionDictionary.IsNull) return ObjectId.Null;
-            var dict = (DBDictionary)tr.GetObject(obj.ExtensionDictionary, OpenMode.ForRead);
-            if (!dict.Contains(key)) return ObjectId.Null;
-            var xr = tr.GetObject(dict.GetAt(key), OpenMode.ForRead) as Xrecord;
-            if (xr?.Data == null) return ObjectId.Null;
-            foreach (TypedValue tv in xr.Data.AsArray())
-                if (tv.TypeCode == (short)DxfCode.SoftPointerId && tv.Value is ObjectId id) return id;
-            return ObjectId.Null;
-        }
-
-        /// <summary>Ghi <paramref name="text"/>; null/rỗng ⇒ xoá XRecord. <paramref name="pointer"/> (nếu có) ghi kèm
-        /// dạng SoftPointerId để AutoCAD dịch khi copy bản vẽ.</summary>
-        public static void Write(Transaction tr, ObjectId btrId, string key, string text, ObjectId pointer = default)
+        /// <summary>Ghi <paramref name="text"/>; null/rỗng ⇒ xoá XRecord.</summary>
+        public static void Write(Transaction tr, ObjectId btrId, string key, string text)
         {
             var obj = tr.GetObject(btrId, OpenMode.ForWrite);
             if (obj.ExtensionDictionary.IsNull)
@@ -65,7 +47,6 @@ namespace MCG_3DPanel.Services.Corrections
                 return;
             }
             var values = new List<TypedValue>();
-            if (!pointer.IsNull) values.Add(new TypedValue((int)DxfCode.SoftPointerId, pointer));
             values.AddRange(CorrectionJson.Chunk(text, CHUNK).Select(s => new TypedValue((int)DxfCode.Text, s)));
             var data = new ResultBuffer(values.ToArray());
             if (dict.Contains(key))

@@ -551,5 +551,144 @@ namespace MCG_3DPanel.Tests
             Assert.Equal("L1", l[0].Name);
             Assert.Equal(509.5, l[0].Center, 1);
         }
+
+        private static NamingPiece[] Three() => new[]
+        {
+            Spec(VY(NamingKind.Web, 100, 0, 1000, key: "a")),
+            Spec(VY(NamingKind.Web, 100, 1100, 2000, key: "b")),
+            Spec(VY(NamingKind.Web, 100, 2100, 3000, key: "c")),
+        };
+
+        [Fact] public void CanSplit_Rules()
+        {
+            var l = StructureNaming.Lines(Three(), PanelPosition.Center);
+            Assert.True(StructureNaming.CanSplit(l.Single()));
+            var one = StructureNaming.Lines(new[] { Spec(VY(NamingKind.Web, 100, 0, 1000, key: "a")) }, PanelPosition.Center);
+            Assert.False(StructureNaming.CanSplit(one.Single()));
+        }
+
+        [Fact] public void Split_EachKeyOwnLine()
+        {
+            var l = StructureNaming.Lines(Three(), PanelPosition.Center, null, null, new[] { "a", "b", "c" });
+            Assert.Equal(new[] { "T1", "T2", "T3" }, Names(l, NamingKind.Web, NamingDir.T));
+            Assert.Equal("a", Line(l, "T1").Pieces.Single().Key);
+            Assert.Equal("c", Line(l, "T3").Pieces.Single().Key);
+        }
+
+        [Fact] public void Split_OnlyOneKey_RestStayTogether()
+        {
+            var l = StructureNaming.Lines(Three(), PanelPosition.Center, null, null, new[] { "a" });
+            Assert.Equal(2, l.Count);
+            Assert.Contains(l, x => x.Pieces.Count == 2);
+        }
+
+        [Fact] public void Split_SameKeyPartsStayTogether()
+        {
+            var p = new[] { Spec(VY(NamingKind.Web, 100, 0, 1000, key: "a")), Spec(VY(NamingKind.Web, 100, 1100, 2000, key: "a")), Spec(VY(NamingKind.Web, 100, 2100, 3000, key: "b")) };
+            var l = StructureNaming.Lines(p, PanelPosition.Center, null, null, new[] { "a", "b" });
+            Assert.Equal(2, l.Count);
+            Assert.Equal(2, l.Single(x => x.Pieces.Any(q => q.Key == "a")).Pieces.Count);
+        }
+
+        [Fact] public void Split_HpOnWebLine_BecomesHp()
+        {
+            var p = new[] { Spec(HX(NamingKind.Web, 100, 0, 5000, key: "w")), Spec(HX(NamingKind.HP, 100, 5100, 6000, key: "h")) };
+            Assert.Single(StructureNaming.Lines(p, PanelPosition.Center));
+            var l = StructureNaming.Lines(p, PanelPosition.Center, null, null, new[] { "h" });
+            Assert.Equal("HL1", l.Single(x => x.Pieces.Any(q => q.Key == "h")).Name);
+        }
+
+        [Fact] public void Split_Skew_EachKeyOwnLine()
+        {
+            var l = StructureNaming.Lines(Cas7D17C(), PanelPosition.Center, null, null, new[] { "1AE23", "1AE5D" });
+            Assert.Single(l.Single(x => x.Pieces.Any(q => q.Key == "1AE23")).Pieces);
+            Assert.Single(l.Single(x => x.Pieces.Any(q => q.Key == "1AE5D")).Pieces);
+        }
+
+        [Fact] public void Split_MergeRecombines()
+        {
+            var l = StructureNaming.Lines(Three(), PanelPosition.Center, null, new[] { new[] { "a", "b" } }, new[] { "a", "b", "c" });
+            Assert.Equal(2, l.Count);
+            Assert.True(l.Single(x => x.Pieces.Count == 2).IsMerged);
+        }
+
+        [Fact] public void Split_MergeThenUnmerge_BackToSplit()
+        {
+            var split = new[] { "a", "b", "c" };
+            var merged = StructureNaming.Lines(Three(), PanelPosition.Center, null, new[] { new[] { "a", "b" } }, split);
+            Assert.Equal(2, merged.Count);
+            var back = StructureNaming.Lines(Three(), PanelPosition.Center, null, null, split);
+            Assert.Equal(3, back.Count);
+        }
+
+        [Fact] public void Split_EqualCenter_StableOrder_LDir()
+        {
+            NamingPiece[] H() => new[]
+            {
+                Spec(HX(NamingKind.Web, 100, 0, 1000, key: "a")),
+                Spec(HX(NamingKind.Web, 100, 1100, 2000, key: "b")),
+                Spec(HX(NamingKind.Web, 100, 2100, 3000, key: "c")),
+            };
+            var all = new[] { "a", "b", "c" };
+            var a = StructureNaming.Lines(H(), PanelPosition.Starboard, null, null, all);
+            var b = StructureNaming.Lines(Enumerable.Reverse(H()), PanelPosition.Starboard, null, null, all);
+            Assert.Equal(3, a.Count);
+            Assert.All(a, x => Assert.Equal(NamingDir.L, x.Dir));
+            Assert.Equal(a.Select(x => x.Pieces[0].Key + x.Name).OrderBy(s => s), b.Select(x => x.Pieces[0].Key + x.Name).OrderBy(s => s));
+        }
+
+        [Fact] public void Split_FlatBar_OwnLines()
+        {
+            var fb = new[]
+            {
+                Spec(VY(NamingKind.FB, 100, 0, 1000, key: "a")),
+                Spec(VY(NamingKind.FB, 100, 1100, 2000, key: "b")),
+            };
+            var l = StructureNaming.Lines(fb, PanelPosition.Center, null, null, new[] { "a", "b" });
+            Assert.Equal(2, l.Count);
+            Assert.All(l, x => Assert.Equal(NamingKind.FB, x.Kind));
+            Assert.All(l, x => Assert.Equal(StructureNaming.BS, x.Name));
+            Assert.All(l, x => Assert.Single(x.Pieces));
+        }
+
+        [Fact] public void AutoLineKeys_ReturnsWholeLine()
+        {
+            var keys = StructureNaming.AutoLineKeys(Three(), PanelPosition.Center, null, new[] { "a" });
+            Assert.Equal(new[] { "a", "b", "c" }, keys.OrderBy(k => k).ToArray());
+            Assert.Empty(StructureNaming.AutoLineKeys(Three(), PanelPosition.Center, null, new[] { "zzz" }));
+        }
+
+        [Fact] public void Split_UnknownKey_Ignored()
+        {
+            var l = StructureNaming.Lines(Three(), PanelPosition.Center, null, null, new[] { "gone" });
+            Assert.Single(l);
+        }
+
+        [Fact] public void Split_DeletedPiece_NoRow()
+        {
+            var l = StructureNaming.Lines(Three(), PanelPosition.Center, new[] { "b" }, null, new[] { "a", "b", "c" });
+            Assert.Equal(new[] { "T1", "T2" }, Names(l, NamingKind.Web, NamingDir.T));
+            Assert.DoesNotContain(l, x => x.Pieces.Any(q => q.Key == "b"));
+        }
+
+        [Fact] public void Split_EqualCenter_StableOrder()
+        {
+            var a = StructureNaming.Lines(Three(), PanelPosition.Starboard, null, null, new[] { "a", "b", "c" });
+            var b = StructureNaming.Lines(Enumerable.Reverse(Three()), PanelPosition.Starboard, null, null, new[] { "a", "b", "c" });
+            Assert.Equal(a.Select(x => x.Pieces[0].Key + x.Name), b.Select(x => x.Pieces[0].Key + x.Name));
+        }
+
+        [Fact] public void NamesJson_Splits_RoundTrip()
+        {
+            var json = NamesJson.Serialize(new Dictionary<string, string>(), null, null, new[] { "a", "b" });
+            NamesJson.Deserialize(json, out _, out _, out HashSet<string> s);
+            Assert.Equal(new[] { "a", "b" }, s.OrderBy(k => k).ToArray());
+        }
+
+        [Fact] public void NamesJson_NoSplits_Empty()
+        {
+            NamesJson.Deserialize("{\"Version\":1,\"Names\":{\"a\":\"T1\"}}", out _, out _, out HashSet<string> s);
+            Assert.Empty(s);
+        }
     }
 }

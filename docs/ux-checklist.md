@@ -29,7 +29,7 @@ built in a second drawing.
 | B1 | Build, then change a correction (Tripping On, ⇄, Sniped End). | Exactly one rebuild. The same row stays selected and highlighted, and the view does **not** zoom. |
 | B6 | Focus the Tripping dropdown, press Esc, then press ↑ / ↓, or scroll the mouse wheel over it. | Nothing changes and there is no rebuild. The wheel scrolls the grid. |
 | B2 | Ctrl+Z after a rebuild, then click a row. | The status says "Solid no longer exists…". No exception. |
-| B3 | Save, close, reopen the drawing, then Load 3D. | The rows return, corrections are kept, and highlight works. |
+| B3 | Save, close, reopen the drawing. | The Result and Naming tabs are empty; Build 3D on an inserted 2D block brings back corrections and names. |
 | B4 | Build several panels at once. | The Panel column is visible. Every row highlights in its own block. |
 | B5 | Delete a row (right-click), then Restore it. | The row turns grey/italic, then comes back after the rebuild. |
 
@@ -73,14 +73,13 @@ built in a second drawing.
 | F2 | On the Result tab, set an FB to 100 and press Enter. | The FB, its BF bracket, GE/GB-FB and any HP end at that FB use 100. Size shows `100 × t…`. |
 | F3 | Clear the box and press Enter. | The FB returns to the Input tab height. |
 | F4 | Type a new height, then click away without pressing Enter. | The value is not saved and the old value comes back. |
-| F5 | Load 3D on an old drawing whose saved spec is `120*6`. | It rebuilds with height 120 and no error. |
 
 ## G. Naming tab
 
 | # | Steps | Expected |
 |---|---|---|
-| G1 | Naming tab → Select panel… → pick a 2D panel (no 3D). | One row per Web/HP line and per flat bar, names T#/L#/HT#/HL#/BS; clicking a row highlights every piece of the line. |
-| G2 | Rename a line (type `T6a`, Enter), Ctrl+S, close and reopen the drawing, Select panel… again. | The name `T6a` is still there (blue); the other numbers are unchanged. |
+| G1 | Build 3D (Keep) a panel, then open the Naming tab. | One row per Web/HP line and per flat bar, names T#/L#/HT#/HL#/BS; clicking a row highlights every piece of the line. |
+| G2 | Rename a line (type `T6a`, Enter), Ctrl+S, close and reopen the drawing, insert the 2D block, Build 3D (Keep) again. | The name `T6a` is still there (blue); the other numbers are unchanged. |
 | G3 | Select 12 BS rows, type `BS1` on one of them and press Enter. | All 12 rows get `BS1`; the status shows the count. |
 | G4 | Right-click → Reset to auto on renamed rows. | They return to the generated names (black). |
 | G5 | Change Position to Starboard. | L/HL numbers reverse (top → bottom); T/HT stay; your own names stay. |
@@ -94,7 +93,11 @@ built in a second drawing.
 | G13 | Select panel… with an invalid value on the Input tab. | A message asks to fix the Input tab; nothing is selected. |
 | G14 | Look at the columns. | Name (editable, e.g. `T1`) and Size (read-only, e.g. `WEB 374x6.0/FLANGE 100x20.0`) are separate; Copy pastes them in separate columns. |
 | G15 | Click a Web row that has a flange (2D and after Build/Keep). | The web and its flange(s) highlight together. |
-| G16 | Select T3 and T4 → right-click Merge. Then Unmerge. | One row `T3`, Kind `Web (merged)`, T5 becomes T4…; Unmerge splits and renumbers back. Merging Web with HP, or T with L, is refused with a message. Survives Ctrl+S + reopen. |
+| G16 | Insert the 2D block, Build 3D (Keep), open Naming. Select T3 and T4 → right-click Merge. Then Unmerge. | One row `T3`, Kind `Web (merged)`, T5 becomes T4…; Unmerge splits and renumbers back. Merging Web with HP, or T with L, is refused with a message. Survives Ctrl+S + reopen (insert the block and Build 3D again). |
+| G17 | Right-click a line of 2+ pieces that was never merged → Unmerge. | The line splits into one row per piece and everything renumbers; the status says Unmerged. Unmerge on a single-piece line is disabled with a tooltip. |
+| G18 | After G17, right-click ONE of the split rows → Reset to auto. | All pieces of that automatic line rejoin into one row (not only the clicked piece); the status says the pieces rejoined. Merge a+b of a split line, Reset the merged row, then Unmerge: you get separate rows, never a merged one. |
+| G19 | On a split row: Del Name, then Restore deleted names. | The row disappears and the rest renumber; Restore brings the piece back as its own split row, and numbers update again. |
+| G20 | Result tab → Export dropdown, with the STEP item disabled (no 3D built or another drawing). | CSV works; STEP is greyed with a tooltip saying why; clicking it does nothing and no error appears. |
 
 ## H. Pick in drawing / Esc
 
@@ -112,7 +115,7 @@ built in a second drawing.
 | H10 | Pick 3 HP rows, change Tripping (or Collar / FB height) while the Pick prompt is still active, then press Enter in the drawing. | Status says the change is saved and the 3D rebuilds after picking; after Enter the panel rebuilds once with the new value. Same after ending with Esc (selection cleared, rebuild still runs). |
 
 > 2026-11-05: Naming has no Select panel / Copy buttons and no Position box any more. G1, G5 and G13 now read: panels
-> come from Build 3D / Load 3D; change Position on the Input tab, then open Naming ⇒ L/HL renumber; Copy stays in the
+> come from Build 3D; change Position on the Input tab, then open Naming ⇒ L/HL renumber; Copy stays in the
 > right-click menu and Ctrl+C.
 | H11 | Pick → click empty space and drag left→right over a few solids/lines, then right→left. | Window adds only objects fully inside; Crossing adds objects touching the box. Works in plan and in a rotated 3D view. Diagonal members may be over-selected by Crossing (bounding box). |
 | H12 | During Pick: Shift + click a selected object; Shift + drag a window; type R, click, then A, click. | Shift (or Remove mode) unselects those rows and their highlight; A returns to adding. Shift on a row that is not selected does nothing. |

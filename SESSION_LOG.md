@@ -1,5 +1,14 @@
 # SESSION LOG — MCG_3DPanel
 
+
+## Session 2026-11-06 — Naming Split, bỏ Load 3D, Export, prompt tiếng Anh (nhánh `feat/naming-split-result-export`)
+
+- **Naming Unmerge** tách dòng tự động: khoá tách lưu `Splits` trong `MCG3D_NAMES`; **Reset to auto** nhập lại, **Merge** nhập lại các dòng đã tách.
+- **Bỏ Load 3D** ở tab Result: công cụ chỉ làm việc với panel dựng trong phiên.
+- **Export ▾** dropdown: CSV và STEP.
+- **Prompt/command line sang tiếng Anh** (`PanelCommands.cs`); log build-report, Warn, Notes giữ tiếng Việt.
+- Chưa test trong AutoCAD.
+
 ## Session 2026-11-06 — Naming: tuyến xiên (nhánh `feat/naming-skew-lines`)
 
 Build OK, 203/203 unit test, **CHƯA test trong AutoCAD** (bản vẽ 7D-17C).
