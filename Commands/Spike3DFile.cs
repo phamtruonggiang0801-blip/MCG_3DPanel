@@ -13,7 +13,7 @@ namespace MCG_3DPanel.Commands
 {
     /// <summary>
     /// SPIKE TẠM THỜI (xoá ở Task 7): kiểm 3 giả thiết trước khi làm bản vẽ 3D riêng —
-    /// (1) Wblock giữ nguyên handle, (2) mở file từ ngữ cảnh palette, (3) Classify trên bản copy ra cùng số part.
+    /// (1) bản đọc lại bằng ReadDwgFile giữ nguyên handle, (2) mở file từ ngữ cảnh palette, (3) Classify trên bản copy ra cùng số part.
     /// Không sửa bản vẽ nguồn.
     /// </summary>
     internal static class Spike3DFile
@@ -66,6 +66,17 @@ namespace MCG_3DPanel.Commands
                 if (fail) anyFail = true;
             }
 
+            // Tiền điều kiện: bản vẽ đã lưu và không còn thay đổi chưa lưu (đường dẫn .dwt vẫn được).
+            string srcFile = src.Database.Filename;
+            bool dirty = false;
+            try { dirty = Convert.ToInt32(AcadApp.GetSystemVariable("DBMOD")) != 0; } catch { dirty = true; }
+            if (string.IsNullOrEmpty(srcFile) || !File.Exists(srcFile) || dirty)
+            {
+                Log("Save this drawing first, then run Spike again.", true);
+                status("Save this drawing first, then run Spike again.", true);
+                return;
+            }
+
             var peo = new PromptEntityOptions("\nSpike: select a 2D panel block reference: ");
             peo.SetRejectMessage("\nNot a block reference.");
             peo.AddAllowedClass(typeof(BlockReference), true);
@@ -80,10 +91,13 @@ namespace MCG_3DPanel.Commands
             Document copyDoc = null;
             bool saved = false;
 
-            // Check 1: Wblock giữ handle (cả block lồng nhau)
+            // Check 1: bản đọc lại từ file giữ handle + danh tính (cả block lồng nhau)
             try
             {
-                copy = src.Database.Wblock();
+                // Nạp lại file nguồn trên đĩa (Wblock làm mất handle). Không ghi vào nguồn.
+                copy = new Database(false, true);
+                copy.ReadDwgFile(srcFile, FileOpenMode.OpenForReadAndAllShare, true, null);
+                copy.CloseInput(true);
                 var seen = new HashSet<ObjectId>();
                 var missing = new List<string>();
                 int total = 0, kept = 0;
@@ -122,7 +136,7 @@ namespace MCG_3DPanel.Commands
                 string miss = missing.Count > 0 ? "  missing: " + string.Join(", ", missing.GetRange(0, Math.Min(10, missing.Count))) : "";
                 Log($"1) handles kept: {kept} / {total}{miss}", kept != total);
             }
-            catch (System.Exception ex) { Log("CHECK 1 (Wblock/handles) FAILED: " + ex.Message, true); }
+            catch (System.Exception ex) { Log("CHECK 1 (ReadDwgFile/handles) FAILED: " + ex.Message, true); copy?.Dispose(); copy = null; }
 
             // Check 2: layer đóng băng + khoá, chuyển ref sang layer đó, SaveAs
             try
