@@ -83,6 +83,6 @@
         </DataGrid>
 
         <TextBlock Grid.Row="3" x:Name="TxtStatus" Style="{StaticResource StatusTextStyle}"
-                   Text="No panel yet. Run Build 3D (Input tab) or Load 3D (Result tab)."/>
+                   Text="No panel yet. Run Build 3D (Input tab)."/>
     </Grid>
 </UserControl>

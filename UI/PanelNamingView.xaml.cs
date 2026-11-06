@@ -33,7 +33,7 @@ namespace MCG_3DPanel.UI
 
         private PanelPosition Position => PositionProvider?.Invoke() ?? PanelPosition.Center;
 
-        // ─── Nạp panel (sau Build 3D / rebuild / Load 3D) ─────────────────
+        // ─── Nạp panel (sau Build 3D / rebuild) ─────────────────
 
         /// <summary>Sau Build 3D (tab Input): nạp các panel vừa build (thay cả bảng, giống tab Result).</summary>
         public void Load(List<BuildResult> builds)
@@ -56,7 +56,7 @@ namespace MCG_3DPanel.UI
             if (errors.Count > 0) SetStatus($"{errors.Count} panel(s) could not be named: {string.Join(" · ", errors)}", error: true);
         }
 
-        /// <summary>Rebuild 1 panel (tab Result / Load 3D) ⇒ thay đúng panel đó (hoặc thêm), giữ vùng chọn.</summary>
+        /// <summary>Rebuild 1 panel (tab Result) ⇒ thay đúng panel đó (hoặc thêm), giữ vùng chọn.</summary>
         public void OnRebuilt(BuildResult old, BuildResult neu, string message)
         {
             if (neu == null || neu.SourceBtrId.IsNull || neu.ClassifiedParts.Count == 0) return;
@@ -105,7 +105,7 @@ namespace MCG_3DPanel.UI
         private string Summary()
         {
             var rows = Rows;
-            if (_panels.Count == 0) return "No panel yet. Run Build 3D (Input tab) or Load 3D (Result tab).";
+            if (_panels.Count == 0) return "No panel yet. Run Build 3D (Input tab).";
             int user = rows.Count(r => r.IsUserName);
             string where = _panels.Count > 1 ? $"{_panels.Count} panels" : _panels[0].PanelName;
             var by = rows.GroupBy(r => r.Kind).Select(g => $"{g.Key}×{g.Count()}");

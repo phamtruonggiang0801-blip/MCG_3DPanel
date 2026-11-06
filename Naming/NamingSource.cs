@@ -57,7 +57,7 @@ namespace MCG_3DPanel.Naming
             }
         }
 
-        /// <summary>Panel từ 1 lần Build/rebuild/Load 3D — highlight theo solid 3D.</summary>
+        /// <summary>Panel từ 1 lần Build/rebuild — highlight theo solid 3D.</summary>
         public static NamingPanel FromBuild(Transaction tr, BuildResult b)
         {
             if (b == null || b.SourceBtrId.IsNull) return null;

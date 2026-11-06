@@ -42,7 +42,7 @@ namespace MCG_3DPanel.UI
         /// <summary>PanelCommands.Rebuilt: thay bản cũ bằng bản mới (null = thất bại, giữ nguyên) rồi nạp lại.</summary>
         public void OnRebuilt(BuildResult old, BuildResult neu, string message)
         {
-            // Chỉ lần rebuild THUỘC lần sửa gần nhất mới dùng vùng chọn + ghi chú của nó (Load 3D / panel khác KHÔNG bị
+            // Chỉ lần rebuild THUỘC lần sửa gần nhất mới dùng vùng chọn + ghi chú của nó (panel khác KHÔNG bị
             // chọn lại dòng cũ hay nối ghi chú cũ — review).
             bool mine = old?.BlockName != null && _pendingPanels.Remove(old.BlockName);
             var sel = mine ? _reselect : null;
@@ -51,7 +51,7 @@ namespace MCG_3DPanel.UI
             if (neu != null)
             {
                 int i = _builds.IndexOf(old);
-                // Load 3D… nạp lại panel đã có trên bảng ⇒ thay đúng dòng cũ theo tên block (không nhân đôi).
+                // Rebuild panel đã có trên bảng ⇒ thay đúng dòng cũ theo tên block (không nhân đôi).
                 if (i < 0) i = _builds.FindIndex(b => b.BlockName == neu.BlockName && b.BlockRefId.Database == neu.BlockRefId.Database);
                 if (i >= 0) _builds[i] = neu; else _builds.Add(neu);
             }
@@ -78,7 +78,7 @@ namespace MCG_3DPanel.UI
                 .Select(p => $"{p.Type} {p.Handle}")).ToList();
             int warn = problem.Sum(b => b.Warnings.Count);
             if (bad.Count == 0 && warn == 0) return null;
-            // Rebuild ghi report riêng khi có lỗi; Load 3D (mở lại bản vẽ) thì có thể chưa có file nào — review I1.
+            // Rebuild ghi report riêng khi có lỗi; panel không lỗi thì có thể chưa có file nào — review I1.
             string report = problem.Select(b => b.ReportPath).FirstOrDefault(p => p != null);
             string where = report != null
                 ? $" — see {System.IO.Path.GetFileName(report)}"
@@ -113,7 +113,7 @@ namespace MCG_3DPanel.UI
                 return;
             }
             string name = DrawingName(kept[0].BlockRefId.Database);
-            SetStatus($"The rows below belong to drawing {name} — switch back to it to highlight, zoom or rebuild, or run Build 3D / Load 3D here.", error: true);
+            SetStatus($"The rows below belong to drawing {name} — switch back to it to highlight, zoom or rebuild, or run Build 3D here.", error: true);
         }
 
         /// <summary>Thanh trạng thái về tóm tắt bình thường (kèm ⚠ nếu có part hỏng / cảnh báo).</summary>
@@ -619,16 +619,6 @@ namespace MCG_3DPanel.UI
         {
             e.Handled = true;
             CopyRows(Selected.Count > 0 ? Selected : Rows);
-        }
-
-        // ─── Load 3D… (sau khi mở lại bản vẽ) ─────────────────────────────
-
-        private void BtnLoad3D_Click(object sender, RoutedEventArgs e)
-        {
-            var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
-            if (doc == null) return;
-            SetStatus("Select the MCG3D_* blocks to load…");
-            doc.SendStringToExecute("MCG_Load3DPanel ", true, false, false);
         }
 
         // ─── Export STEP (mỗi panel 1 file) ───────────────────────────────

@@ -15,7 +15,6 @@
     <Compile Include="..\..\UI\BulkEdit.cs" Link="BulkEdit.cs" />
     <Compile Include="..\..\Services\Corrections\PartCorrection.cs" Link="PartCorrection.cs" />
     <Compile Include="..\..\Services\Corrections\CorrectionJson.cs" Link="CorrectionJson.cs" />
-    <Compile Include="..\..\Services\Corrections\SourceMeta.cs" Link="SourceMeta.cs" />
     <Compile Include="..\..\Models\PanelInput.cs" Link="PanelInput.cs" />
     <Compile Include="..\..\Models\PanelPosition.cs" Link="PanelPosition.cs" />
     <Compile Include="..\..\Services\Builders\HpEndAtHpGeometry.cs" Link="HpEndAtHpGeometry.cs" />
