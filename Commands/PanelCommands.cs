@@ -29,7 +29,7 @@ namespace MCG_3DPanel.Commands
         public void Initialize()
         {
             var ed = Application.DocumentManager?.MdiActiveDocument?.Editor;
-            ed?.WriteMessage($"\n{LOG_PREFIX} Đã nạp. Gõ MCG_Build3DPanel để mở bảng điều khiển.\n");
+            ed?.WriteMessage($"\n{LOG_PREFIX} Loaded. Type MCG_Build3DPanel to open the palette.\n");
             Debug.WriteLine($"{LOG_PREFIX} ===== Plugin kích hoạt THÀNH CÔNG =====");
         }
 
@@ -70,13 +70,13 @@ namespace MCG_3DPanel.Commands
                         // panel xoá hết solid vẫn là kết quả hợp lệ, còn Restore được).
                         if (build.Solids.Count == 0)
                         {
-                            ed.WriteMessage($"\n{LOG_PREFIX} {tag} Không dựng được solid nào — bỏ.\n");
+                            ed.WriteMessage($"\n{LOG_PREFIX} {tag} No solid could be built — skipped.\n");
                             EraseBuild(db, build);
                         }
                     }
                     catch (System.Exception ex)
                     {
-                        ed.WriteMessage($"\n{LOG_PREFIX} {tag} Lỗi khi dựng panel {ids[i].Handle}: {ex.Message} — bỏ qua.\n");
+                        ed.WriteMessage($"\n{LOG_PREFIX} {tag} Error building panel {ids[i].Handle}: {ex.Message} — skipped.\n");
                     }
                 }
                 ed.Regen();
@@ -104,7 +104,7 @@ namespace MCG_3DPanel.Commands
                         tr.Commit();
                     }
                     ed.Regen();
-                    ed.WriteMessage(keep ? $"\nĐã giữ 3D ({withSolids.Count} panel), xoá block 2D.\n" : "\nĐã bỏ mô hình 3D.\n");
+                    ed.WriteMessage(keep ? $"\nKept 3D ({withSolids.Count} panel(s)), 2D block deleted.\n" : "\n3D model discarded.\n");
                 }
 
                 SaveBuildReport(builds, ed);
@@ -125,7 +125,7 @@ namespace MCG_3DPanel.Commands
             }
             catch (System.Exception ex)
             {
-                ed.WriteMessage($"\n{LOG_PREFIX} Không ghi được build report: {ex.Message}\n");
+                ed.WriteMessage($"\n{LOG_PREFIX} Could not write the build report: {ex.Message}\n");
             }
         }
 
@@ -134,8 +134,8 @@ namespace MCG_3DPanel.Commands
         private static bool AskKeep(Editor ed, int panelCount)
         {
             var pko = new PromptKeywordOptions(panelCount > 1
-                ? $"\nGiữ mô hình 3D của {panelCount} panel và xoá block 2D?"
-                : "\nGiữ mô hình 3D và xoá block 2D?");
+                ? $"\nKeep the 3D model of {panelCount} panels and delete the 2D blocks?"
+                : "\nKeep the 3D model and delete the 2D block?");
             pko.Keywords.Add("Yes");
             pko.Keywords.Add("No");
             pko.Keywords.Default = "Yes";
@@ -308,7 +308,7 @@ namespace MCG_3DPanel.Commands
                 catch (System.Exception ex)
                 {
                     replaceError = ex.Message;
-                    doc.Editor.WriteMessage($"\n{LOG_PREFIX} Rebuild: không thay được block cũ ({ex.Message}).\n");
+                    doc.Editor.WriteMessage($"\n{LOG_PREFIX} Rebuild: could not replace the old block ({ex.Message}).\n");
                 }
                 tr.Commit();
             }
@@ -364,7 +364,7 @@ namespace MCG_3DPanel.Commands
             if (doc == null) return false;
             Editor ed = doc.Editor;
 
-            var pso = new PromptSelectionOptions { MessageForAdding = "\nChọn (các) Block Panel:" };
+            var pso = new PromptSelectionOptions { MessageForAdding = "\nSelect panel block(s):" };
             // Bỏ luôn block 3D đã dựng (MCG3D_*) — quét window qua vùng đã build không bị dựng lại.
             var filter = new SelectionFilter(new[]
             {
@@ -375,11 +375,11 @@ namespace MCG_3DPanel.Commands
             PromptSelectionResult psr = ed.GetSelection(pso, filter);
             if (psr.Status != PromptStatus.OK || psr.Value == null || psr.Value.Count == 0)
             {
-                ed.WriteMessage("\nĐã huỷ.\n");
+                ed.WriteMessage("\nCancelled.\n");
                 return false;
             }
             ids = psr.Value.GetObjectIds();
-            ed.WriteMessage($"\n{LOG_PREFIX} Đã chọn {ids.Length} block panel.\n");
+            ed.WriteMessage($"\n{LOG_PREFIX} {ids.Length} panel block(s) selected.\n");
             return true;
         }
     }
