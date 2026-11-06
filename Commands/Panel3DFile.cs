@@ -33,8 +33,9 @@ namespace MCG_3DPanel.Commands
 
             string file = source.Filename;
             Handle handle = ref2D.Handle;
+            // Ghi ra tên tạm rồi Move KHÔNG ghi đè: file xuất hiện giữa lúc kiểm và lúc ghi vẫn được giữ, đích không bao giờ dở dang.
+            string temp = $"{path}.tmp{Guid.NewGuid():N}.dwg";
             Database copy = null;
-            bool writing = false;
             try
             {
                 // Đọc lại từ đĩa: Wblock() làm mất toàn bộ handle (spike 0/3631), ReadDwgFile giữ đủ (3631/3631).
@@ -50,27 +51,34 @@ namespace MCG_3DPanel.Commands
                 MoveToSourceLayer(copy, refId);
                 PurgeUnused(copy);
 
-                writing = true;
-                copy.SaveAs(path, DwgVersion.Current);
+                copy.SaveAs(temp, DwgVersion.Current);
+                DisposeQuietly(ref copy);   // nhả file tạm trước khi Move
+                File.Move(temp, path, false);   // đích đã có ⇒ ném, không ghi đè
             }
             catch (System.Exception ex)
             {
-                if (writing) DeleteQuietly(path);   // SaveAs hỏng giữa chừng: không để lại file dở
+                DeleteQuietly(temp);   // chỉ file tạm của lần này — không bao giờ xoá path
                 throw new InvalidOperationException($"Could not create {name}: {ex.Message}", ex);
             }
             finally
             {
-                // Dispose không được đè exception gốc.
-                try { copy?.Dispose(); }
-                catch (System.Exception dx) { Debug.WriteLine($"[Panel3DFile] Dispose: {dx.Message}"); }
+                DisposeQuietly(ref copy);
             }
+        }
+
+        /// <summary>Dispose không được đè exception gốc.</summary>
+        private static void DisposeQuietly(ref Database db)
+        {
+            try { db?.Dispose(); }
+            catch (System.Exception ex) { Debug.WriteLine($"[Panel3DFile] Dispose: {ex.Message}"); }
+            db = null;
         }
 
         /// <summary>Lưu file 3D đang mở (document vẫn mở) rồi đưa DBMOD về 0 để đóng không bị hỏi lưu.
         /// Trả false nếu file đã lưu nhưng DBMOD chưa về 0. Ghi file lỗi ⇒ ném.</summary>
         public static bool Save(Document doc)
         {
-            doc.Database.SaveAs(doc.Name, DwgVersion.Current);
+            doc.Database.SaveAs(doc.Name, true, DwgVersion.Current, doc.Database.SecurityParameters);
             // Database.SaveAs không phải QSAVE ⇒ không dựa vào nó để xoá DBMOD.
             try { return Autodesk.AutoCAD.Internal.Utils.SetDbmod(0, doc.Database); }
             catch (System.Exception ex)
@@ -81,13 +89,16 @@ namespace MCG_3DPanel.Commands
         }
 
         /// <summary>Bỏ file 3D vừa tạo trong lần Build này: đóng không lưu (<paramref name="doc"/> có thể null), xoá file + file kèm.
+        /// <paramref name="bakExisted"/> = .bak có từ trước lần chạy này ⇒ giữ, có thể là bản cuối của người dùng.
         /// Gọi NGOÀI LockDocument. Trả thông báo lỗi (null = OK), không ném.</summary>
-        public static string Discard(Document doc, string path)
+        public static string Discard(Document doc, string path, bool bakExisted)
         {
             try
             {
                 doc?.CloseAndDiscard();
-                foreach (string f in new[] { path, Path.ChangeExtension(path, ".dwl"), Path.ChangeExtension(path, ".dwl2"), Path.ChangeExtension(path, ".bak") })
+                var files = new List<string> { path, Path.ChangeExtension(path, ".dwl"), Path.ChangeExtension(path, ".dwl2") };
+                if (!bakExisted) files.Add(Path.ChangeExtension(path, ".bak"));
+                foreach (string f in files)
                     if (File.Exists(f)) File.Delete(f);
                 return null;
             }

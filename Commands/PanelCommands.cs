@@ -27,6 +27,7 @@ namespace MCG_3DPanel.Commands
     public class PanelCommands : IExtensionApplication
     {
         private const string LOG_PREFIX = "[MCG_3DPanel]";
+        private const int DBMOD_VIEW_ONLY = 8 | 16;
 
         public void Initialize()
         {
@@ -62,6 +63,7 @@ namespace MCG_3DPanel.Commands
             if (!TryPickPanels(out Document src, out ObjectId[] ids)) return null;
 
             Database source = src.Database;
+            Document lastGood = null;   // file tốt cuối cùng (mở hoặc dựng) — cuối lần chạy phải là file active
             List<PanelJob> jobs = PlanJobs(source, ids);
 
             var existing = new HashSet<string>(jobs.Select(j => j.Target).Where(IsTaken), System.StringComparer.OrdinalIgnoreCase);
@@ -72,7 +74,7 @@ namespace MCG_3DPanel.Commands
                 if (choice == ExistingChoice.Open)
                 {
                     // Mở trước, dựng sau: file active cuối cùng là file vừa dựng, khớp dòng trên các tab.
-                    foreach (string path in existing) OpenExisting(path, run);
+                    foreach (string path in existing) lastGood = OpenExisting(path, run) ?? lastGood;
                     jobs.RemoveAll(j => existing.Contains(j.Target));
                 }
             }
@@ -88,36 +90,36 @@ namespace MCG_3DPanel.Commands
             var last = new List<BuildResult>();
             for (int i = 0; i < jobs.Count; i++)
             {
-                BuildResult build = BuildInNewFile(source, jobs[i], $"[{i + 1}/{jobs.Count}]", input, position, run, out Database fileDb);
+                BuildResult build = BuildInNewFile(source, jobs[i], $"[{i + 1}/{jobs.Count}]", input, position, run, out Document fileDoc);
                 if (build == null) continue;
 
+                lastGood = fileDoc;
                 run.Files++;
                 run.Solids += build.SolidCount;
                 last = new List<BuildResult> { build };
                 SaveBuildReport(last);
-                try { FileBuilt?.Invoke(fileDb, last); }
+                try { FileBuilt?.Invoke(fileDoc.Database, last); }
                 catch (System.Exception ex) { Say($"\n{LOG_PREFIX} {Path.GetFileName(jobs[i].Target)} was built, but the tabs could not be updated: {ex.Message}\n"); }
             }
+            Reactivate(lastGood, run);
             return last;
         }
 
         /// <summary>Tạo file, mở, dựng, lưu 1 panel. Trả null nếu file không được giữ (không solid / lỗi): file vừa tạo bị bỏ, đã báo người dùng.</summary>
         private static BuildResult BuildInNewFile(Database source, PanelJob job, string tag, PanelInput input, PanelPosition position,
-            BuildRun run, out Database fileDb)
+            BuildRun run, out Document fileDoc)
         {
-            fileDb = null;
+            fileDoc = null;
             string file = Path.GetFileName(job.Target);
             Document doc = null;
             bool created = false;   // CHỈ bỏ file do chính lần này tạo — không bao giờ xoá file có sẵn của người dùng
+            bool bakExisted = File.Exists(Path.ChangeExtension(job.Target, ".bak"));   // .bak có từ trước có thể là bản cuối của người dùng
             try
             {
                 Panel3DFile.Create(source, job.RefId, job.Target);
                 created = true;
                 doc = Application.DocumentManager.Open(job.Target, false);
-                Application.DocumentManager.MdiActiveDocument = doc;
-                if (Application.DocumentManager.MdiActiveDocument != doc)
-                    throw new System.InvalidOperationException("the new file did not become the active drawing");
-                HostApplicationServices.WorkingDatabase = doc.Database;   // entity mới lấy mặc định từ đây
+                Activate(doc);
 
                 Database db = doc.Database;
                 if (!db.TryGetObjectId(job.RefId.Handle, out ObjectId src2D))
@@ -139,7 +141,7 @@ namespace MCG_3DPanel.Commands
                 }
                 if (build.Solids.Count > 0)
                 {
-                    fileDb = db;
+                    fileDoc = doc;
                     return build;
                 }
                 run.Empty++;
@@ -153,7 +155,7 @@ namespace MCG_3DPanel.Commands
 
             if (created)   // ngoài using: document đang khoá thì không đóng được
             {
-                string error = Panel3DFile.Discard(doc, job.Target);
+                string error = Panel3DFile.Discard(doc, job.Target, bakExisted);
                 if (error != null)
                 {
                     run.Problems.Add(error);
@@ -164,18 +166,42 @@ namespace MCG_3DPanel.Commands
         }
 
         /// <summary>Tuỳ chọn Open: mở file 3D có sẵn, hoặc chuyển sang nếu đang mở. Không dựng.</summary>
-        private static void OpenExisting(string path, BuildRun run)
+        private static Document OpenExisting(string path, BuildRun run)
         {
             try
             {
                 Document doc = FindOpen(path) ?? Application.DocumentManager.Open(path, false);
-                Application.DocumentManager.MdiActiveDocument = doc;
+                Activate(doc);
                 run.Opened++;
+                return doc;
             }
             catch (System.Exception ex)
             {
                 run.Failed++;
                 Say($"\n{LOG_PREFIX} Could not open {Path.GetFileName(path)}: {ex.Message}\n");
+                return null;
+            }
+        }
+
+        /// <summary>Đưa document lên active, ném nếu không thành công. Sau đó KHÔNG dùng Editor của document cũ.</summary>
+        private static void Activate(Document doc)
+        {
+            Application.DocumentManager.MdiActiveDocument = doc;
+            if (Application.DocumentManager.MdiActiveDocument != doc)
+                throw new System.InvalidOperationException($"{Path.GetFileName(doc.Name)} did not become the active drawing");
+            HostApplicationServices.WorkingDatabase = doc.Database;   // entity mới lấy mặc định từ đây
+        }
+
+        /// <summary>File cuối bị bỏ làm AutoCAD chuyển sang drawing khác ⇒ đưa file tốt cuối cùng trở lại active (spec: file cuối là file active).</summary>
+        private static void Reactivate(Document doc, BuildRun run)
+        {
+            if (doc == null || Application.DocumentManager.MdiActiveDocument == doc) return;
+            try { Activate(doc); }
+            catch (System.Exception ex)
+            {
+                string error = $"Could not switch back to {Path.GetFileName(doc.Name)}: {ex.Message}";
+                run.Problems.Add(error);
+                Say($"\n{LOG_PREFIX} {error}\n");
             }
         }
 
@@ -184,7 +210,8 @@ namespace MCG_3DPanel.Commands
         {
             string file = doc.Database.Filename;
             if (!doc.IsNamedDrawing || string.IsNullOrEmpty(file) || !File.Exists(file)) return false;
-            try { return System.Convert.ToInt32(Application.GetSystemVariable("DBMOD")) == 0; }
+            // Bit 8 (window) và 16 (view): file 3D đọc từ đĩa nên đổi khung nhìn (zoom, pan) không ảnh hưởng nội dung.
+            try { return (System.Convert.ToInt32(Application.GetSystemVariable("DBMOD")) & ~DBMOD_VIEW_ONLY) == 0; }
             catch (System.Exception ex)
             {
                 Debug.WriteLine($"{LOG_PREFIX} DBMOD: {ex.Message}");

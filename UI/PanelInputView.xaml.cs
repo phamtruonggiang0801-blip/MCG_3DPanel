@@ -80,13 +80,21 @@ namespace MCG_3DPanel.UI
             string tail = string.Concat(notes.Select(n => " · " + n));
             bool error = run.Failed > 0 || run.Problems.Count > 0;
 
-            if (run.Files > 0) SetStatus($"Built {run.Solids} solids in {run.Files} 3D file(s){tail}.", error);
-            else if (run.Opened > 0) SetStatus($"Opened {run.Opened} existing 3D file(s){tail}.", error);
-            else if (run.Failed > 0) SetStatus($"No 3D file was built{tail}.", error: true);
-            else SetStatus("No solids were built (check layers/inputs).", error: true);
+            string summary;
+            if (run.Files > 0) summary = $"Built {run.Solids} solids in {run.Files} 3D file(s){tail}.";
+            else if (run.Opened > 0) summary = $"Opened {run.Opened} existing 3D file(s){tail}.";
+            else if (run.Failed > 0) { summary = $"No 3D file was built{tail}."; error = true; }
+            else { summary = $"No solids were built (check layers/inputs){tail}."; error = true; }
+            SetStatus(summary, error);
 
             // Chỉ Open / không dựng được gì: giữ nguyên dòng đang có trên các tab (có thể là của file vừa chuyển sang).
-            if (builds.Count > 0) Built?.Invoke(builds);
+            if (builds.Count == 0) return;
+            try { Built?.Invoke(builds); }
+            catch (System.Exception ex)
+            {
+                // File đã dựng và lưu xong: giữ kết quả Build, chỉ báo thêm lỗi cập nhật tab.
+                SetStatus($"{summary} The tabs could not be updated: {ex.Message}", error: true);
+            }
         }
 
         /// <summary>Vị trí panel đang chọn — tab Naming đánh số theo đây (kỹ sư 2026-11-05).</summary>
