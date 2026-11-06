@@ -38,7 +38,12 @@ namespace MCG_3DPanel.UI
         }
 
         // TẠM: nút Spike (xoá ở Task 7)
-        private void BtnSpike_Click(object sender, RoutedEventArgs e) => Spike3DFile.Run((m, err) => SetStatus(m, err));
+        private void BtnSpike_Click(object sender, RoutedEventArgs e) 
+        {
+            // Không để exception nào thoát khỏi handler (AutoCAD sẽ chết).
+            try { Spike3DFile.Run((m, err) => SetStatus(m, err)); }
+            catch (System.Exception ex) { try { SetStatus("Spike failed: " + ex.Message, true); } catch { } }
+        }
 
         private void BtnBuild_Click(object sender, RoutedEventArgs e)
         {
