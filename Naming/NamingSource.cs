@@ -32,7 +32,7 @@ namespace MCG_3DPanel.Naming
         /// <summary>Tính lại tuyến + tên (tự sinh, rồi tên người dùng đã lưu).</summary>
         public void Recompute()
         {
-            Lines = StructureNaming.Lines(Pieces, Position, NameStore.Deleted(PanelKey), NameStore.Merges(PanelKey));
+            Lines = StructureNaming.Lines(Pieces, Position, NameStore.Deleted(PanelKey), NameStore.Merges(PanelKey), NameStore.Splits(PanelKey));
             ResolveNames();
         }
 

@@ -177,14 +177,25 @@ namespace MCG_3DPanel.UI
         {
             var sel = Selected;
             if (sel.Count == 0) return;
-            var plan = BulkEdit.Plan(sel[0], sel, r => r.IsUserName, InActiveDrawing);
+            // Dòng chỉ bị Split (không có tên người dùng) cũng phải về gom tự động.
+            bool IsSplit(NamingRow r) => r.Line.Pieces.Any(p => p.Key != null && NameStore.Splits(r.PanelData.PanelKey).Contains(p.Key));
+            var plan = BulkEdit.Plan(sel[0], sel, r => r.IsUserName || IsSplit(r), InActiveDrawing);
             if (plan.Targets.Count == 0)
             {
                 if (plan.OtherDrawing > 0) SetStatus(OtherDrawingText(sel.First(r => !InActiveDrawing(r))), error: true);
                 else SetStatus(sel.Count == 1 ? "This row already has its auto name." : "The selected rows already have their auto names.");
                 return;
             }
-            Apply(plan.Targets, null, BulkEdit.Describe(plan, "Reset to auto"));
+            bool rejoined = false;
+            foreach (var r in plan.Targets) rejoined |= NameStore.Unsplit(r.PanelData.PanelKey, r.Line);
+            if (!rejoined) { Apply(plan.Targets, null, BulkEdit.Describe(plan, "Reset to auto")); return; }
+            // Có đoạn rejoin ⇒ tuyến đổi: xoá tên người dùng theo SourceKey rồi tính lại + đánh số lại.
+            foreach (var r in plan.Targets) NameStore.SetLine(r.PanelData.PanelKey, r.Line, null);
+            var touched = plan.Targets.Select(r => r.PanelData).Distinct().ToList();
+            foreach (var p in touched) p.Recompute();
+            var errors = SaveAll(touched);
+            Rebind(plan.Targets.Select(r => r.Key).ToList());
+            Report(BulkEdit.Describe(plan, "Reset to auto") + " — split pieces rejoined their automatic lines, renumbered", errors);
         }
 
         /// <summary>Ghi tên vào cache + XRecord (1 lần mỗi panel), gắn lại tên, cập nhật dòng tại chỗ.</summary>
@@ -271,8 +282,8 @@ namespace MCG_3DPanel.UI
 
         private void MnuUnmerge_Click(object sender, RoutedEventArgs e)
         {
-            var sel = Selected.Where(r => r.Line.IsMerged).ToList();
-            if (sel.Count == 0) { SetStatus("No merged line selected."); return; }
+            var sel = Selected.Where(r => r.Line.IsMerged || StructureNaming.CanSplit(r.Line)).ToList();
+            if (sel.Count == 0) { SetStatus("Select a merged line, or a line of two or more pieces."); return; }
             var plan = BulkEdit.Plan(sel[0], sel, r => true, InActiveDrawing);
             if (plan.Targets.Count == 0) { SetStatus(OtherDrawingText(sel[0]), error: true); return; }
             // Tên tự đặt của tuyến gộp chỉ ở lại trên tuyến con chứa đoạn DÀI NHẤT; các tuyến con khác về tên tự sinh
@@ -280,7 +291,11 @@ namespace MCG_3DPanel.UI
             var keepOn = plan.Targets.Where(r => r.IsUserName)
                 .Select(r => (r.PanelData, keys: r.Line.Pieces.Select(x => x.Key).ToList(),
                               longest: r.Line.Pieces.OrderByDescending(x => x.Length).First().Key)).ToList();
-            foreach (var r in plan.Targets) NameStore.Unmerge(r.PanelData.PanelKey, r.Line);
+            foreach (var r in plan.Targets)
+            {
+                if (r.Line.IsMerged) NameStore.Unmerge(r.PanelData.PanelKey, r.Line);
+                else NameStore.Split(r.PanelData.PanelKey, r.Line);
+            }
             var touched = plan.Targets.Select(r => r.PanelData).Distinct().ToList();
             foreach (var p in touched) p.Recompute();
             foreach (var (p, keys, longest) in keepOn)
@@ -304,7 +319,11 @@ namespace MCG_3DPanel.UI
             MnuMerge.IsEnabled = why == null;
             MnuMerge.ToolTip = why ?? "Combine the selected lines into one line with one name and one number; the others renumber";
             ToolTipService.SetShowOnDisabled(MnuMerge, true);
-            MnuUnmerge.IsEnabled = sel.Any(r => r.Line.IsMerged);
+            bool canUnmerge = sel.Any(r => r.Line.IsMerged || StructureNaming.CanSplit(r.Line));
+            MnuUnmerge.IsEnabled = canUnmerge;
+            MnuUnmerge.ToolTip = canUnmerge ? "Split the selected lines into their pieces, then renumber. Use Merge to put pieces back together."
+                : "This line has one piece — nothing to split.";
+            ToolTipService.SetShowOnDisabled(MnuUnmerge, true);
             var adoc = AcadApp.DocumentManager.MdiActiveDocument;
             int n = _panels.Where(p => adoc != null && p.Db == adoc.Database).Sum(p => NameStore.Deleted(p.PanelKey).Count);
             MnuRestoreDeleted.Header = n > 0 ? $"Restore deleted names ({n})" : "Restore deleted names";

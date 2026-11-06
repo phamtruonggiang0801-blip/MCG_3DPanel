@@ -22,7 +22,8 @@ namespace MCG_3DPanel.Naming
         {
             string key = CorrectionStore.PanelKey(btr2D);
             if (key == "" || !_loaded.Add(key)) return;
-            var d = NamesJson.Deserialize(CorrectionXRecord.Read(tr, btr2D, CorrectionXRecord.NamesKey), out var del, out var merges);
+            var d = NamesJson.Deserialize(CorrectionXRecord.Read(tr, btr2D, CorrectionXRecord.NamesKey), out var del, out var merges, out var splits);
+            if (splits.Count > 0) SplitSet(key).UnionWith(splits);
             foreach (var g in merges) AddGroup(key, g);
             if (d.Count > 0)
             {
@@ -95,6 +96,35 @@ namespace MCG_3DPanel.Naming
             return list.RemoveAll(g => g.Overlaps(keys)) > 0;
         }
 
+        // ─── Split: SourceKey rời khỏi gom tuyến tự động (mỗi key 1 tuyến riêng) ─────────
+        private static readonly Dictionary<string, HashSet<string>> _splits = new Dictionary<string, HashSet<string>>();
+
+        public static ICollection<string> Splits(string panelKey) =>
+            panelKey != null && _splits.TryGetValue(panelKey, out var s) ? s : (ICollection<string>)new string[0];
+
+        private static HashSet<string> SplitSet(string panelKey)
+        {
+            if (!_splits.TryGetValue(panelKey, out var s)) _splits[panelKey] = s = new HashSet<string>();
+            return s;
+        }
+
+        /// <summary>Tách tuyến tự động thành từng đoạn riêng: ghi mọi SourceKey của tuyến vào tập Split.</summary>
+        public static void Split(string panelKey, NamingLine line)
+        {
+            if (string.IsNullOrEmpty(panelKey) || line == null) return;
+            var s = SplitSet(panelKey);
+            foreach (var p in line.Pieces) if (!string.IsNullOrEmpty(p.Key)) s.Add(p.Key);
+        }
+
+        /// <summary>Bỏ Split của các đoạn thuộc <paramref name="line"/> (về gom tự động). Trả true nếu có bỏ.</summary>
+        public static bool Unsplit(string panelKey, NamingLine line)
+        {
+            if (panelKey == null || line == null || !_splits.TryGetValue(panelKey, out var s)) return false;
+            bool any = false;
+            foreach (var p in line.Pieces) if (p.Key != null && s.Remove(p.Key)) any = true;
+            return any;
+        }
+
         /// <summary>Lấy lại MỌI tuyến đã Del Name của panel. Trả số đoạn được trả lại.</summary>
         public static int RestoreAll(string panelKey)
         {
@@ -118,8 +148,10 @@ namespace MCG_3DPanel.Naming
                 var names = For(key);
                 var del = Deleted(key);
                 var merges = Merges(key);
+                var splits = Splits(key);
                 CorrectionXRecord.Write(tr, btr2D, CorrectionXRecord.NamesKey,
-                    names.Count > 0 || del.Count > 0 || merges.Count > 0 ? NamesJson.Serialize(names, del.ToList(), merges) : null);
+                    names.Count > 0 || del.Count > 0 || merges.Count > 0 || splits.Count > 0
+                        ? NamesJson.Serialize(names, del.ToList(), merges, splits.ToList()) : null);
                 return null;
             }
             catch (System.Exception ex)
@@ -137,6 +169,8 @@ namespace MCG_3DPanel.Naming
                 if (k.StartsWith(prefix)) _store.Remove(k);
             foreach (var k in new List<string>(_deleted.Keys))
                 if (k.StartsWith(prefix)) _deleted.Remove(k);
+            foreach (var k in new List<string>(_splits.Keys))
+                if (k.StartsWith(prefix)) _splits.Remove(k);
             foreach (var k in new List<string>(_merges.Keys))
                 if (k.StartsWith(prefix)) _merges.Remove(k);
             _loaded.RemoveWhere(k => k.StartsWith(prefix));
