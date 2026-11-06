@@ -20,6 +20,35 @@ namespace MCG_3DPanel.Commands
     {
         private const string LAYER = "MCG3D_2D_SOURCE";
 
+        /// <summary>So danh tính 2 entity: BlockReference theo tên block + vị trí; còn lại theo layer + extents.
+        /// Trả về null nếu khớp, hoặc lý do lệch.</summary>
+        private static string Identity(Transaction trS, Entity s, Transaction trC, Entity c)
+        {
+            const double tol = 0.001;
+            if (s is BlockReference bs)
+            {
+                var bc = (BlockReference)c;
+                string ns = ((BlockTableRecord)trS.GetObject(bs.BlockTableRecord, OpenMode.ForRead)).Name;
+                string nc = ((BlockTableRecord)trC.GetObject(bc.BlockTableRecord, OpenMode.ForRead)).Name;
+                if (ns != nc) return $"block '{ns}' vs '{nc}'";
+                if (bs.Position.DistanceTo(bc.Position) > tol) return "position differs";
+                return null;
+            }
+            string ls = ((LayerTableRecord)trS.GetObject(s.LayerId, OpenMode.ForRead)).Name;
+            string lc = ((LayerTableRecord)trC.GetObject(c.LayerId, OpenMode.ForRead)).Name;
+            if (ls != lc) return $"layer '{ls}' vs '{lc}'";
+            Autodesk.AutoCAD.DatabaseServices.Extents3d? es = Ext(s), ec = Ext(c);
+            if (es.HasValue != ec.HasValue) return "extents present on one side only";
+            if (es.HasValue && (es.Value.MinPoint.DistanceTo(ec.Value.MinPoint) > tol
+                             || es.Value.MaxPoint.DistanceTo(ec.Value.MaxPoint) > tol)) return "extents differ";
+            return null;
+        }
+
+        private static Autodesk.AutoCAD.DatabaseServices.Extents3d? Ext(Entity e)
+        {
+            try { return e.GeometricExtents; } catch { return null; } // entity không có extents
+        }
+
         /// <summary>Chạy từ nút Spike (ngữ cảnh palette). <paramref name="status"/> in ra status của tab Input.</summary>
         public static void Run(Action<string, bool> status)
         {
@@ -45,7 +74,8 @@ namespace MCG_3DPanel.Commands
 
             ObjectId srcRefId = pr.ObjectId;
             Handle refHandle = srcRefId.Handle;
-            string path = Path.Combine(Path.GetTempPath(), "mcg_spike_3D.dwg");
+            // Tên file duy nhất mỗi lần chạy — tránh Open trả về document cũ còn mở.
+            string path = Path.Combine(Path.GetTempPath(), $"mcg_spike_3D_{DateTime.Now:yyyyMMdd_HHmmss}.dwg");
             Database copy = null;
             Document copyDoc = null;
             bool saved = false;
@@ -63,9 +93,16 @@ namespace MCG_3DPanel.Commands
                     void Check(DBObject o)
                     {
                         total++;
-                        if (copy.TryGetObjectId(o.Handle, out ObjectId cid) && !cid.IsNull
-                            && trC.GetObject(cid, OpenMode.ForRead, true).GetType() == o.GetType()) kept++;
-                        else missing.Add(o.Handle + ":" + o.GetType().Name);
+                        string why = null;
+                        if (!copy.TryGetObjectId(o.Handle, out ObjectId cid) || cid.IsNull) why = "no such handle";
+                        else
+                        {
+                            var c = trC.GetObject(cid, OpenMode.ForRead, true);
+                            if (c.GetType() != o.GetType()) why = "type " + c.GetType().Name;
+                            else why = Identity(trS, (Entity)o, trC, (Entity)c);
+                        }
+                        if (why == null) kept++;
+                        else missing.Add(o.Handle + ":" + o.GetType().Name + " (" + why + ")");
                     }
                     void Walk(ObjectId btrId)
                     {
@@ -96,7 +133,12 @@ namespace MCG_3DPanel.Commands
                 {
                     var lt = (LayerTable)tr.GetObject(copy.LayerTableId, OpenMode.ForWrite);
                     ObjectId lid;
-                    if (lt.Has(LAYER)) lid = lt[LAYER];
+                    if (lt.Has(LAYER))
+                    {
+                        lid = lt[LAYER];
+                        var old = (LayerTableRecord)tr.GetObject(lid, OpenMode.ForWrite);
+                        old.IsFrozen = true; old.IsLocked = true; // layer có sẵn vẫn phải ép trạng thái
+                    }
                     else
                     {
                         var ltr = new LayerTableRecord { Name = LAYER, IsFrozen = true, IsLocked = true };
@@ -137,7 +179,16 @@ namespace MCG_3DPanel.Commands
                 int copyParts;
                 using (copyDoc.LockDocument())
                     copyParts = svc.Classify(cid, PanelPosition.Center, empty).Parts.Count;
-                Log($"4) parts: copy {copyParts} / source {srcParts}", copyParts != srcParts);
+                // Đọc lại layer trong file đã mở: phải frozen + locked và ref nằm trên layer đó.
+                string layerInfo; bool layerOk;
+                using (var tr = copyDoc.Database.TransactionManager.StartOpenCloseTransaction())
+                {
+                    var r = (BlockReference)tr.GetObject(cid, OpenMode.ForRead, true);
+                    var l = (LayerTableRecord)tr.GetObject(r.LayerId, OpenMode.ForRead);
+                    layerOk = l.Name == LAYER && l.IsFrozen && l.IsLocked;
+                    layerInfo = $"ref layer '{l.Name}', frozen={l.IsFrozen}, locked={l.IsLocked}";
+                }
+                Log($"4) parts: copy {copyParts} / source {srcParts}; {layerInfo}", copyParts != srcParts || !layerOk);
             }
             catch (System.Exception ex) { Log("CHECK 4 (Classify) FAILED: " + ex.Message, true); }
 
