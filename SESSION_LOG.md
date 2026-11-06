@@ -1,5 +1,14 @@
 # SESSION LOG — MCG_3DPanel
 
+## Session 2026-11-06 — Naming: tuyến xiên (nhánh `feat/naming-skew-lines`)
+
+Build OK, 203/203 unit test, **CHƯA test trong AutoCAD** (bản vẽ 7D-17C).
+
+- Đoạn xiên (lệch > 1° so với trục) gộp thành 1 tuyến theo seed: song song 1° + cách đường seed ≤ 15 mm; tâm tuyến xiên = giữa phạm vi cả tuyến.
+- Flange xiên chỉ gắn web xiên song song (khoảng cách vuông góc ≤ nửa bề rộng + 15, chồng theo trục web); không chéo với web thẳng.
+  Thêm `NamingPiece.OverlapsAlong`. Tấm nối đi theo tuyến song song.
+- Test mới: Cas7D17C (Web/Flange), Merge xiên + thẳng, Skew_FlatBars_OneBsLine, Skew_LDir_CenterUsesY.
+
 ## Session 2026-11-04b — Result tab Phần 2 (trên `main`)
 
 Plan: `docs/superpowers/plans/2026-11-04-result-tab-part2.md` · spec §11–15. Build OK, 45/45 unit test, **CHƯA test trong AutoCAD**.

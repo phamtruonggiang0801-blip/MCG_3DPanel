@@ -19,8 +19,8 @@ Nguồn: `CAS.dump.json` panel 7D-16C — người vẽ ghi Text cạnh mặt c�
 - Thành viên: Web + GirderEnd = Web; HP; FlatBar = FB. Loại khác (Bracket, Flange, Closed Plate…) **không đặt tên** (để trống).
   Web ngắn ở mép thường đã là Bracket nên tự rơi ra ngoài.
 - Hình học trong **hệ block 2D** (nghịch đảo block transform) — dời/xoay block không đổi tên.
-- Hướng = trục gần trục dài nhất (đoạn chéo theo trục gần nhất). Web + HP cùng hướng, tâm lệch ≤ **15 mm** = 1 tuyến
-  (không cần liền). Loại tuyến = loại có **tổng dài lớn hơn** (HP 1B2E9 nằm trên L3 ⇒ tên L3). Tâm tuyến = tâm đoạn dài nhất.
+- Hướng = trục gần trục dài nhất. Đoạn **xiên** (lệch > **1°** so với cả 0°, 90°, 180°) gộp theo SEED: song song trong 1° + khoảng cách vuông góc ≤ **15 mm** tới đường thẳng của đoạn seed (dài nhất) ⇒ 1 tuyến xiên (không cần liền); không gộp với đoạn thẳng. Web + HP cùng hướng, tâm lệch ≤ **15 mm** = 1 tuyến
+  (không cần liền). Loại tuyến = loại có **tổng dài lớn hơn** (HP 1B2E9 nằm trên L3 ⇒ tên L3). Tâm tuyến = tâm đoạn dài nhất; riêng tuyến toàn đoạn xiên = trung điểm phạm vi cả tuyến (đánh số theo tâm cả tuyến).
 - FB chỉ gộp với FB, tâm ≤ 15 (cách xa vẫn 1 dòng — revision 1). Tên luôn "BS".
 - Theo hướng tàu (vị trí panel): T/HT lái → mũi (mũi ở X+ ⇒ X tăng); L/HL tâm tàu → mạn: Center/Port Y tăng,
   Starboard Y giảm. 4 bộ đếm riêng.
@@ -53,8 +53,9 @@ Nguồn: `CAS.dump.json` panel 7D-16C — người vẽ ghi Text cạnh mặt c�
 
 ## Revision 2 (kỹ sư 2026-11-05)
 - **Name** (sửa được, chỉ tag) và **Size** (chỉ đọc, theo đối tượng) là 2 cột riêng; Copy cũng 2 cột.
-- Highlight Web kèm **mọi flange** của tuyến (`NamingLine.Flanges`: flange cùng phương, tâm trong nửa bề rộng + 15 quanh
-  1 đoạn web và chồng trục với đoạn đó). Quy cách FLANGE ưu tiên flange trên đoạn web dài nhất.
+- Highlight Web kèm **mọi flange** của tuyến (`NamingLine.Flanges`). Flange thẳng: cùng phương, tâm trong nửa bề rộng + 15 quanh
+  1 đoạn web thẳng và chồng trục. Flange xiên: **song song** (1°) với web xiên, khoảng cách vuông góc từ trung điểm tới đường web ≤ nửa bề rộng + 15, chồng theo trục web.
+  Flange xiên không bao giờ gắn web thẳng và ngược lại; tấm nối (junction plate) đi theo tuyến song song của nó. Quy cách FLANGE ưu tiên flange trên đoạn web dài nhất.
 - **Merge**: các dòng CÙNG loại + CÙNG phương trong 1 panel ⇒ 1 tuyến, 1 tên, 1 số (đánh số lại); lưu `Merges` (nhóm
   SourceKey) trong `MCG3D_NAMES`; nhóm chạm nhau thì nhập. **Unmerge** bỏ nhóm chứa dòng đó. Kind hiện "Web (merged)".
 

@@ -448,5 +448,63 @@ namespace MCG_3DPanel.Tests
             var l = StructureNaming.Lines(new[] { P(NamingKind.Web, 0, 0, 1000, 2.4), P(NamingKind.Web, 2000, 3, 3000, 5) }, PanelPosition.Center);
             Assert.Single(l);
         }
+
+        private static List<NamingPiece> Cas7D17CWithFlanges()
+        {
+            var l = Cas7D17C();
+            Action<double, double, double, double, double, string> f = (x0, y0, x1, y1, w, key) =>
+            { var p = P(NamingKind.Flange, x0, y0, x1, y1, w, key); p.Height = 20; l.Add(p); };
+            f(436.5, -1195.0, 2106.7, -4472.7, 150, "1AE46");
+            f(2477.5, -5200.4, 4217.9, -8615.7, 150, "1AE49");
+            f(5653.7, -11433.2, 5852.5, -11823.4, 150, "1AE4D");
+            f(6438.3, -12973.0, 8056.0, -16147.5, 150, "1AE5E");
+            f(10156.5, -20269.4, 8472.2, -16964.3, 150, "1AE75");
+            f(2239.0, -4405.3, 2609.8, -5133.0, 447, "1AE45");   // tấm nối
+            f(8608.5, -16894.9, 8192.2, -16078.1, 456, "1AE60"); // tấm nối
+            f(2438.1, -4382.3, 2438.1, -1076.0, 80, "1AE39");
+            f(8397.4, -16057.2, 8397.4, -11212.8, 80, "1AE27");
+            f(8397.4, -9862.5, 8397.4, -656.0, 80, "1AE33");
+            return l;
+        }
+
+        [Fact] public void Cas7D17C_SkewWebSize()
+        {
+            var l = StructureNaming.Lines(Cas7D17CWithFlanges(), PanelPosition.Center);
+            Assert.Equal("WEB 374x6.0/FLANGE 150x20.0", Line(l, "T2").Spec);
+        }
+
+        [Fact] public void Cas7D17C_FlangesNotCrossed()
+        {
+            var l = StructureNaming.Lines(Cas7D17CWithFlanges(), PanelPosition.Center);
+            Assert.Equal(new[] { "1AE45", "1AE46", "1AE49", "1AE4D", "1AE5E", "1AE60", "1AE75" }, Line(l, "T2").Flanges.Select(f => f.Key).OrderBy(k => k).ToArray());
+            Assert.Equal(new[] { "1AE39" }, Line(l, "T1").Flanges.Select(f => f.Key).ToArray());
+            Assert.Equal(new[] { "1AE27", "1AE33" }, Line(l, "T3").Flanges.Select(f => f.Key).OrderBy(k => k).ToArray());
+        }
+
+        [Fact] public void Merge_SkewWithStraight_KeepsBothFlanges()
+        {
+            var merges = new[] { new[] { "1AE5D", "1AE47" } };
+            var l = StructureNaming.Lines(Cas7D17CWithFlanges(), PanelPosition.Center, null, merges);
+            var m = l.Single(x => x.IsMerged);
+            Assert.Contains(m.Flanges, f => f.Key == "1AE75");
+            Assert.Contains(m.Flanges, f => f.Key == "1AE39");
+            Assert.Equal(8437.3, m.Center, 1);   // tuyến trộn xiên + thẳng ⇒ tâm đoạn dài nhất (1AE5D)
+        }
+
+        [Fact] public void Skew_FlatBars_OneBsLine()
+        {
+            var l = StructureNaming.Lines(new[] { P(NamingKind.FB, 0, 0, 1000, 509.5), P(NamingKind.FB, 1100, 560.5, 2000, 1019) }, PanelPosition.Center);
+            Assert.Single(l);
+            Assert.Equal("BS", l[0].Name);
+        }
+
+        [Fact] public void Skew_LDir_CenterUsesY()
+        {
+            var l = StructureNaming.Lines(new[] { P(NamingKind.Web, 0, 0, 1000, 509.5), P(NamingKind.Web, 1100, 560.5, 2000, 1019) }, PanelPosition.Center);
+            Assert.Single(l);
+            Assert.Equal(NamingDir.L, l[0].Dir);
+            Assert.Equal("L1", l[0].Name);
+            Assert.Equal(509.5, l[0].Center, 1);
+        }
     }
 }

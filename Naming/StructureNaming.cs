@@ -61,6 +61,17 @@ namespace MCG_3DPanel.Naming
             return Math.Min(d, 180 - d) <= StructureNaming.ANGLE_TOL;
         }
 
+        /// <summary>Hình chiếu của o và của đoạn này lên trục đoạn này có chồng nhau không.</summary>
+        internal bool OverlapsAlong(NamingPiece o)
+        {
+            double len = Length;
+            if (len < 1e-9) return false;
+            double ux = (X1 - X0) / len, uy = (Y1 - Y0) / len;
+            double a0 = 0, a1 = len;
+            double b0 = (o.X0 - X0) * ux + (o.Y0 - Y0) * uy, b1 = (o.X1 - X0) * ux + (o.Y1 - Y0) * uy;
+            return Math.Min(b0, b1) < a1 && a0 < Math.Max(b0, b1);
+        }
+
         /// <summary>Khoảng cách từ trung điểm của o tới đường thẳng vô hạn chứa đoạn này.</summary>
         internal double PerpDist(NamingPiece o)
         {
@@ -76,7 +87,7 @@ namespace MCG_3DPanel.Naming
     {
         public NamingKind Kind { get; set; }
         public NamingDir Dir { get; set; }
-        /// <summary>Toạ độ tâm theo phương ngang tuyến (X với T, Y với L) — của đoạn dài nhất thuộc loại chính.</summary>
+        /// <summary>Toạ độ tâm theo phương ngang tuyến (X với T, Y với L) — của đoạn dài nhất thuộc loại chính; riêng tuyến toàn đoạn xiên thì là trung điểm phạm vi cả tuyến.</summary>
         public double Center { get; set; }
         public IReadOnlyList<NamingPiece> Pieces { get; set; }
         public double Length { get; set; }
@@ -242,9 +253,16 @@ namespace MCG_3DPanel.Naming
                     spec = $"WEB {H(longest.Height)}x{T(longest.Thickness)}";
                     // Flange của tuyến: cùng phương, tâm trong nửa bề rộng flange (+ LINE_TOL) quanh đường tâm 1 đoạn web,
                     // chồng trục với đoạn đó. Mọi flange khớp ⇒ highlight cùng web (revision 2).
-                    bool On(NamingPiece f, NamingPiece w) => Math.Abs(f.Center - w.Center) <= f.Thickness / 2 + LINE_TOL
-                                                             && f.AxLo < w.AxHi && w.AxLo < f.AxHi;
-                    lineFlanges = flanges.Where(f => f.Dir == dir && mainList.Any(w => On(f, w))).ToList();
+                    // Xiên chỉ gắn web xiên, thẳng chỉ gắn web thẳng (không chéo nhau); xiên: song song (ANGLE_TOL),
+                    // khoảng cách vuông góc trong nửa bề rộng (+ LINE_TOL), chồng theo trục web.
+                    bool On(NamingPiece f, NamingPiece w)
+                    {
+                        if (f.IsSkew != w.IsSkew) return false;
+                        if (f.IsSkew) return w.Parallel(f) && w.PerpDist(f) <= f.Thickness / 2 + LINE_TOL && w.OverlapsAlong(f);
+                        return f.Dir == w.Dir && Math.Abs(f.Center - w.Center) <= f.Thickness / 2 + LINE_TOL
+                               && f.AxLo < w.AxHi && w.AxLo < f.AxHi;
+                    }
+                    lineFlanges = flanges.Where(f => mainList.Any(w => On(f, w))).ToList();
                     // Quy cách: flange trên đoạn DÀI NHẤT trước, không có thì flange dài nhất của tuyến.
                     var fl = lineFlanges.Where(f => On(f, longest)).OrderByDescending(f => f.Length).FirstOrDefault()
                              ?? lineFlanges.OrderByDescending(f => f.Length).FirstOrDefault();
