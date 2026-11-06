@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
@@ -8,6 +9,7 @@ using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
 using MCG_3DPanel.Models;
 using MCG_3DPanel.Services;
+using MCG_3DPanel.Services.Classify;
 using MCG_3DPanel.Services.Corrections;
 using MCG_3DPanel.UI;
 
@@ -41,79 +43,203 @@ namespace MCG_3DPanel.Commands
 
         // ─── Thao tác từ Palette ──────────────────────────────────────────
 
+        /// <summary>Mỗi file 3D dựng + lưu xong: (Database của file đó, build của file đó).</summary>
+        public static event System.Action<Database, List<BuildResult>> FileBuilt;
+
         /// <summary>
-        /// Quét chọn 1 hoặc NHIỀU Block Panel → mỗi panel: classify → dựng 3D (panel lỗi không chặn panel khác)
-        /// → hỏi Keep/Discard 1 LẦN cho cả lô. Trả về danh sách BuildResult (null nếu huỷ chọn).
-        /// Luôn ghi 1 report JSON cho cả lô (solid 3D, cùng handle với tab Result/CSV) nhưng KHÔNG tự mở.
+        /// Quét chọn 1 hoặc NHIỀU Block Panel → mỗi panel 1 file 3D riêng (<see cref="Panel3DFile"/>), mở và dựng trong file đó
+        /// (panel lỗi không chặn panel khác). File đích đã có ⇒ hỏi 1 LẦN cho cả lô. Bản vẽ nguồn KHÔNG bị ghi.
+        /// Trả build của file mở cuối (rỗng nếu không dựng được gì), null nếu dừng trước khi tạo file
+        /// (<see cref="BuildRun.Stop"/> nói lý do; null = người dùng huỷ).
+        /// Từ lúc đổi document: KHÔNG dùng lại Editor của document cũ (AutoCAD crash) — mọi thông báo qua <see cref="Say"/>.
         /// </summary>
-        public static List<BuildResult> RunBuild(PanelInput input, PanelPosition position)
+        public static List<BuildResult> RunBuild(PanelInput input, PanelPosition position, out BuildRun run)
         {
-            if (!TryPickPanels(out Document doc, out ObjectId[] ids)) return null;
-            Editor ed = doc.Editor;
-            Database db = doc.Database;
-            var builds = new List<BuildResult>();
-            var sources = new Dictionary<BuildResult, ObjectId>();   // build → block 2D nguồn (xoá khi Keep)
+            run = new BuildRun();
+            Document active = Application.DocumentManager.MdiActiveDocument;
+            if (active == null) return null;
+            if (!IsSavedOnDisk(active)) { run.Stop = "Save this drawing first, then Build 3D."; return null; }
+            if (!TryPickPanels(out Document src, out ObjectId[] ids)) return null;
 
-            using (doc.LockDocument())
+            Database source = src.Database;
+            List<PanelJob> jobs = PlanJobs(source, ids);
+
+            var existing = new HashSet<string>(jobs.Select(j => j.Target).Where(IsTaken), System.StringComparer.OrdinalIgnoreCase);
+            if (existing.Count > 0)
             {
-                for (int i = 0; i < ids.Length; i++)
+                ExistingChoice choice = ExistingFileDialog.Ask(existing.Select(Path.GetFileName));
+                if (choice == ExistingChoice.Cancel) return null;
+                if (choice == ExistingChoice.Open)
                 {
-                    string tag = $"[{i + 1}/{ids.Length}]";
-                    try
-                    {
-                        BuildResult build = BuildOne(db, ids[i], input, position, out ClassificationResult cls);
-                        builds.Add(build);
-                        sources[build] = ids[i];
+                    // Mở trước, dựng sau: file active cuối cùng là file vừa dựng, khớp dòng trên các tab.
+                    foreach (string path in existing) OpenExisting(path, run);
+                    jobs.RemoveAll(j => existing.Contains(j.Target));
+                }
+            }
 
-                        ed.WriteMessage($"\n{LOG_PREFIX} {tag} {cls.PanelBlockName}: {build.SolidCount} solid ({cls.Summary()}). Block: {build.BlockName}\n");
-                        // "Không dựng được" = không có solid nào ĐƯỢC DỰNG (kể cả solid đã Delete theo correction —
-                        // panel xoá hết solid vẫn là kết quả hợp lệ, còn Restore được).
-                        if (build.Solids.Count == 0)
-                        {
-                            ed.WriteMessage($"\n{LOG_PREFIX} {tag} No solid could be built — skipped.\n");
-                            EraseBuild(db, build);
-                        }
-                    }
-                    catch (System.Exception ex)
+            // NextFree giữ chỗ trong cùng lô: New copy, và 2 bản chèn của cùng 1 block ra 2 file khác nhau.
+            var reserved = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+            foreach (PanelJob job in jobs)
+            {
+                job.Target = Panel3DPath.NextFree(job.Target, p => IsTaken(p) || reserved.Contains(p));
+                reserved.Add(job.Target);
+            }
+
+            var last = new List<BuildResult>();
+            for (int i = 0; i < jobs.Count; i++)
+            {
+                BuildResult build = BuildInNewFile(source, jobs[i], $"[{i + 1}/{jobs.Count}]", input, position, run, out Database fileDb);
+                if (build == null) continue;
+
+                run.Files++;
+                run.Solids += build.SolidCount;
+                last = new List<BuildResult> { build };
+                SaveBuildReport(last);
+                try { FileBuilt?.Invoke(fileDb, last); }
+                catch (System.Exception ex) { Say($"\n{LOG_PREFIX} {Path.GetFileName(jobs[i].Target)} was built, but the tabs could not be updated: {ex.Message}\n"); }
+            }
+            return last;
+        }
+
+        /// <summary>Tạo file, mở, dựng, lưu 1 panel. Trả null nếu file không được giữ (không solid / lỗi): file vừa tạo bị bỏ, đã báo người dùng.</summary>
+        private static BuildResult BuildInNewFile(Database source, PanelJob job, string tag, PanelInput input, PanelPosition position,
+            BuildRun run, out Database fileDb)
+        {
+            fileDb = null;
+            string file = Path.GetFileName(job.Target);
+            Document doc = null;
+            bool created = false;   // CHỈ bỏ file do chính lần này tạo — không bao giờ xoá file có sẵn của người dùng
+            try
+            {
+                Panel3DFile.Create(source, job.RefId, job.Target);
+                created = true;
+                doc = Application.DocumentManager.Open(job.Target, false);
+                Application.DocumentManager.MdiActiveDocument = doc;
+                if (Application.DocumentManager.MdiActiveDocument != doc)
+                    throw new System.InvalidOperationException("the new file did not become the active drawing");
+                HostApplicationServices.WorkingDatabase = doc.Database;   // entity mới lấy mặc định từ đây
+
+                Database db = doc.Database;
+                if (!db.TryGetObjectId(job.RefId.Handle, out ObjectId src2D))
+                    throw new System.InvalidOperationException("the panel is missing from the new file");
+
+                BuildResult build;
+                using (doc.LockDocument())
+                {
+                    build = BuildOne(db, src2D, input, position, out ClassificationResult cls);
+                    Say($"\n{LOG_PREFIX} {tag} {cls.PanelBlockName}: {build.SolidCount} solid ({cls.Summary()}). Block: {build.BlockName}\n");
+                    // "Không dựng được" = không có solid nào ĐƯỢC DỰNG (kể cả solid đã Delete theo correction —
+                    // panel xoá hết solid vẫn là kết quả hợp lệ, còn Restore được).
+                    if (build.Solids.Count > 0)
                     {
-                        ed.WriteMessage($"\n{LOG_PREFIX} {tag} Error building panel {ids[i].Handle}: {ex.Message} — skipped.\n");
+                        build.Kept = true;
+                        RegenActive();
+                        if (!Panel3DFile.Save(doc)) Say($"\n{LOG_PREFIX} {file} is saved, but AutoCAD may still ask to save it on close.\n");
                     }
                 }
-                ed.Regen();
-
-                var withSolids = builds.Where(b => b.Solids.Count > 0).ToList();
-                if (withSolids.Count > 0)
+                if (build.Solids.Count > 0)
                 {
-                    bool keep = AskKeep(ed, withSolids.Count);
-                    using (Transaction tr = db.TransactionManager.StartTransaction())
-                    {
-                        foreach (var build in withSolids)
-                        {
-                            if (keep)
-                            {
-                                ((Entity)tr.GetObject(sources[build], OpenMode.ForWrite)).Erase();   // xoá block 2D
-                                build.Kept = true;
-                            }
-                            else
-                            {
-                                ((Entity)tr.GetObject(build.BlockRefId, OpenMode.ForWrite)).Erase();
-                                try { ((BlockTableRecord)tr.GetObject(build.BtrId, OpenMode.ForWrite)).Erase(); }
-                                catch { /* block còn tham chiếu nơi khác -> để purge sau */ }
-                            }
-                        }
-                        tr.Commit();
-                    }
-                    ed.Regen();
-                    ed.WriteMessage(keep ? $"\nKept 3D ({withSolids.Count} panel(s)), 2D block deleted.\n" : "\n3D model discarded.\n");
+                    fileDb = db;
+                    return build;
                 }
+                run.Empty++;
+                Say($"\n{LOG_PREFIX} {tag} {job.Name}: no solid could be built — {file} was not kept.\n");
+            }
+            catch (System.Exception ex)
+            {
+                run.Failed++;
+                Say($"\n{LOG_PREFIX} {tag} Error building panel {job.Name}: {ex.Message} — skipped.\n");
+            }
 
-                SaveBuildReport(builds, ed);
-                return builds;
+            if (created)   // ngoài using: document đang khoá thì không đóng được
+            {
+                string error = Panel3DFile.Discard(doc, job.Target);
+                if (error != null)
+                {
+                    run.Problems.Add(error);
+                    Say($"\n{LOG_PREFIX} {error}\n");
+                }
+            }
+            return null;
+        }
+
+        /// <summary>Tuỳ chọn Open: mở file 3D có sẵn, hoặc chuyển sang nếu đang mở. Không dựng.</summary>
+        private static void OpenExisting(string path, BuildRun run)
+        {
+            try
+            {
+                Document doc = FindOpen(path) ?? Application.DocumentManager.Open(path, false);
+                Application.DocumentManager.MdiActiveDocument = doc;
+                run.Opened++;
+            }
+            catch (System.Exception ex)
+            {
+                run.Failed++;
+                Say($"\n{LOG_PREFIX} Could not open {Path.GetFileName(path)}: {ex.Message}\n");
             }
         }
 
-        /// <summary>Ghi 1 report Build cho cả lô ra Desktop (KHÔNG mở). Lỗi ghi file không làm hỏng Build.</summary>
-        private static void SaveBuildReport(List<BuildResult> builds, Editor ed)
+        /// <summary>Bản trên đĩa khớp bản đang mở: đã đặt tên (bản vẽ mới chưa lưu có Filename = file .dwt), file còn đó, không có thay đổi chưa lưu.</summary>
+        private static bool IsSavedOnDisk(Document doc)
+        {
+            string file = doc.Database.Filename;
+            if (!doc.IsNamedDrawing || string.IsNullOrEmpty(file) || !File.Exists(file)) return false;
+            try { return System.Convert.ToInt32(Application.GetSystemVariable("DBMOD")) == 0; }
+            catch (System.Exception ex)
+            {
+                Debug.WriteLine($"{LOG_PREFIX} DBMOD: {ex.Message}");
+                return false;   // không đọc được ⇒ coi như chưa lưu, người dùng vẫn thấy thông báo
+            }
+        }
+
+        /// <summary>Đọc tên block của từng panel từ bản vẽ nguồn (chỉ đọc) và tính file đích, TRƯỚC khi đổi document.</summary>
+        private static List<PanelJob> PlanJobs(Database source, ObjectId[] ids)
+        {
+            string folder = Path.GetDirectoryName(source.Filename);
+            var jobs = new List<PanelJob>();
+            using (Transaction tr = source.TransactionManager.StartOpenCloseTransaction())
+            {
+                foreach (ObjectId id in ids)
+                {
+                    string name = PartCollector.GetName(tr, (BlockReference)tr.GetObject(id, OpenMode.ForRead));
+                    jobs.Add(new PanelJob { RefId = id, Name = name, Target = Panel3DPath.Target(folder, name) });
+                }
+            }
+            return jobs;
+        }
+
+        private static bool IsTaken(string path) => File.Exists(path) || FindOpen(path) != null;
+
+        private static Document FindOpen(string path)
+        {
+            foreach (Document d in Application.DocumentManager)
+                if (string.Equals(d.Name, path, System.StringComparison.OrdinalIgnoreCase)) return d;
+            return null;
+        }
+
+        /// <summary>1 panel trong lô Build.</summary>
+        private sealed class PanelJob
+        {
+            public ObjectId RefId;   // thuộc bản vẽ nguồn — sang file 3D chỉ dùng Handle
+            public string Name;
+            public string Target;
+        }
+
+        /// <summary>Ghi dòng lệnh của drawing ĐANG active, lấy Editor mới mỗi lần; không bao giờ ném.</summary>
+        private static void Say(string message)
+        {
+            try { Application.DocumentManager.MdiActiveDocument?.Editor?.WriteMessage(message); }
+            catch (System.Exception ex) { Debug.WriteLine($"{LOG_PREFIX} WriteMessage: {ex.Message}"); }
+        }
+
+        private static void RegenActive()
+        {
+            try { Application.DocumentManager.MdiActiveDocument?.Editor?.Regen(); }
+            catch (System.Exception ex) { Say($"\n{LOG_PREFIX} Regen failed: {ex.Message}\n"); }
+        }
+
+        /// <summary>Ghi 1 report Build ra Desktop (KHÔNG mở). Lỗi ghi file không làm hỏng Build. Báo trên Editor đang active.</summary>
+        private static void SaveBuildReport(List<BuildResult> builds)
         {
             if (builds.Count == 0) return;
             try
@@ -121,27 +247,12 @@ namespace MCG_3DPanel.Commands
                 string outPath = ReportOutput.BuildOutputPath("Build");
                 ReportOutput.WriteBuildReport(builds, outPath);
                 foreach (var b in builds) b.ReportPath = outPath;
-                ed.WriteMessage($"\n{LOG_PREFIX} Build report (debug): {outPath}\n");
+                Say($"\n{LOG_PREFIX} Build report (debug): {outPath}\n");
             }
             catch (System.Exception ex)
             {
-                ed.WriteMessage($"\n{LOG_PREFIX} Could not write the build report: {ex.Message}\n");
+                Say($"\n{LOG_PREFIX} Could not write the build report: {ex.Message}\n");
             }
-        }
-
-        // ─── Tiện ích tương tác ───────────────────────────────────────────
-
-        private static bool AskKeep(Editor ed, int panelCount)
-        {
-            var pko = new PromptKeywordOptions(panelCount > 1
-                ? $"\nKeep the 3D model of {panelCount} panels and delete the 2D blocks?"
-                : "\nKeep the 3D model and delete the 2D block?");
-            pko.Keywords.Add("Yes");
-            pko.Keywords.Add("No");
-            pko.Keywords.Default = "Yes";
-            pko.AllowArbitraryInput = false;
-            PromptResult pr = ed.GetKeywords(pko);
-            return pr.Status == PromptStatus.OK && pr.StringResult == "Yes";
         }
 
         /// <summary>Phân loại (kèm correction tab Result của panel này) + dựng 3D cho 1 block 2D. Cần LockDocument.</summary>
@@ -319,7 +430,7 @@ namespace MCG_3DPanel.Commands
             // Có part hỏng / cảnh báo ⇒ ghi report riêng cho lần rebuild này để thông báo "see …json" trỏ đúng file
             // chứa lỗi (review I1). Không lỗi ⇒ không sinh file mới trên Desktop mỗi lần sửa.
             if (neu.Warnings.Count > 0 || neu.Parts.Any(p => !p.Built && p.Type != "Unknown"))
-                SaveBuildReport(new List<BuildResult> { neu }, doc.Editor);
+                SaveBuildReport(new List<BuildResult> { neu });
             string msg = replaceError == null
                 ? $"Rebuilt {neu.PanelBlockName} in {neu.BuildSeconds:0.0} s."
                 : $"Rebuilt {neu.PanelBlockName}, but the previous 3D block could not be replaced: {replaceError}";
@@ -431,5 +542,23 @@ namespace MCG_3DPanel.Commands
             ed.WriteMessage($"\n{LOG_PREFIX} {ids.Length} panel block(s) selected.\n");
             return true;
         }
+    }
+
+    /// <summary>Kết quả 1 lần bấm Build 3D, để tab Input báo trạng thái.</summary>
+    public sealed class BuildRun
+    {
+        /// <summary>Lý do dừng trước khi tạo file; null = không dừng, hoặc người dùng huỷ.</summary>
+        public string Stop;
+        /// <summary>Số file 3D đã dựng và lưu.</summary>
+        public int Files;
+        public int Solids;
+        /// <summary>Số panel không ra solid (file đã bỏ).</summary>
+        public int Empty;
+        /// <summary>Số panel hoặc file lỗi (đã báo trên dòng lệnh).</summary>
+        public int Failed;
+        /// <summary>Số file có sẵn đã mở theo tuỳ chọn Open.</summary>
+        public int Opened;
+        /// <summary>Lỗi phụ cần báo trên thanh trạng thái, vd không xoá được file.</summary>
+        public List<string> Problems = new List<string>();
     }
 }

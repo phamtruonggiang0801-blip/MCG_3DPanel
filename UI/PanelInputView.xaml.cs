@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -15,7 +16,7 @@ namespace MCG_3DPanel.UI
     /// </summary>
     public partial class PanelInputView : UserControl
     {
-        /// <summary>Build xong (kể cả bị bỏ) — PaletteManager đẩy danh sách solid sang tab Result.</summary>
+        /// <summary>Build xong — PaletteManager đẩy build của file 3D mở cuối sang tab Result.</summary>
         public event Action<List<MCG_3DPanel.Services.BuildResult>> Built;
 
         public PanelInputView()
@@ -47,6 +48,17 @@ namespace MCG_3DPanel.UI
 
         private void BtnBuild_Click(object sender, RoutedEventArgs e)
         {
+            // Build đổi document giữa chừng: không để exception nào thoát khỏi handler (AutoCAD sẽ chết).
+            try { RunBuildFromInput(); }
+            catch (System.Exception ex)
+            {
+                try { SetStatus("Build failed: " + ex.Message, error: true); }
+                catch (System.Exception sx) { Debug.WriteLine("[MCG_3DPanel] SetStatus: " + sx.Message); }
+            }
+        }
+
+        private void RunBuildFromInput()
+        {
             Document doc = AcadApp.DocumentManager.MdiActiveDocument;
             if (doc == null) { SetStatus("No active drawing.", error: true); return; }
 
@@ -58,16 +70,23 @@ namespace MCG_3DPanel.UI
 
             var pos = (MCG_3DPanel.Models.PanelPosition)CmbPanelPos.SelectedIndex;
             SetStatus("Select one or more panel blocks to build…");
-            var builds = PanelCommands.RunBuild(input, pos);
-            if (builds == null) { SetStatus("Build cancelled.", error: true); return; }
+            var builds = PanelCommands.RunBuild(input, pos, out BuildRun run);
+            if (builds == null) { SetStatus(run.Stop ?? "Build cancelled.", error: true); return; }
 
-            int solids = builds.Sum(b => b.SolidCount);
-            int ok = builds.Count(b => b.SolidCount > 0);
-            if (solids == 0) SetStatus("No solids were built (check layers/inputs).", error: true);
-            else SetStatus($"{(builds.Any(b => b.Kept) ? "Built & kept" : "Built (discarded)")}: " +
-                           $"{solids} solids in {ok} panel(s)" +
-                           (ok < builds.Count ? $" · {builds.Count - ok} panel(s) built nothing" : "") + ".");
-            Built?.Invoke(builds);
+            var notes = new List<string>();
+            if (run.Empty > 0) notes.Add($"{run.Empty} panel(s) built nothing");
+            if (run.Failed > 0) notes.Add($"{run.Failed} panel(s) failed, see the command line");
+            notes.AddRange(run.Problems);
+            string tail = string.Concat(notes.Select(n => " · " + n));
+            bool error = run.Failed > 0 || run.Problems.Count > 0;
+
+            if (run.Files > 0) SetStatus($"Built {run.Solids} solids in {run.Files} 3D file(s){tail}.", error);
+            else if (run.Opened > 0) SetStatus($"Opened {run.Opened} existing 3D file(s){tail}.", error);
+            else if (run.Failed > 0) SetStatus($"No 3D file was built{tail}.", error: true);
+            else SetStatus("No solids were built (check layers/inputs).", error: true);
+
+            // Chỉ Open / không dựng được gì: giữ nguyên dòng đang có trên các tab (có thể là của file vừa chuyển sang).
+            if (builds.Count > 0) Built?.Invoke(builds);
         }
 
         /// <summary>Vị trí panel đang chọn — tab Naming đánh số theo đây (kỹ sư 2026-11-05).</summary>

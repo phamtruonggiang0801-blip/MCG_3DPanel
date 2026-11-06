@@ -234,4 +234,41 @@
         </Style.Triggers>
     </Style>
 
+    <!-- ============================================================
+         Riêng 3DPanel — dialog nhỏ (ExistingFileDialog).
+         ============================================================ -->
+
+    <Style x:Key="DialogBodyStyle" TargetType="Border">
+        <Setter Property="Background" Value="#FFF2F2F2"/>
+        <Setter Property="Padding" Value="12"/>
+    </Style>
+
+    <Style x:Key="DialogTextStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="#FF222222"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+        <Setter Property="Margin" Value="0,0,0,6"/>
+    </Style>
+
+    <Style x:Key="DialogListStyle" TargetType="ScrollViewer">
+        <Setter Property="MaxHeight" Value="180"/>
+        <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
+        <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
+        <Setter Property="Margin" Value="0,0,0,10"/>
+    </Style>
+
+    <Style x:Key="DialogButtonRowStyle" TargetType="StackPanel">
+        <Setter Property="Orientation" Value="Horizontal"/>
+        <Setter Property="HorizontalAlignment" Value="Right"/>
+    </Style>
+
+    <Style x:Key="DialogButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="MinWidth" Value="76"/>
+        <Setter Property="Margin" Value="8,0,0,0"/>
+    </Style>
+
+    <Style x:Key="DialogPrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
+        <Setter Property="MinWidth" Value="76"/>
+        <Setter Property="Margin" Value="8,0,0,0"/>
+    </Style>
+
 </ResourceDictionary>
