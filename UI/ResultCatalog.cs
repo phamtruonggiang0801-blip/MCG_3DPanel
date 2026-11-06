@@ -65,7 +65,7 @@ namespace MCG_3DPanel.UI
                     // Tripping Bracket: chỉ đảo PHÍA web dầm (kỹ sư 2026-11-04) — FlipDir lưu theo FlipKey của solid.
                     case "TrippingBracket":
                         { var d = ReadOnly(ResultFamily.Bracket, "Tripping B"); d.CanFlip = true; return d; }
-                    case "GirderFlange": return ReadOnly(ResultFamily.Flange, "Flange GE/GB-" + Suffix(code, "HP"));
+                    case "GirderFlange": return ReadOnly(ResultFamily.Flange, code.StartsWith("GB") ? GB : GE);
                     default: return ReadOnly(ResultFamily.Web, solidType ?? "unknown");
                 }
             }
@@ -78,24 +78,23 @@ namespace MCG_3DPanel.UI
 
                 case "Web":
                 {
-                    string kind = mergedCodes.Count == 0 ? "Web" : "Web + " + string.Join(" + ", mergedCodes);
+                    string kind = mergedCodes.Count == 0 ? "Web" : TagList(mergedCodes);
                     return WebRow(kind, endKinds, geAvailable, gbAvailable);
                 }
                 case "ClosedPlate": return WebRow("Closed Plate", endKinds, geAvailable, gbAvailable);
 
                 case "GirderEnd":
                 {
-                    string k = Suffix(code, "HP");
                     bool isGb = code.StartsWith("GB");
-                    var d = new RowDescriptor { Family = isGb ? ResultFamily.Bracket : ResultFamily.Web, Kind = isGb ? "GB-" + k : "GE-" + k };
+                    var d = new RowDescriptor { Family = isGb ? ResultFamily.Bracket : ResultFamily.Web, Kind = isGb ? GB : GE };
                     // Lựa chọn KHÁC loại hiện tại mờ khi không áp được (cùng quy tắc với WebRow) — spec §9.
                     d.Options.Add(new KindOption
                     {
-                        Text = "GE-" + k, Enabled = !isGb || geAvailable, Tooltip = !isGb || geAvailable ? null : NoGeZoneTip,
+                        Text = GE, Enabled = !isGb || geAvailable, Tooltip = !isGb || geAvailable ? null : NoGeZoneTip,
                     });
                     d.Options.Add(new KindOption
                     {
-                        Text = "GB-" + k, Enabled = isGb || gbAvailable, Tooltip = isGb || gbAvailable ? null : NoGbAnchorTip,
+                        Text = GB, Enabled = isGb || gbAvailable, Tooltip = isGb || gbAvailable ? null : NoGbAnchorTip,
                     });
                     d.Options.Add(new KindOption { Text = "Web" });
                     return d;
@@ -120,11 +119,21 @@ namespace MCG_3DPanel.UI
         public static (string lo, string hi) EndLabels(double dx, double dy) =>
             Math.Abs(dx) >= Math.Abs(dy) ? ("L", "R") : ("B", "T");
 
+        /// <summary>Kind tên ngắn (kỹ sư 2026-11-06): correction đã lưu còn chữ cũ "Web + GE-HP", "GB-FB" ⇒ đổi khi hiển thị.</summary>
+        public static string ShortKind(string kind)
+        {
+            if (kind == null || !(kind.StartsWith("Web + ") || kind.StartsWith("GE-") || kind.StartsWith("GB-"))) return kind;
+            return TagList(kind.Replace("Web + ", "").Split(new[] { " + " }, StringSplitOptions.RemoveEmptyEntries));
+        }
+
         /// <summary>Kind người dùng chọn → việc ClassificationService phải làm.</summary>
         public static CorrectionIntent ParseIntent(string kind)
         {
             if (string.IsNullOrWhiteSpace(kind)) return CorrectionIntent.None;
             if (kind == "Web") return CorrectionIntent.ForceWeb;
+            if (kind == GE) return CorrectionIntent.ForceGE;
+            if (kind == GB) return CorrectionIntent.ForceGB;
+            if (kind == GE + " + " + GB) return CorrectionIntent.None;   // 2 đầu khác loại: giữ tự động
             if (kind.StartsWith("Web + GE") || kind.StartsWith("GE-")) return CorrectionIntent.ForceGE;
             if (kind.StartsWith("Web + GB") || kind.StartsWith("GB-")) return CorrectionIntent.ForceGB;
             switch (kind)
@@ -142,22 +151,31 @@ namespace MCG_3DPanel.UI
 
         // ─── Nội bộ ───────────────────────────────────────────────────────
 
-        /// <summary>Web / Closed Plate: Web · Web + GE-{k} · Web + GB-{k} (khi có đầu chạm HP/FB) · Closed Plate.</summary>
+        private const string GE = "GE", GB = "GB";
+
+        /// <summary>Code GE/GB đã gộp ⇒ "GE", "GB" hoặc "GE + GB" (2 đầu khác loại).</summary>
+        private static string TagList(IEnumerable<string> codes)
+        {
+            var list = codes.ToList();
+            bool ge = list.Any(c => c.StartsWith(GE)), gb = list.Any(c => c.StartsWith(GB));
+            return ge && gb ? GE + " + " + GB : gb ? GB : GE;
+        }
+
+        /// <summary>Web / Closed Plate: Web · GE · GB (khi có đầu chạm HP/FB) · Closed Plate.</summary>
         private static RowDescriptor WebRow(string kind, IReadOnlyList<string> endKinds, bool geAvailable, bool gbAvailable)
         {
             var d = new RowDescriptor { Family = ResultFamily.Web, Kind = kind };
             d.Options.Add(new KindOption { Text = "Web" });
-            var ks = endKinds.Distinct().ToList();
-            if (ks.Count > 0)
+            if (endKinds.Count > 0)
             {
                 d.Options.Add(new KindOption
                 {
-                    Text = "Web + " + string.Join(" + ", ks.Select(k => "GE-" + k)),
+                    Text = GE,
                     Enabled = geAvailable, Tooltip = geAvailable ? null : NoGeZoneTip,
                 });
                 d.Options.Add(new KindOption
                 {
-                    Text = "Web + " + string.Join(" + ", ks.Select(k => "GB-" + k)),
+                    Text = GB,
                     Enabled = gbAvailable, Tooltip = gbAvailable ? null : NoGbAnchorTip,
                 });
             }
@@ -181,13 +199,6 @@ namespace MCG_3DPanel.UI
         {
             if (!d.Options.Any(o => o.Text == d.Kind))
                 d.Options.Insert(0, new KindOption { Text = d.Kind });
-        }
-
-        /// <summary>"GE-HP" → "HP"; không có '-' → <paramref name="fallback"/>.</summary>
-        private static string Suffix(string code, string fallback)
-        {
-            int i = (code ?? "").IndexOf('-');
-            return i >= 0 && i < code.Length - 1 ? code.Substring(i + 1) : fallback;
         }
     }
 }

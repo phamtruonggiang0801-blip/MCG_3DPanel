@@ -157,7 +157,7 @@ namespace MCG_3DPanel.UI
                 Panel = PanelName(build),
                 Handle = s.SolidId.Handle.ToString(),
                 Family = d.Family,
-                DetectedKind = corr?.OriginalKind ?? d.Kind,
+                DetectedKind = ResultCatalog.ShortKind(corr?.OriginalKind) ?? d.Kind,
                 Options = d.Options,
                 CanFlip = d.CanFlip && (p != null || s.FlipKey != null) && !s.Deleted,
                 Size = SizeOf(build.Input, p, d.Family, corr),

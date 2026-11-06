@@ -23,25 +23,25 @@ namespace MCG_3DPanel.Tests
         {
             var d = ResultCatalog.Describe("Web", "", null, new[] { "GE-HP" }, new[] { "HP" }, true, true);
             Assert.Equal(ResultFamily.Web, d.Family);
-            Assert.Equal("Web + GE-HP", d.Kind);
-            Assert.Equal(new[] { "Web", "Web + GE-HP", "Web + GB-HP", "Closed Plate" }, d.Options.Select(o => o.Text));
+            Assert.Equal("GE", d.Kind);
+            Assert.Equal(new[] { "Web", "GE", "GB", "Closed Plate" }, d.Options.Select(o => o.Text));
         }
 
         [Fact]
         public void Describe_WebNoGbAnchor_DisablesGb()
         {
             var d = ResultCatalog.Describe("Web", "", null, None, new[] { "HP" }, true, false);
-            var gb = d.Options.Single(o => o.Text == "Web + GB-HP");
+            var gb = d.Options.Single(o => o.Text == "GB");
             Assert.False(gb.Enabled);
             Assert.Equal(ResultCatalog.NoGbAnchorTip, gb.Tooltip);
-            Assert.True(d.Options.Single(o => o.Text == "Web + GE-HP").Enabled);
+            Assert.True(d.Options.Single(o => o.Text == "GE").Enabled);
         }
 
         [Fact]
         public void Describe_WebNoGeZone_DisablesGe()
         {
             var d = ResultCatalog.Describe("Web", "", null, None, new[] { "FB" }, false, true);
-            var ge = d.Options.Single(o => o.Text == "Web + GE-FB");
+            var ge = d.Options.Single(o => o.Text == "GE");
             Assert.False(ge.Enabled);
             Assert.Equal(ResultCatalog.NoGeZoneTip, ge.Tooltip);
         }
@@ -50,10 +50,10 @@ namespace MCG_3DPanel.Tests
         public void Describe_WebTwoEnds_MixedKindIsPresent()
         {
             var d = ResultCatalog.Describe("Web", "", null, new[] { "GE-HP", "GB-FB" }, new[] { "HP", "FB" }, true, true);
-            Assert.Equal("Web + GE-HP + GB-FB", d.Kind);
+            Assert.Equal("GE + GB", d.Kind);
             Assert.Equal(d.Kind, d.Options[0].Text);
-            Assert.Contains(d.Options, o => o.Text == "Web + GE-HP + GE-FB");
-            Assert.Contains(d.Options, o => o.Text == "Web + GB-HP + GB-FB");
+            Assert.Contains(d.Options, o => o.Text == "GE");
+            Assert.Contains(d.Options, o => o.Text == "GB");
         }
 
         [Fact]
@@ -76,15 +76,15 @@ namespace MCG_3DPanel.Tests
         {
             var d = ResultCatalog.Describe("GirderEnd", "GB-FB", null, None, None, true, true);
             Assert.Equal(ResultFamily.Bracket, d.Family);
-            Assert.Equal("GB-FB", d.Kind);
-            Assert.Equal(new[] { "GE-FB", "GB-FB", "Web" }, d.Options.Select(o => o.Text));
+            Assert.Equal("GB", d.Kind);
+            Assert.Equal(new[] { "GE", "GB", "Web" }, d.Options.Select(o => o.Text));
         }
 
         [Fact]
         public void Describe_StandaloneGe_NoGbAnchor_DisablesGb()
         {
             var d = ResultCatalog.Describe("GirderEnd", "GE-HP", null, None, None, true, false);
-            var gb = d.Options.Single(o => o.Text == "GB-HP");
+            var gb = d.Options.Single(o => o.Text == "GB");
             Assert.False(gb.Enabled);
             Assert.Equal(ResultCatalog.NoGbAnchorTip, gb.Tooltip);
         }
@@ -93,7 +93,7 @@ namespace MCG_3DPanel.Tests
         public void Describe_StandaloneGb_NoGeZone_DisablesGe()
         {
             var d = ResultCatalog.Describe("GirderEnd", "GB-FB", null, None, None, false, true);
-            var ge = d.Options.Single(o => o.Text == "GE-FB");
+            var ge = d.Options.Single(o => o.Text == "GE");
             Assert.False(ge.Enabled);
             Assert.Equal(ResultCatalog.NoGeZoneTip, ge.Tooltip);
         }
@@ -150,7 +150,8 @@ namespace MCG_3DPanel.Tests
             Assert.Empty(collar.Options);
             var gf = ResultCatalog.Describe(null, "GE-HP", "GirderFlange", None, None, false, false);
             Assert.Equal(ResultFamily.Flange, gf.Family);
-            Assert.Equal("Flange GE/GB-HP", gf.Kind);
+            Assert.Equal("GE", gf.Kind);
+            Assert.Equal("GB", ResultCatalog.Describe(null, "GB-HP", "GirderFlange", None, None, false, false).Kind);
             var b = ResultCatalog.Describe(null, "", "HpEndBracketB", None, None, false, false);
             Assert.Equal(ResultFamily.Bracket, b.Family);
             Assert.Equal("B", b.Kind);
@@ -184,6 +185,9 @@ namespace MCG_3DPanel.Tests
         [InlineData("Web", CorrectionIntent.ForceWeb)]
         [InlineData("Web + GE-HP", CorrectionIntent.ForceGE)]
         [InlineData("GE-FB", CorrectionIntent.ForceGE)]
+        [InlineData("GE", CorrectionIntent.ForceGE)]
+        [InlineData("GB", CorrectionIntent.ForceGB)]
+        [InlineData("GE + GB", CorrectionIntent.None)]
         [InlineData("Web + GB-HP + GB-FB", CorrectionIntent.ForceGB)]
         [InlineData("GB-FB", CorrectionIntent.ForceGB)]
         [InlineData("Closed Plate", CorrectionIntent.ClosedPlate)]
