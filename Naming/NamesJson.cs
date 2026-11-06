@@ -17,10 +17,12 @@ namespace MCG_3DPanel.Naming
             public List<string> Deleted { get; set; } = new List<string>();
             /// <summary>Nhóm Merge (revision 2): mỗi nhóm = SourceKey các đoạn gộp thành 1 tuyến.</summary>
             public List<List<string>> Merges { get; set; } = new List<List<string>>();
+            /// <summary>SourceKey đoạn đã "Split" khỏi tuyến tự động (mỗi key 1 tuyến riêng).</summary>
+            public List<string> Splits { get; set; } = new List<string>();
         }
 
         public static string Serialize(IReadOnlyDictionary<string, string> names, IEnumerable<string> deleted = null,
-            IEnumerable<IEnumerable<string>> merges = null)
+            IEnumerable<IEnumerable<string>> merges = null, IEnumerable<string> splits = null)
         {
             var doc = new Doc();
             foreach (var kv in names ?? new Dictionary<string, string>())
@@ -33,6 +35,8 @@ namespace MCG_3DPanel.Naming
                 foreach (var k in g ?? new string[0]) if (!string.IsNullOrEmpty(k) && !list.Contains(k)) list.Add(k);
                 if (list.Count > 1) doc.Merges.Add(list);
             }
+            foreach (var k in splits ?? new string[0])
+                if (!string.IsNullOrEmpty(k) && !doc.Splits.Contains(k)) doc.Splits.Add(k);
             return JsonSerializer.Serialize(doc);
         }
 
@@ -46,6 +50,21 @@ namespace MCG_3DPanel.Naming
                 var doc = JsonSerializer.Deserialize<Doc>(json);
                 foreach (var g in doc?.Merges ?? new List<List<string>>())
                     if (g != null && g.Count > 1) merges.Add(new HashSet<string>(g, StringComparer.Ordinal));
+            }
+            catch (JsonException) { /* như trên */ }
+            return r;
+        }
+
+        public static Dictionary<string, string> Deserialize(string json, out HashSet<string> deleted,
+            out List<HashSet<string>> merges, out HashSet<string> splits)
+        {
+            splits = new HashSet<string>(StringComparer.Ordinal);
+            var r = Deserialize(json, out deleted, out merges);
+            if (string.IsNullOrWhiteSpace(json)) return r;
+            try
+            {
+                var doc = JsonSerializer.Deserialize<Doc>(json);
+                foreach (var k in doc?.Splits ?? new List<string>()) if (!string.IsNullOrEmpty(k)) splits.Add(k);
             }
             catch (JsonException) { /* như trên */ }
             return r;
