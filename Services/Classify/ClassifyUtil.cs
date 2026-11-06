@@ -91,6 +91,23 @@ namespace MCG_3DPanel.Services.Classify
                            && (p.MemberLength >= WEB_TIER_LEN
                                || Math.Abs(w.FootprintThickness - p.FootprintThickness) > 1e-6));
 
+        /// <summary>Thân <paramref name="p"/> có đầu web vuông góc chạm ở cả 2 nửa tấm: tấm vắt qua đầu 2 web, đầu mút nhô ra ngoài.</summary>
+        public static bool BodyBridgesWebs(PanelPart p, IEnumerable<PanelPart> otherAm0, double tol)
+        {
+            var (e1, e2) = Endpoints(p);
+            Vector3d dir = (e2 - e1).GetNormal();
+            var offsets = new List<double>();
+            foreach (var o in otherAm0)
+            {
+                if (ReferenceEquals(o, p)) continue;
+                var (a, b) = Endpoints(o);
+                if ((b - a).Length < 1e-9 || Math.Abs((b - a).GetNormal().DotProduct(dir)) > 0.30) continue;
+                foreach (var end in new[] { a, b })
+                    if (DistToPart(end, p) <= tol) offsets.Add((end - e1).DotProduct(dir));
+            }
+            return ClosedPlateRules.BridgesBothHalves(offsets, p.MemberLength);
+        }
+
         /// <summary>Mảnh ngắn dày hơn, nối đầu thẳng hàng với 1 Web dài mỏng hơn, có vát 1:4 vẽ sẵn tại mối nối: đoạn chuyển chiều dày
         /// của web, là WEB dù đầu kia chạm HP (kỹ sư 2026-11-06: 20582, 20596 trên 7D-14P). Chạy trước <see cref="IsBracketPattern"/>.</summary>
         public static bool IsChamferedWebTier(PanelPart p, IEnumerable<PanelPart> otherAm0)
@@ -433,7 +450,8 @@ namespace MCG_3DPanel.Services.Classify
 
             bool bothFree = e1Free && e2Free;
             bool bothAm0Only = e1Am0 && e2Am0 && !e1HpFb && !e2HpFb;
-            return bothFree || bothAm0Only;
+            return bothFree || bothAm0Only
+                || (!e1HpFb && !e2HpFb && BodyBridgesWebs(p, otherAm0, tol));   // kỹ sư 2026-11-06: 7D-17P 1B5FA
         }
 
         /// <summary>

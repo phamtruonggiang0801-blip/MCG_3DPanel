@@ -52,7 +52,8 @@ namespace MCG_3DPanel.Services.Classify
                     if (!p.EndTouchKinds.Contains(kind)) p.EndTouchKinds.Add(kind);
 
                     Vector3d dir = (far - e).GetNormal();
-                    double t = NearestPerpWebEdge(p, e, dir, result);       // −1 nếu không có
+                    double t = ClosedPlateRules.PerpEdge(NearestPerpEdge(p, e, dir, result, PartType.Web),
+                        NearestPerpEdge(p, e, dir, result, PartType.ClosedPlate));       // −1 nếu không có
                     // Mốc toe tính cho MỌI đầu chạm (kể cả khi tự động ra GE) — tab Result cần biết có ép GB được không.
                     double s = NearestToeAnchor(p, e, dir, t > 0 ? t : p.MemberLength, hpParts, fbParts, endMember,
                         out var anchor, out var how);
@@ -148,12 +149,12 @@ namespace MCG_3DPanel.Services.Classify
             return member != null ? "FB" : null;
         }
 
-        /// <summary>Khoảng t (dọc <paramref name="dir"/> từ đầu <paramref name="e"/>) tới mép GẦN của Web
+        /// <summary>Khoảng t (dọc <paramref name="dir"/> từ đầu <paramref name="e"/>) tới mép GẦN của member loại <paramref name="type"/>eb
         /// vuông góc, đầu Web chạm thân p. −1 nếu không có.</summary>
-        private static double NearestPerpWebEdge(PanelPart p, Point3d e, Vector3d dir, ClassificationResult result)
+        private static double NearestPerpEdge(PanelPart p, Point3d e, Vector3d dir, ClassificationResult result, PartType type)
         {
             double best = -1;
-            foreach (var w in result.OfType(PartType.Web))
+            foreach (var w in result.OfType(type))
             {
                 if (ReferenceEquals(w, p) || w.Vertices == null || w.Vertices.Length < 3) continue;
                 if (w.AxisDir.Length < 1e-9) continue;

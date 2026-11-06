@@ -261,6 +261,7 @@ Liên quan: [[panel-parts-reference]] (mục 4b taper web 1:4) · [[bracket-iden
 Ca 7D-16C: tầng END dày 20 dài 1200 (`1B897`, `1B865`) bị coi Web chữ nhật vì `WebBracketSplitter` chỉ xét mảnh <1000.
 `GirderEndSplitter` (chạy sau WebBracketSplitter, trước GirderEndDetector): Web ≥1000, thk ≥10, **đầu chạm HP/FB cắt ngang** →
 tìm Web vuông góc (|cos|≤0.3, đầu Web chạm thân girder) có mép gần nhất cách đầu HP **t < 775** →
+  Ưu tiên Web; KHÔNG có Web vuông góc thì dùng Closed Plate làm mốc (kỹ sư 2026-11-06, 7D-17P `1B608` ⇒ GE 200; `1B5FF` có Web nên giữ 469). Bracket không làm mốc.
 cắt: **[0,t] = GE** (L=t, `PanelPart.FromVertices`), phần còn lại = Web. Không có ⇒ `Code="GB"` + Notes (giữ Web chữ nhật).
 Ngưỡng flange theo thk: 6→D≥350 · 10→D≥600 · **20→D≥1500** (`GirderEndBuilder`).
 Kỳ vọng 7D-16C: `1B897` → GE L≈242 + Web ≈958; `1B865` → GE L≈255 + Web ≈945.

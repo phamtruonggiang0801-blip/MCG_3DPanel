@@ -1,5 +1,12 @@
 # SESSION LOG — MCG_3DPanel
 
+## Session 2026-11-06 — Cột Kind GE/GB, Closed Plate theo thân tấm, GE mốc Closed Plate (nhánh `feat/kind-ge-gb`)
+
+- Kind tab Result: `GE` / `GB` / `GE + GB`; correction chữ cũ vẫn đọc được (`ShortKind`).
+- Closed Plate: thêm luật thân tấm kẹp 2 web (`BodyBridgesWebs`) — 7D-17P `1B5FA`.
+- GE: không có Web vuông góc thì Closed Plate làm mốc (`ClosedPlateRules.PerpEdge`) — `1B608` GE 200, `1B5FF` giữ 469.
+- Chưa rebuild trong AutoCAD.
+
 ## Session 2026-11-06 — Web tier có vát 1:4, handle solid trong dump (nhánh `fix/web-tier-chamfer`)
 
 - `20582`, `20596` (7D-14P) là Web: `ClassifyUtil.IsChamferedWebTier` chạy trước `IsBracketPattern`.
