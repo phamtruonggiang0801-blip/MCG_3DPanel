@@ -135,9 +135,7 @@ namespace MCG_3DPanel.Naming
                 // Web + HP
                 foreach (var cl in Cluster(all.Where(p => (p.Kind == NamingKind.Web || p.Kind == NamingKind.HP) && !p.IsSkew && p.Dir == dir)))
                 {
-                    double web = cl.Where(p => p.Kind == NamingKind.Web).Sum(p => p.Length);
-                    double hp = cl.Where(p => p.Kind == NamingKind.HP).Sum(p => p.Length);
-                    var kind = web >= hp ? NamingKind.Web : NamingKind.HP;
+                    var kind = WebOrHp(cl);
                     lines.Add(Make(kind, dir, cl, cl.Where(p => p.Kind == kind), flanges));
                 }
                 // FB: chỉ gộp FB với FB; thẳng hàng là 1 dòng dù cách xa (revision 1: BS 947 + BS 8428)
@@ -148,9 +146,7 @@ namespace MCG_3DPanel.Naming
             // Xiên: gom theo đường thẳng, không phân T/L (đường 45° không bị tách đôi); không bao giờ nhập tuyến trục.
             foreach (var cl in ClusterSkew(all.Where(p => (p.Kind == NamingKind.Web || p.Kind == NamingKind.HP) && p.IsSkew)))
             {
-                double web = cl.Where(p => p.Kind == NamingKind.Web).Sum(p => p.Length);
-                double hp = cl.Where(p => p.Kind == NamingKind.HP).Sum(p => p.Length);
-                var kind = web >= hp ? NamingKind.Web : NamingKind.HP;
+                var kind = WebOrHp(cl);
                 lines.Add(Make(kind, cl.OrderByDescending(p => p.Length).First().Dir, cl, cl.Where(p => p.Kind == kind), flanges));
             }
             foreach (var cl in ClusterSkew(all.Where(p => p.Kind == NamingKind.FB && p.IsSkew)))
@@ -181,7 +177,9 @@ namespace MCG_3DPanel.Naming
             })
             {
                 var g = lines.Where(l => l.Kind == kind && l.Dir == dir);
-                g = dir == NamingDir.L && lDesc ? g.OrderByDescending(l => l.Center) : g.OrderBy(l => l.Center);
+                g = dir == NamingDir.L && lDesc
+                    ? g.OrderByDescending(l => l.Center).ThenBy(l => l.Pieces.Min(p => Math.Min(p.Y0, p.Y1))).ThenBy(l => l.Pieces.Min(p => Math.Min(p.X0, p.X1)))
+                    : g.OrderBy(l => l.Center).ThenBy(l => l.Pieces.Min(p => Math.Min(p.Y0, p.Y1))).ThenBy(l => l.Pieces.Min(p => Math.Min(p.X0, p.X1)));   // hoà tâm (xiên) ⇒ theo hình học, không theo thứ tự nhập
                 int i = 0;
                 foreach (var l in g) { l.AutoName = prefix + (++i); ordered.Add(l); }
             }
@@ -239,6 +237,11 @@ namespace MCG_3DPanel.Naming
             }
             return groups;
         }
+
+        /// <summary>Loại tuyến Web+HP: tổng chiều dài Web >= HP ⇒ Web, ngược lại HP.</summary>
+        private static NamingKind WebOrHp(List<NamingPiece> cl)
+            => cl.Where(p => p.Kind == NamingKind.Web).Sum(p => p.Length) >= cl.Where(p => p.Kind == NamingKind.HP).Sum(p => p.Length)
+                ? NamingKind.Web : NamingKind.HP;
 
         private static NamingLine Make(NamingKind kind, NamingDir dir, List<NamingPiece> pieces, IEnumerable<NamingPiece> main,
             List<NamingPiece> flanges)

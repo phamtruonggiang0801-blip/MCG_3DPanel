@@ -491,6 +491,51 @@ namespace MCG_3DPanel.Tests
             Assert.Equal(8437.3, m.Center, 1);   // tuyến trộn xiên + thẳng ⇒ tâm đoạn dài nhất (1AE5D)
         }
 
+        // Web xiên (0,0)-(1000,500) + flange rộng 150 song song, lệch vuông góc d mm, dời dọc trục `along` mm.
+        private static NamingPiece SkewFlange(double d, double along, string key)
+        {
+            double len = Math.Sqrt(1000 * 1000 + 500 * 500), ux = 1000 / len, uy = 500 / len;
+            double sx = along * ux - d * uy, sy = along * uy + d * ux;
+            var f = P(NamingKind.Flange, sx, sy, sx + 1000, sy + 500, 150, key);
+            f.Height = 20;
+            return f;
+        }
+
+        [Fact] public void SkewFlange_PerpDistCutoff()
+        {
+            var near = new[] { Web(P(NamingKind.Web, 0, 0, 1000, 500, 6, "w")), SkewFlange(75 + 14, 0, "f") };
+            Assert.Single(StructureNaming.Lines(near, PanelPosition.Center).Single().Flanges);
+            var far = new[] { Web(P(NamingKind.Web, 0, 0, 1000, 500, 6, "w")), SkewFlange(75 + 16, 0, "f") };
+            Assert.Empty(StructureNaming.Lines(far, PanelPosition.Center).Single().Flanges);
+        }
+
+        [Fact] public void SkewFlange_PastWebEnd_NotAttached()
+        {
+            var l = new[] { Web(P(NamingKind.Web, 0, 0, 1000, 500, 6, "w")), SkewFlange(0, 2000, "f") };
+            Assert.Empty(StructureNaming.Lines(l, PanelPosition.Center).Single().Flanges);
+        }
+
+        private static List<NamingPiece> MirroredV() => new List<NamingPiece>
+        {
+            Web(P(NamingKind.Web, 0, 0, 1000, 500, 6, "A")),
+            Web(P(NamingKind.Web, 1000, 500, 2000, 0, 6, "B")),
+        };
+
+        [Fact] public void Skew_CenterTie_NumberingIndependentOfInputOrder()
+        {
+            var fwd = StructureNaming.Lines(MirroredV(), PanelPosition.Center);
+            var rev = StructureNaming.Lines(Enumerable.Reverse(MirroredV()).ToList(), PanelPosition.Center);
+            Assert.Equal(2, fwd.Count);
+            foreach (var key in new[] { "A", "B" })
+                Assert.Equal(fwd.Single(x => x.Pieces.Any(p => p.Key == key)).Name, rev.Single(x => x.Pieces.Any(p => p.Key == key)).Name);
+        }
+
+        [Fact] public void Merge_InsideOneSkewLine_NoOp()
+        {
+            var l = StructureNaming.Lines(Cas7D17C(), PanelPosition.Center, null, new[] { new[] { "1AE23", "1AE5D" } });
+            Assert.DoesNotContain(l, x => x.IsMerged);
+        }
+
         [Fact] public void Skew_FlatBars_OneBsLine()
         {
             var l = StructureNaming.Lines(new[] { P(NamingKind.FB, 0, 0, 1000, 509.5), P(NamingKind.FB, 1100, 560.5, 2000, 1019) }, PanelPosition.Center);
