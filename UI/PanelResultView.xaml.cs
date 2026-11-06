@@ -26,8 +26,8 @@ namespace MCG_3DPanel.UI
             {
                 // STEPOUT chỉ có khi chạy AutoCAD Mechanical — không có thì nút mờ + tooltip giải thích.
                 bool ok = StepExport.IsAvailable();
-                BtnStep.IsEnabled = ok;
-                if (!ok) BtnStep.ToolTip = "Requires AutoCAD Mechanical (STEPOUT)";
+                MnuExportStep.IsEnabled = ok;
+                if (!ok) MnuExportStep.ToolTip = "Requires AutoCAD Mechanical (STEPOUT)";
             };
         }
 
@@ -619,6 +619,15 @@ namespace MCG_3DPanel.UI
         {
             e.Handled = true;
             CopyRows(Selected.Count > 0 ? Selected : Rows);
+        }
+
+        /// <summary>Mở menu Export ngay dưới nút (menu CSV / STEP).</summary>
+        private void BtnExportMenu_Click(object sender, RoutedEventArgs e)
+        {
+            var cm = BtnExportMenu.ContextMenu;
+            cm.PlacementTarget = BtnExportMenu;
+            cm.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            cm.IsOpen = true;
         }
 
         // ─── Export STEP (mỗi panel 1 file) ───────────────────────────────

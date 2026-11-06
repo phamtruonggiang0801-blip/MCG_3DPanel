@@ -42,11 +42,18 @@
 
         <!-- ===== Row 0: Thanh công cụ ===== -->
         <WrapPanel Grid.Row="0" Margin="1,0,1,2">
-            <Button x:Name="BtnExport" Content="Export CSV" Style="{StaticResource ToolbarPrimaryButtonStyle}"
-                    Click="BtnExport_Click" ToolTip="Export the table (incl. corrections) to a CSV file"/>
-            <Button x:Name="BtnStep" Content="Export STEP" Style="{StaticResource ToolbarButtonStyle}"
-                    Click="BtnStep_Click" ToolTipService.ShowOnDisabled="True"
-                    ToolTip="Export each panel to its own STEP file (&lt;Panel&gt;.stp)"/>
+            <Button x:Name="BtnExportMenu" Content="Export ▾" Style="{StaticResource ToolbarPrimaryButtonStyle}"
+                    Click="BtnExportMenu_Click" ToolTip="Export the table to CSV, or each panel to STEP">
+                <Button.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem x:Name="MnuExportCsv" Header="CSV table" Click="BtnExport_Click"
+                                  ToolTip="Export the table (incl. corrections) to a CSV file"/>
+                        <MenuItem x:Name="MnuExportStep" Header="STEP files (one per panel)" Click="BtnStep_Click"
+                                  ToolTipService.ShowOnDisabled="True"
+                                  ToolTip="Export each panel to its own STEP file (&lt;Panel&gt;.stp)"/>
+                    </ContextMenu>
+                </Button.ContextMenu>
+            </Button>
             <Button x:Name="BtnCopy" Content="Copy" Style="{StaticResource ToolbarButtonStyle}"
                     Click="BtnCopy_Click" ToolTip="Copy the table to the clipboard (paste straight into Excel)"/>
             <Button x:Name="BtnPick" Content="Pick" Style="{StaticResource ToolbarButtonStyle}"
