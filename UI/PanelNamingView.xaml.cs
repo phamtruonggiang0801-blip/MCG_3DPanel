@@ -541,12 +541,13 @@ namespace MCG_3DPanel.UI
         }
 
         /// <summary>Quét chọn trong Pick: THÊM mọi tuyến (drawing đang mở) có ÍT NHẤT 1 đoạn/flange khớp khung. Trả số dòng thêm.</summary>
-        public int SelectInWindow(Func<Extents3d, bool> hit, bool remove)
+        public int SelectInWindow(Func<ObjectId[], Extents3d, bool> hit, bool remove)
         {
             var adoc = AcadApp.DocumentManager.MdiActiveDocument;
             if (adoc == null) return 0;
             var rows = Rows.Where(r => r.PanelData.Db == adoc.Database
-                && r.Line.Pieces.Concat(r.Line.Flanges).Any(p => r.PanelData.Bounds.TryGetValue(p.Key, out var b) && hit(b))).ToList();
+                && r.Line.Pieces.Concat(r.Line.Flanges).Any(p => r.PanelData.Bounds.TryGetValue(p.Key, out var b)
+                    && (r.PanelData.Paths.TryGetValue(p.Key, out var ps) ? ps.Any(x => hit(x, b)) : hit(null, b)))).ToList();
             int added = 0;
             _suspendShow = true;
             try { foreach (var r in rows) { if (remove) { if (GridNaming.SelectedItems.Contains(r)) { GridNaming.SelectedItems.Remove(r); added++; } } else if (!GridNaming.SelectedItems.Contains(r)) { GridNaming.SelectedItems.Add(r); added++; } } }

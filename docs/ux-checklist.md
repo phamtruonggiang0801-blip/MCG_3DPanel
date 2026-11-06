@@ -98,6 +98,7 @@ built in a second drawing.
 | G18 | After G17, right-click ONE of the split rows → Reset to auto. | All pieces of that automatic line rejoin into one row (not only the clicked piece); the status says the pieces rejoined. Merge a+b of a split line, Reset the merged row, then Unmerge: you get separate rows, never a merged one. |
 | G19 | On a split row: Del Name, then Restore deleted names. | The row disappears and the rest renumber; Restore brings the piece back as its own split row, and numbers update again. |
 | G20 | Result tab → Export dropdown, with the STEP item disabled (no 3D built or another drawing). | CSV works; STEP is greyed with a tooltip saying why; clicking it does nothing and no error appears. |
+| G21 | Pick: drag right-to-left around one Web in an isometric view, not touching any top plate or flange edge. | Only that Web is selected; the top plate and flanges are not. |
 
 ## H. Pick in drawing / Esc
 
