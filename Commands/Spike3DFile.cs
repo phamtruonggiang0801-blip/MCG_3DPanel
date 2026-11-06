@@ -70,8 +70,20 @@ namespace MCG_3DPanel.Commands
             try { File.AppendAllText(TracePath ?? Path.Combine(Path.GetTempPath(), "mcg_spike_trace.txt"), DateTime.Now.ToString("HH:mm:ss.fff") + "  " + s + Environment.NewLine); } catch { }
         }
 
+        /// <summary>Dispose riêng, không bao giờ ném — để finally không đè exception gốc.</summary>
+        private static void DisposeCopy(ref Database d)
+        {
+            Trace("copy.Dispose: start");
+            try { d?.Dispose(); } catch (System.Exception dx) { Trace("copy.Dispose threw: " + dx); }
+            d = null;
+            Trace("copy.Dispose: end");
+        }
+
         private static void RunBody(Action<string, bool> status)
         {
+            // Mọi lời gọi status đều qua bản có bảo vệ.
+            Action<string, bool> raw = status;
+            status = (m, err) => { try { raw(m, err); } catch (System.Exception sx) { Trace("status threw: " + sx); } };
             Document src = AcadApp.DocumentManager.MdiActiveDocument;
             if (src == null) { status("Spike: no active drawing.", true); return; }
             Editor ed = src.Editor;
@@ -81,9 +93,11 @@ namespace MCG_3DPanel.Commands
             // In ra command line ngay + gom lại để hiện trên status — không im lặng.
             void Log(string s, bool fail = false)
             {
-                ed.WriteMessage("\n[Spike] " + s);
                 lines.Add(s);
                 if (fail) anyFail = true;
+                Trace((fail ? "FAIL " : "LOG  ") + s);
+                try { AcadApp.DocumentManager.MdiActiveDocument?.Editor?.WriteMessage("\n[Spike] " + s); }
+                catch (System.Exception wx) { Trace("WriteMessage threw: " + wx.Message); }
             }
 
             // Tiền điều kiện: bản vẽ đã lưu và không còn thay đổi chưa lưu (đường dẫn .dwt vẫn được).
@@ -161,7 +175,7 @@ namespace MCG_3DPanel.Commands
                 string miss = missing.Count > 0 ? "  missing: " + string.Join(", ", missing.GetRange(0, Math.Min(10, missing.Count))) : "";
                 Log($"1) handles kept: {kept} / {total}{miss}", kept != total);
             }
-            catch (System.Exception ex) { Log("CHECK 1 (ReadDwgFile/handles) FAILED: " + ex.Message, true); copy?.Dispose(); copy = null; }
+            catch (System.Exception ex) { Trace(ex.ToString()); Log("CHECK 1 (ReadDwgFile/handles) FAILED: " + ex.Message, true); DisposeCopy(ref copy); }
 
             Trace("check 1: end");
             Trace("check 2: start");
@@ -170,6 +184,7 @@ namespace MCG_3DPanel.Commands
             {
                 if (copy == null) throw new InvalidOperationException("no copy database (check 1 failed)");
                 if (!copy.TryGetObjectId(refHandle, out ObjectId cref)) throw new InvalidOperationException("reference handle not found in copy");
+                Trace("check 2 transaction: start");
                 using (var tr = copy.TransactionManager.StartTransaction())
                 {
                     var lt = (LayerTable)tr.GetObject(copy.LayerTableId, OpenMode.ForWrite);
@@ -191,14 +206,15 @@ namespace MCG_3DPanel.Commands
                     tr.Commit();
                 }
                 if (File.Exists(path)) File.Delete(path);
+                Trace("check 2 transaction: end");
                 Trace("SaveAs: start " + path);
                 copy.SaveAs(path, DwgVersion.Current);
                 Trace("SaveAs: end");
                 saved = true;
                 Log("2) saved: " + path);
             }
-            catch (System.Exception ex) { Log("CHECK 2 (layer/SaveAs) FAILED: " + ex.Message, true); }
-            finally { copy?.Dispose(); copy = null; }
+            catch (System.Exception ex) { Trace(ex.ToString()); Log("CHECK 2 (layer/SaveAs) FAILED: " + ex.Message, true); }
+            finally { DisposeCopy(ref copy); }
 
             Trace("check 2: end");
             Trace("check 3: start");
@@ -215,7 +231,7 @@ namespace MCG_3DPanel.Commands
                 bool active = AcadApp.DocumentManager.MdiActiveDocument == copyDoc;
                 Log("3) opened: " + (active ? "yes" : "no (opened but did not become active)"), !active);
             }
-            catch (System.Exception ex) { Log("CHECK 3 (open from palette) FAILED: opened: no - " + ex.Message, true); }
+            catch (System.Exception ex) { Trace(ex.ToString()); Log("CHECK 3 (open from palette) FAILED: opened: no - " + ex.Message, true); }
 
             Trace("check 3: end");
             Trace("check 4: start");
@@ -237,6 +253,7 @@ namespace MCG_3DPanel.Commands
                     copyParts = svc.Classify(cid, PanelPosition.Center, empty).Parts.Count;
                     Trace("Classify copy: end");
                 }
+                Trace("LockDocument copy: disposed");
                 // Đọc lại layer trong file đã mở: phải frozen + locked và ref nằm trên layer đó.
                 Trace("layer read-back: start");
                 string layerInfo; bool layerOk;
@@ -250,7 +267,7 @@ namespace MCG_3DPanel.Commands
                 Trace("layer read-back: end");
                 Log($"4) parts: copy {copyParts} / source {srcParts}; {layerInfo}", copyParts != srcParts || !layerOk);
             }
-            catch (System.Exception ex) { Log("CHECK 4 (Classify) FAILED: " + ex.Message, true); }
+            catch (System.Exception ex) { Trace(ex.ToString()); Log("CHECK 4 (Classify) FAILED: " + ex.Message, true); }
 
             // Bản copy vẫn mở để kỹ sư xem — đóng tay, không cần lưu.
             Trace("check 4: end");
