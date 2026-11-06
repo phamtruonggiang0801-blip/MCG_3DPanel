@@ -16,7 +16,7 @@ namespace MCG_3DPanel.UI
     /// </summary>
     public partial class PanelInputView : UserControl
     {
-        /// <summary>Build xong — PaletteManager đẩy build của file 3D mở cuối sang tab Result.</summary>
+        /// <summary>Build xong, có file 3D — PaletteManager chuyển sang tab Result (các tab đã nạp ở PanelCommands.BuildFinished).</summary>
         public event Action<List<MCG_3DPanel.Services.BuildResult>> Built;
 
         public PanelInputView()

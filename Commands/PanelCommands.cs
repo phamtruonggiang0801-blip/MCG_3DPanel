@@ -47,6 +47,26 @@ namespace MCG_3DPanel.Commands
         /// <summary>Mỗi file 3D dựng + lưu xong: (Database của file đó, build của file đó).</summary>
         public static event System.Action<Database, List<BuildResult>> FileBuilt;
 
+        /// <summary>Đang chạy <see cref="RunBuild"/>: document đổi liên tục, file đang dựng dở chưa có dữ liệu panel ⇒ các tab không tự nạp.</summary>
+        public static bool IsBuilding { get; private set; }
+
+        /// <summary>RunBuild kết thúc (kể cả huỷ hoặc lỗi), <see cref="IsBuilding"/> đã tắt: các tab nạp lại 1 lần theo document đang active.</summary>
+        public static event System.Action BuildFinished;
+
+        /// <summary>Xem <see cref="RunBuildCore"/>. Bọc cờ <see cref="IsBuilding"/>.</summary>
+        public static List<BuildResult> RunBuild(PanelInput input, PanelPosition position, out BuildRun run)
+        {
+            run = new BuildRun();
+            IsBuilding = true;
+            try { return RunBuildCore(input, position, run); }
+            finally
+            {
+                IsBuilding = false;
+                try { BuildFinished?.Invoke(); }
+                catch (System.Exception ex) { Say($"\n{LOG_PREFIX} The tabs could not be updated: {ex.Message}\n"); }
+            }
+        }
+
         /// <summary>
         /// Quét chọn 1 hoặc NHIỀU Block Panel → mỗi panel 1 file 3D riêng (<see cref="Panel3DFile"/>), mở và dựng trong file đó
         /// (panel lỗi không chặn panel khác). File đích đã có ⇒ hỏi 1 LẦN cho cả lô. Bản vẽ nguồn KHÔNG bị ghi.
@@ -54,9 +74,8 @@ namespace MCG_3DPanel.Commands
         /// (<see cref="BuildRun.Stop"/> nói lý do; null = người dùng huỷ).
         /// Từ lúc đổi document: KHÔNG dùng lại Editor của document cũ (AutoCAD crash) — mọi thông báo qua <see cref="Say"/>.
         /// </summary>
-        public static List<BuildResult> RunBuild(PanelInput input, PanelPosition position, out BuildRun run)
+        private static List<BuildResult> RunBuildCore(PanelInput input, PanelPosition position, BuildRun run)
         {
-            run = new BuildRun();
             Document active = Application.DocumentManager.MdiActiveDocument;
             if (active == null) return null;
             if (!IsSavedOnDisk(active)) { run.Stop = "Save this drawing first, then Build 3D."; return null; }
@@ -456,6 +475,7 @@ namespace MCG_3DPanel.Commands
             }
             WritePanelMeta(db, neu);   // sau khi neu có BlockName/BtrId cuối; ghi lại để dữ liệu khớp bản vừa thay
             neu.Kept = true;
+            PanelSession.Replace(db, old, neu);
             doc.Editor.Regen();
             // Có part hỏng / cảnh báo ⇒ ghi report riêng cho lần rebuild này để thông báo "see …json" trỏ đúng file
             // chứa lỗi (review I1). Không lỗi ⇒ không sinh file mới trên Desktop mỗi lần sửa.
@@ -493,6 +513,8 @@ namespace MCG_3DPanel.Commands
                         DeleteKey = s.DeleteKey ?? "",
                         Code = s.Code ?? "",
                         Deleted = s.Deleted,
+                        SnipLo = s.Part?.SnipLo ?? false,
+                        SnipHi = s.Part?.SnipHi ?? false,
                     };
                     ms.MergedCodes.AddRange(s.MergedCodes);
                     meta.Solids.Add(ms);

@@ -138,7 +138,7 @@ namespace MCG_3DPanel.UI
             if (build == null || build.BlockRefId.IsNull) return new List<ResultRow>();
             string panelKey = CorrectionStore.PanelKey(build.SourceBtrId);
             return build.Solids
-                .Where(s => !s.SolidId.IsNull && (includeErased || s.Deleted || !s.SolidId.IsErased))
+                .Where(s => s.Deleted || (!s.SolidId.IsNull && (includeErased || !s.SolidId.IsErased)))
                 .Select(s => Make(build, s, panelKey))
                 .OrderBy(r => r.Family).ThenBy(r => r.Kind).ThenBy(r => r.Size).ThenBy(r => r.Handle)
                 .ToList();
@@ -155,7 +155,7 @@ namespace MCG_3DPanel.UI
             var row = new ResultRow
             {
                 Panel = PanelName(build),
-                Handle = s.SolidId.Handle.ToString(),
+                Handle = s.SolidId.IsNull ? s.StoredHandle ?? "" : s.SolidId.Handle.ToString(),
                 Family = d.Family,
                 DetectedKind = ResultCatalog.ShortKind(corr?.OriginalKind) ?? d.Kind,
                 Options = d.Options,

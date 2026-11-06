@@ -93,28 +93,27 @@ namespace MCG_3DPanel.UI
             return "⚠ " + string.Join(" · ", msg) + where;
         }
 
-        /// <summary>Đổi drawing đang mở (DocumentBecameCurrent): tắt highlight/marker của drawing cũ; bảng đang hiện
-        /// panel của drawing KHÁC ⇒ báo rõ thay vì để highlight/zoom/rebuild hỏng im lặng (lỗi 2026-11-05).</summary>
-        public void OnDocumentActivated(Autodesk.AutoCAD.DatabaseServices.Database db)
+        /// <summary>Hiện panel của drawing đang active (đổi drawing, mở palette, Build xong). Bảng đã đúng các build này
+        /// (AutoCAD báo lại cùng document) ⇒ giữ dòng + vùng chọn; khác ⇒ thay cả bảng. <paramref name="message"/> ⇒ báo lỗi.</summary>
+        public void ShowFile(List<BuildResult> builds, string message)
         {
             EntityHighlighter.ClearPoint();
             EntityHighlighter.Clear();
-            if (db == null || _builds.Count == 0) return;
-            var kept = _builds.Where(b => b.Kept && !b.BlockRefId.IsNull).ToList();
-            if (kept.Count == 0) return;
-            if (kept.Any(b => b.BlockRefId.Database == db))
+            if (builds.Count > 0 && _builds.SequenceEqual(builds))
             {
                 RestoreSummary();
                 // Highlight đã tắt khi rời drawing; bấm lại đúng dòng đang chọn KHÔNG phát SelectionChanged ⇒ tự sáng lại
                 // (review I4).
                 // Cả vùng chọn (không chỉ 1 dòng) — checklist A3.
-                var selRows = Selected.Where(r => r.Build?.BlockRefId.Database == db).ToList();
+                var selRows = Selected;
                 if (selRows.Count > 0) Show(selRows, zoom: false);
-                return;
             }
-            string name = DrawingName(kept[0].BlockRefId.Database);
-            SetStatus($"The rows below belong to drawing {name} — switch back to it to highlight, zoom or rebuild, or run Build 3D here.", error: true);
+            else Load(builds);
+            if (message != null) SetStatus(message + "  ·  " + TxtStatus.Text, error: true);
         }
+
+        /// <summary>Báo lỗi trên thanh trạng thái (handler của palette không được để lọt exception).</summary>
+        public void ShowError(string message) => SetStatus(message, error: true);
 
         /// <summary>Thanh trạng thái về tóm tắt bình thường (kèm ⚠ nếu có part hỏng / cảnh báo).</summary>
         private void RestoreSummary()
@@ -164,11 +163,13 @@ namespace MCG_3DPanel.UI
             // Cột Panel chỉ cần khi có từ 2 panel trở lên — 1 panel thì thừa, lấn chỗ của Kind.
             ColPanel.Visibility = kept.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
 
-            // Bỏ (No) thì block 3D đã bị xoá — không còn solid nào để zoom.
+            // Drawing không có panel (vd bản 2D) ⇒ bảng trống + gợi ý.
             if (kept.Count == 0)
             {
                 GridResult.ItemsSource = null;
-                SetStatus("3D model discarded — nothing to list.");
+                _notBuilt = null;
+                _summary = "No panel in this drawing. Run Build 3D on a 2D block.";
+                SetStatus(_summary);
                 return;
             }
 

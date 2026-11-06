@@ -18,6 +18,9 @@ namespace MCG_3DPanel.Services.Corrections
         public string Code { get; set; } = "";
         public List<string> MergedCodes { get; set; } = new List<string>();
         public bool Deleted { get; set; }
+        /// <summary>Đầu nào đã vát Sniped End (builder quyết định khi dựng, phân loại không tính lại được).</summary>
+        public bool SnipLo { get; set; }
+        public bool SnipHi { get; set; }
     }
 
     /// <summary>Dữ liệu lưu cùng mỗi panel 3D (JSON): nguồn 2D, input đã dùng, vị trí, danh sách solid.
@@ -57,6 +60,38 @@ namespace MCG_3DPanel.Services.Corrections
                 else dropped++;
             }
             return r;
+        }
+    }
+
+    /// <summary>Tìm lại part 2D của 1 solid đã lưu. <c>SourceKey</c> KHÔNG duy nhất: GE/GB tách từ 1 tấm Web dùng chung khoá
+    /// với phần Web còn lại ⇒ ưu tiên part chưa dùng, cùng loại, theo thứ tự phân loại (solid được dựng đúng thứ tự đó).</summary>
+    public sealed class PartMatcher<T> where T : class
+    {
+        private readonly Dictionary<string, List<T>> _byKey = new Dictionary<string, List<T>>();
+        private readonly HashSet<T> _used = new HashSet<T>();
+        private readonly Func<T, string> _typeOf;
+
+        public PartMatcher(IEnumerable<T> parts, Func<T, string> keyOf, Func<T, string> typeOf)
+        {
+            _typeOf = typeOf;
+            foreach (T p in parts)
+            {
+                string key = keyOf(p);
+                if (string.IsNullOrEmpty(key)) continue;
+                if (!_byKey.TryGetValue(key, out var list)) _byKey[key] = list = new List<T>();
+                list.Add(p);
+            }
+        }
+
+        /// <summary>Part của solid; null = khoá không còn trong bản phân loại.</summary>
+        public T Take(string key, string type)
+        {
+            if (key == null || !_byKey.TryGetValue(key, out var list)) return null;
+            T hit = list.Find(p => !_used.Contains(p) && _typeOf(p) == type)
+                    ?? list.Find(p => !_used.Contains(p))
+                    ?? list[0];
+            _used.Add(hit);
+            return hit;
         }
     }
 }

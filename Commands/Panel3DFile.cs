@@ -17,7 +17,7 @@ namespace MCG_3DPanel.Commands
         /// <summary>Layer đóng băng + khoá chứa block 2D nguồn trong file 3D.</summary>
         public const string SourceLayer = "MCG3D_2D_SOURCE";
 
-        private const string BLOCK_PREFIX = "MCG3D_";
+        internal const string BLOCK_PREFIX = "MCG3D_";
 
         // Bản ghi hệ thống: Database.Purge không hứa loại các tên này ⇒ không đưa vào danh sách purge.
         private static readonly HashSet<string> Reserved = new HashSet<string>(StringComparer.OrdinalIgnoreCase)

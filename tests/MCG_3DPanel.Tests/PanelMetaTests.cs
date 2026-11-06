@@ -36,6 +36,53 @@ namespace MCG_3DPanel.Tests
             Assert.Equal(1, dropped);
         }
 
+        [Fact] public void Meta_RoundTrip_KeepsSnippedEnds()
+        {
+            var m = new PanelMeta { SourceRefHandle = "1B", SourceBtrHandle = "2C" };
+            m.Solids.Add(new PanelMetaSolid { Handle = "A", SnipLo = true });
+            m.Solids.Add(new PanelMetaSolid { Handle = "B", SnipHi = true });
+            var b = PanelMeta.FromJson(m.ToJson());
+            Assert.True(b.Solids[0].SnipLo);
+            Assert.False(b.Solids[0].SnipHi);
+            Assert.True(b.Solids[1].SnipHi);
+        }
+
+        // GE/GB tách từ 1 tấm Web dùng CHUNG SourceKey với phần Web còn lại ⇒ phải khớp thêm theo loại.
+        [Fact] public void PartMatcher_SharedKey_PicksByType()
+        {
+            var ge = new[] { "K#0", "GirderEnd" }; var rest = new[] { "K#0", "Web" };
+            var match = new PartMatcher<string[]>(new[] { ge, rest }, p => p[0], p => p[1]);
+            Assert.Same(rest, match.Take("K#0", "Web"));
+        }
+
+        [Fact] public void PartMatcher_SameKeyAndType_TakesInOrder()
+        {
+            var parts = new[] { "a", "b" };
+            var match = new PartMatcher<string>(parts, p => "K#0", p => "GirderEnd");
+            Assert.Equal("a", match.Take("K#0", "GirderEnd"));
+            Assert.Equal("b", match.Take("K#0", "GirderEnd"));
+        }
+
+        [Fact] public void PartMatcher_TypeChanged_StillMatchesByKey()
+        {
+            var match = new PartMatcher<string>(new[] { "a" }, p => "K#0", p => "Web");
+            Assert.Equal("a", match.Take("K#0", "ClosedPlate"));
+        }
+
+        [Fact] public void PartMatcher_AllTaken_ReusesFirst()
+        {
+            var match = new PartMatcher<string>(new[] { "a" }, p => "K#0", p => "Web");
+            match.Take("K#0", "Web");
+            Assert.Equal("a", match.Take("K#0", "Web"));
+        }
+
+        [Fact] public void PartMatcher_UnknownKey_Null()
+        {
+            var match = new PartMatcher<string>(new[] { "a", null }, p => p, p => "Web");
+            Assert.Null(match.Take("gone#0", "Web"));
+            Assert.Null(match.Take(null, "Web"));
+        }
+
         [Fact] public void Target_Plain() => Assert.Equal(@"C:\p\7D-14P_Assy_3D.dwg", Panel3DPath.Target(@"C:\p", "7D-14P_Assy"));
         [Fact] public void Target_IllegalChars_Replaced() => Assert.Equal(@"C:\p\A_B_3D.dwg", Panel3DPath.Target(@"C:\p", "A/B"));
         [Fact] public void NextFree_FreeStaysSame() => Assert.Equal(@"C:\p\A_3D.dwg", Panel3DPath.NextFree(@"C:\p\A_3D.dwg", _ => false));
