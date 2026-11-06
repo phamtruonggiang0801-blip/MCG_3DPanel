@@ -230,12 +230,12 @@ namespace MCG_3DPanel.Commands
                     var e = s3d.GeometricExtents;
                     return new JsonObject
                     {
-                        { "type", "Solid3d" }, { "layer", L }, { "color", c },
+                        { "type", "Solid3d" }, { "handle", ent.Handle.ToString() }, { "layer", L }, { "color", c },
                         { "min", new List<object> { e.MinPoint.X, e.MinPoint.Y, e.MinPoint.Z } },
                         { "max", new List<object> { e.MaxPoint.X, e.MaxPoint.Y, e.MaxPoint.Z } },
                     };
                 }
-                catch { return new JsonObject { { "type", "Solid3d" }, { "layer", L }, { "color", c } }; }
+                catch { return new JsonObject { { "type", "Solid3d" }, { "handle", ent.Handle.ToString() }, { "layer", L }, { "color", c } }; }
             }
             return new JsonObject { { "type", ent.GetType().Name }, { "layer", L }, { "color", c } };
         }
