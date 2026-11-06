@@ -53,6 +53,41 @@ namespace MCG_3DPanel.Tests
             Assert.Equal(16.0, j.L, 6);
         }
 
+        // 7D-14P: 20582 (t10) nối 1B23D (t6), 20596 (t10) nối 1B1DE (t6): tấm web dày lên, vát 1:4 vẽ sẵn trên 2D, đầu kia chạm HP.
+        private static readonly (double X, double Y)[] P20582 = { (8726.1, 10387.1), (9510.1, 10387.1), (9510.1, 10377.1), (8710.1, 10377.1), (8710.1, 10383.1) };
+        private static readonly (double X, double Y)[] P20596 = { (900.0007, 11653.4373), (900.0007, 11647.4474), (60.1407, 11647.4474), (60.1407, 11657.4372), (884.0011, 11657.4372) };
+        private static readonly WebSeg S20582 = S(9510.1, 10382.1, 8710.1, 10382.1, 10), S1B23D = S(590.0, 10380.1, 8710.1, 10380.1, 6);
+        // Số GỐC dump: tấm vẽ dày 9.9898, Δt = 3.9898 — sai số vẽ không được làm mất mối nối.
+        private static readonly WebSeg S20596 = S(900.0007, 11652.4423, 60.1407, 11652.4423, 9.9898), S1B1DE = S(900.0007, 11650.4474, 6285.0096, 11650.4761, 6);
+
+        [Fact] public void DrawnChamfer_20582() => Assert.True(WebThicknessChamferGeometry.HasDrawnChamfer(WebThicknessChamferGeometry.Match(S20582, S1B23D), P20582));
+        [Fact] public void DrawnChamfer_20596() => Assert.True(WebThicknessChamferGeometry.HasDrawnChamfer(WebThicknessChamferGeometry.Match(S20596, S1B1DE), P20596));
+
+        [Fact] public void Match_DtDrawingNoise_Matches() => Assert.NotNull(WebThicknessChamferGeometry.Match(S(0, 0, 100, 0, 9.9898), S(100, 2, 300, 2, 6)));
+        [Fact] public void Match_Dt3_9_Null() => Assert.Null(WebThicknessChamferGeometry.Match(S(0, 0, 100, 0, 9.9), S(100, 2, 300, 2, 6)));
+
+        [Fact] public void DrawnChamfer_Rectangle_False()
+        {
+            var rect = new (double X, double Y)[] { (8710.1, 10387.1), (9510.1, 10387.1), (9510.1, 10377.1), (8710.1, 10377.1) };
+            Assert.False(WebThicknessChamferGeometry.HasDrawnChamfer(WebThicknessChamferGeometry.Match(S20582, S1B23D), rect));
+        }
+
+        [Fact] public void DrawnChamfer_AtOtherEnd_False()
+        {
+            // Góc vát ở đầu xa mối nối (phía HP): không phải vát chuyển dày.
+            var far = new (double X, double Y)[] { (8710.1, 10387.1), (9494.1, 10387.1), (9510.1, 10383.1), (9510.1, 10377.1), (8710.1, 10377.1) };
+            Assert.False(WebThicknessChamferGeometry.HasDrawnChamfer(WebThicknessChamferGeometry.Match(S20582, S1B23D), far));
+        }
+
+        [Fact] public void DrawnChamfer_BigGusset_False()
+        {
+            // Vát lớn kiểu bracket (80×40), không đúng 4×Δt.
+            var big = new (double X, double Y)[] { (8790.1, 10387.1), (9510.1, 10387.1), (9510.1, 10377.1), (8710.1, 10377.1), (8710.1, 10347.1) };
+            Assert.False(WebThicknessChamferGeometry.HasDrawnChamfer(WebThicknessChamferGeometry.Match(S20582, S1B23D), big));
+        }
+
+        [Fact] public void DrawnChamfer_NoJoint_False() => Assert.False(WebThicknessChamferGeometry.HasDrawnChamfer(null, P20582));
+
         [Fact] public void Match_DtBelow4_Null() => Assert.Null(WebThicknessChamferGeometry.Match(S(0, 0, 100, 0, 8), S(100, 0, 300, 0, 6)));
         [Fact] public void Match_SameThickness_Null() => Assert.Null(WebThicknessChamferGeometry.Match(S(0, 0, 100, 0, 10), S(100, 0, 300, 0, 10)));
         [Fact] public void Match_Perpendicular_Null() => Assert.Null(WebThicknessChamferGeometry.Match(S(0, 0, 100, 0, 10), S(100, 0, 100, 200, 6)));

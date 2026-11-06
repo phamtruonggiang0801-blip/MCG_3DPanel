@@ -34,6 +34,27 @@ namespace MCG_3DPanel.Services.Builders
         public const double END_TOL = 5.0;     // khe / chồng tối đa giữa 2 đầu web (mm)
         public const double FLUSH_TOL = 0.5;   // bậc ≤ giá trị này ⇒ mặt flush
         public const double PAR_COS = 0.999;   // thẳng hàng
+        public const double CHAMFER_TOL = 1.0; // dung sai nhận cạnh vát vẽ sẵn (mm)
+        public const double DT_TOL = 0.05;     // sai số vẽ của Δt (7D-14P 20596 dày 9.9898)
+
+        /// <summary>Tấm dày ĐÃ VẼ SẴN vát 1:4 tại mối nối <paramref name="j"/>: polygon 2D có cạnh nằm trong đoạn vát, dài dọc trục ≈ L,
+        /// lệch ngang ≈ bậc mặt lệch. Dấu hiệu tấm là đoạn chuyển chiều dày của web, không phải Bracket (kỹ sư 2026-11-06, 20582 7D-14P).</summary>
+        public static bool HasDrawnChamfer(ChamferJoint j, IReadOnlyList<(double X, double Y)> thickPolygon)
+        {
+            if (j == null || thickPolygon == null || thickPolygon.Count < 5) return false;
+            double step = Math.Max(j.StepPlus, j.StepMinus);
+            if (step <= FLUSH_TOL) return false;
+            for (int i = 0; i < thickPolygon.Count; i++)
+            {
+                var p = thickPolygon[i];
+                var q = thickPolygon[(i + 1) % thickPolygon.Count];
+                double a0 = (p.X - j.Jx) * j.Ux + (p.Y - j.Jy) * j.Uy, a1 = (q.X - j.Jx) * j.Ux + (q.Y - j.Jy) * j.Uy;
+                double n0 = (p.X - j.Jx) * j.Nx + (p.Y - j.Jy) * j.Ny, n1 = (q.X - j.Jx) * j.Nx + (q.Y - j.Jy) * j.Ny;
+                if (Math.Min(a0, a1) < -CHAMFER_TOL || Math.Max(a0, a1) > j.L + CHAMFER_TOL) continue;
+                if (Math.Abs(Math.Abs(a1 - a0) - j.L) <= CHAMFER_TOL && Math.Abs(Math.Abs(n1 - n0) - step) <= CHAMFER_TOL) return true;
+            }
+            return false;
+        }
 
         /// <summary>Mối nối giữa <paramref name="a"/> và <paramref name="b"/>, hoặc null nếu không phải (không thẳng
         /// hàng, không nối đầu–đầu, lệch ngang quá, Δt &lt; <see cref="MIN_DT"/>).</summary>
@@ -42,7 +63,7 @@ namespace MCG_3DPanel.Services.Builders
             if (!Dir(a, out double ax, out double ay) || !Dir(b, out double bx, out double by)) return null;
             if (Math.Abs(ax * bx + ay * by) < PAR_COS) return null;
             double dt = Math.Abs(a.T - b.T);
-            if (dt < MIN_DT - 1e-9) return null;
+            if (dt < MIN_DT - DT_TOL) return null;
 
             // Cặp đầu mút: đầu của a (ea, "ngoài" = ra khỏi a) gặp đầu của b, và b nằm HOÀN TOÀN phía ngoài đó.
             ChamferJoint best = null;

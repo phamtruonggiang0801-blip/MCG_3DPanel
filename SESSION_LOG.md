@@ -1,5 +1,12 @@
 # SESSION LOG — MCG_3DPanel
 
+## Session 2026-11-06 — Web tier có vát 1:4, handle solid trong dump (nhánh `fix/web-tier-chamfer`)
+
+- `20582`, `20596` (7D-14P) là Web: `ClassifyUtil.IsChamferedWebTier` chạy trước `IsBracketPattern`.
+- `Match` có dung sai Δt 0.05 (`20596` vẽ dày 9.9898): test phải dùng số gốc dump, không làm tròn.
+- `MCG_DumpDrawing` xuất `handle` của Solid3d.
+- `20582` đã xác nhận trong AutoCAD; `20596` sau dung sai chưa rebuild.
+
 
 ## Session 2026-11-06 — Naming Split, bỏ Load 3D, Export, prompt tiếng Anh (nhánh `feat/naming-split-result-export`)
 

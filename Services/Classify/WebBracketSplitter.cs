@@ -54,6 +54,7 @@ namespace MCG_3DPanel.Services.Classify
 
                 bool isShort = p.MemberLength < ClassifyUtil.WEB_MIN_LEN;
                 bool isBracket = isShort
+                    && !ClassifyUtil.IsChamferedWebTier(p, allAm0)
                     && ClassifyUtil.IsBracketPattern(p, allAm0, hpParts, fbParts, ClassifyUtil.ADJ_TOL);
 
                 if (isBracket) { p.Type = PartType.Bracket; brkPieces.Add(p); }
