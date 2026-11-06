@@ -54,7 +54,7 @@ namespace MCG_3DPanel.UI
                 MCG_3DPanel.Commands.PanelCommands.Rebuilt += _naming.OnRebuilt;
                 // Mỗi file dựng xong: nhớ build của nó (lô nhiều panel — chuyển sang file nào cũng thấy đúng dòng).
                 MCG_3DPanel.Commands.PanelCommands.FileBuilt += MCG_3DPanel.Commands.PanelSession.Set;
-                MCG_3DPanel.Commands.PanelCommands.BuildFinished += RefreshTabs;
+                MCG_3DPanel.Commands.PanelCommands.BuildFinished += () => RefreshTabs();
                 // Đóng bản vẽ → bỏ dòng / correction / yêu cầu rebuild của nó TRƯỚC khi Database bị giải phóng
                 // (ObjectId cũ trỏ vào bộ nhớ đã free — chạm vào có thể làm AutoCAD crash). Gác TỪNG bước: bước này lỗi
                 // bước sau vẫn phải chạy, không thì còn id của Database đã free.
@@ -76,7 +76,7 @@ namespace MCG_3DPanel.UI
                     MCG_3DPanel.Commands.EntityHighlighter.Clear();
                 });
                 // Các tab luôn hiện panel của drawing đang active (mở file 3D ⇒ tự điền, không rebuild, không ghi).
-                Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.DocumentBecameCurrent += (s, e) => RefreshTabs();
+                Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.DocumentBecameCurrent += (s, e) => RefreshTabs(e.Document?.Database);
                 _ps.PaletteActivated += (s, e) => Guarded(() =>
                 {
                     _activeTab = e.Activated?.Name ?? _activeTab;
@@ -101,14 +101,18 @@ namespace MCG_3DPanel.UI
 
         /// <summary>Nạp Result + Naming theo drawing đang active: đổi drawing, mở palette, Build xong. Đang Build thì bỏ qua
         /// (file dở chưa có dữ liệu panel), cuối Build gọi lại 1 lần. Không dùng Editor; không để lọt exception (AutoCAD chết).</summary>
-        private void RefreshTabs()
+        private void RefreshTabs(Autodesk.AutoCAD.DatabaseServices.Database eventDb = null)
         {
             if (MCG_3DPanel.Commands.PanelCommands.IsBuilding) return;
             Guarded(() =>
             {
-                var db = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument?.Database;
+                // Sự kiện document truyền Database của chính document đó (không lấy MdiActiveDocument: document đang đóng
+                // sẽ bị nạp lại vào cache sau Forget).
+                var db = eventDb ?? Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument?.Database;
                 if (db == null) return;   // đóng hết drawing: OnDocumentClosing đã dọn bảng
                 var builds = MCG_3DPanel.Commands.PanelSession.For(db, out string message);
+                // Input TRƯỚC các tab: Naming đọc Position từ ô Input qua PositionProvider.
+                _input.ShowPanel(builds.Count > 0 ? builds[0] : null);
                 // Highlight dùng chung 1 trạng thái ⇒ tab ĐANG MỞ chạy SAU để vùng chọn của nó thắng.
                 if (_activeTab == "Naming") { _result.ShowFile(builds, message); _naming.ShowFile(builds, message); }
                 else { _naming.ShowFile(builds, message); _result.ShowFile(builds, message); }

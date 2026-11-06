@@ -46,15 +46,73 @@ namespace MCG_3DPanel.UI
             catch (System.Exception ex) { try { SetStatus("Spike failed: " + ex.Message, true); } catch { } }
         }
 
+        /// <summary>Drawing đang active có panel 3D ⇒ ô nhập hiện giá trị đã lưu của panel và nút thành "Rebuild 3D";
+        /// null (drawing 2D) ⇒ nút về "Build 3D", ô giữ nguyên người dùng đã gõ. Gán ô qua code không phải người dùng sửa
+        /// (không có handler theo dõi sửa). Không ném.</summary>
+        public void ShowPanel(MCG_3DPanel.Services.BuildResult panel)
+        {
+            try
+            {
+                if (panel?.Input == null)
+                {
+                    BtnBuild.Content = "Build 3D";
+                    BtnBuild.ToolTip = "Pick the panel block and build its 3D solid model";
+                    return;
+                }
+                var inp = panel.Input;
+                TxtTopPlateThk.Text = MCG_3DPanel.Models.PanelInput.Fmt(inp.TopPlateThickness);
+                TxtWebHeight.Text = MCG_3DPanel.Models.PanelInput.Fmt(inp.WebHeight);
+                TxtFlangeThk.Text = MCG_3DPanel.Models.PanelInput.Fmt(inp.FlangeThickness);
+                // FB lưu dạng số "120" hoặc spec cũ "120*6" — ô chỉ hiện chiều cao.
+                TxtFbHeight.Text = MCG_3DPanel.Models.PanelInput.TryParseHeight(inp.FlatBarSpec, out double fb)
+                    ? MCG_3DPanel.Models.PanelInput.Fmt(fb) : inp.FlatBarSpec ?? "";
+                CmbPanelPos.SelectedIndex = (int)panel.Position;
+                var hp = CmbHpSpec.Items.OfType<HpItem>().FirstOrDefault(i => i.Spec == inp.HpSpec);
+                if (hp != null) CmbHpSpec.SelectedItem = hp;
+                else SetStatus($"HP size {MCG_3DPanel.Models.PanelInput.FormatSpec(inp.HpSpec)} of this panel is not in the standard list — choose one before rebuilding.", error: true);
+                BtnBuild.Content = "Rebuild 3D";
+                BtnBuild.ToolTip = "Rebuild this panel's 3D in this file with the values above";
+            }
+            catch (System.Exception ex) { Debug.WriteLine("[MCG_3DPanel] ShowPanel: " + ex.Message); }
+        }
+
         private void BtnBuild_Click(object sender, RoutedEventArgs e)
         {
             // Build đổi document giữa chừng: không để exception nào thoát khỏi handler (AutoCAD sẽ chết).
-            try { RunBuildFromInput(); }
+            try
+            {
+                if (IsRebuildMode) RunRebuildFromInput(); else RunBuildFromInput();
+            }
             catch (System.Exception ex)
             {
-                try { SetStatus("Build failed: " + ex.Message, error: true); }
+                try { SetStatus((IsRebuildMode ? "Rebuild failed: " : "Build failed: ") + ex.Message, error: true); }
                 catch (System.Exception sx) { Debug.WriteLine("[MCG_3DPanel] SetStatus: " + sx.Message); }
             }
+        }
+
+        private bool IsRebuildMode => (BtnBuild.Content as string) == "Rebuild 3D";
+
+        /// <summary>Trong file 3D: áp ô nhập lên panel đầu tiên của file rồi rebuild thường (cùng file, không chọn, không file mới).</summary>
+        private void RunRebuildFromInput()
+        {
+            Document doc = AcadApp.DocumentManager.MdiActiveDocument;
+            if (doc == null) { SetStatus("No active drawing.", error: true); return; }
+            if (PanelCommands.IsBuilding) { SetStatus("A build is running — try again when it finishes.", error: true); return; }
+
+            if (!TryReadInput(out var input, out string err)) { SetStatus(err, error: true); return; }
+
+            // Lấy lại từ session (không giữ BuildResult cũ: sau rebuild session đã thay bằng bản mới).
+            var panel = PanelSession.For(doc.Database, out _).FirstOrDefault();
+            if (panel == null)
+            {
+                BtnBuild.Content = "Build 3D";
+                SetStatus("This drawing has no 3D panel any more — the button is back to Build 3D.", error: true);
+                return;
+            }
+            panel.Input = input;
+            panel.Position = (MCG_3DPanel.Models.PanelPosition)Math.Max(0, CmbPanelPos.SelectedIndex);
+            SetStatus("Rebuilding… (save the file afterwards)");
+            PanelCommands.RequestRebuild(panel);
         }
 
         private void RunBuildFromInput()
