@@ -12,16 +12,17 @@ namespace MCG_3DPanel.Tests
     {
         [Fact] public void Meta_RoundTrip()
         {
-            var m = new PanelMeta { SourceRefHandle = "1B", SourceBtrHandle = "2C", Input = new PanelInput { WebHeight = 400 }, Position = 2 };
+            var m = new PanelMeta { SourceRefHandle = "1B", SourceBtrHandle = "2C", Input = new PanelInput { WebHeight = 400, HpSpec = "150*8" }, Position = 2 };
             m.Solids.Add(new PanelMetaSolid { Handle = "A1", PartKey = "1B5#0", DeleteKey = "1B5#0", Code = "GE-HP", MergedCodes = { "GE-HP" } });
             var b = PanelMeta.FromJson(m.ToJson());
             Assert.Equal("1B", b.SourceRefHandle);
             Assert.Equal(400, b.Input.WebHeight);
+            Assert.Equal("150*8", b.Input.HpSpec);
             Assert.Equal(2, b.Position);
             Assert.Equal("GE-HP", b.Solids[0].MergedCodes[0]);
         }
 
-        [Theory] [InlineData(null)] [InlineData("")] [InlineData("{bad")]
+        [Theory] [InlineData(null)] [InlineData("")] [InlineData("{bad")] [InlineData("{}")] [InlineData("[]")] [InlineData("{\"Input\":null}")] [InlineData("{\"Solids\":null}")] [InlineData("{\"Solids\":[null]}")]
         public void Meta_Invalid_Null(string json) => Assert.Null(PanelMeta.FromJson(json));
 
         [Fact] public void Meta_LiveSolids_DropsMissing()

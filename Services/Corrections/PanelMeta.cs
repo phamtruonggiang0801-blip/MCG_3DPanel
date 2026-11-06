@@ -35,7 +35,14 @@ namespace MCG_3DPanel.Services.Corrections
         public static PanelMeta FromJson(string json)
         {
             if (string.IsNullOrWhiteSpace(json)) return null;
-            try { return JsonSerializer.Deserialize<PanelMeta>(json); }
+            try
+            {
+                var m = JsonSerializer.Deserialize<PanelMeta>(json);
+                // JSON thiếu/null trường bắt buộc ⇒ coi là hỏng (tránh object nửa vời gây NullReference về sau).
+                if (m == null || m.Input == null || m.Solids == null || m.Solids.Contains(null)
+                    || string.IsNullOrEmpty(m.SourceRefHandle) || string.IsNullOrEmpty(m.SourceBtrHandle)) return null;
+                return m;
+            }
             catch (JsonException) { return null; }
         }
 
