@@ -88,8 +88,9 @@ namespace MCG_3DPanel.UI
             var rows = _panels.SelectMany(p => p.Lines.Select(l => new NamingRow(p, l))).ToList();
             GridNaming.ItemsSource = rows;
             if (keep == null || keep.Count == 0) return;
+            // Khớp theo BẤT KỲ đoạn nào của dòng (dòng gộp/tách có thể không còn bắt đầu bằng đoạn cũ).
             var want = new HashSet<(string, string)>(keep);
-            var hit = rows.Where(r => want.Contains(r.Key)).ToList();
+            var hit = rows.Where(r => r.Line.Pieces.Any(p => p.Key != null && want.Contains((r.Key.Item1, p.Key)))).ToList();
             if (hit.Count == 0) return;
             _suspendShow = true;
             try
@@ -178,7 +179,9 @@ namespace MCG_3DPanel.UI
             var sel = Selected;
             if (sel.Count == 0) return;
             // Dòng chỉ bị Split (không có tên người dùng) cũng phải về gom tự động.
-            bool IsSplit(NamingRow r) => r.Line.Pieces.Any(p => p.Key != null && NameStore.Splits(r.PanelData.PanelKey).Contains(p.Key));
+            List<string> SplitKeys(NamingRow r) => r.Line.Pieces.Select(p => p.Key)
+                .Where(k => k != null && NameStore.Splits(r.PanelData.PanelKey).Contains(k)).ToList();
+            bool IsSplit(NamingRow r) => SplitKeys(r).Count > 0;
             var plan = BulkEdit.Plan(sel[0], sel, r => r.IsUserName || IsSplit(r), InActiveDrawing);
             if (plan.Targets.Count == 0)
             {
@@ -187,7 +190,19 @@ namespace MCG_3DPanel.UI
                 return;
             }
             bool rejoined = false;
-            foreach (var r in plan.Targets) rejoined |= NameStore.Unsplit(r.PanelData.PanelKey, r.Line);
+            // Dòng có khoá Split: bỏ Split của CẢ tuyến tự động chứa các khoá đó (không chỉ khoá của dòng này), và bỏ
+            // nhóm Merge chạm vào — nếu không dòng vừa Reset vẫn đứng riêng / còn dính nhóm Merge cũ.
+            foreach (var r in plan.Targets)
+            {
+                var own = SplitKeys(r);
+                if (own.Count == 0) continue;
+                var pd = r.PanelData;
+                var whole = StructureNaming.AutoLineKeys(pd.Pieces, pd.Position, NameStore.Deleted(pd.PanelKey), own);
+                whole.UnionWith(own);
+                bool a = NameStore.UnmergeKeys(pd.PanelKey, whole);
+                bool b = NameStore.Unsplit(pd.PanelKey, whole);
+                rejoined |= a || b;
+            }
             if (!rejoined) { Apply(plan.Targets, null, BulkEdit.Describe(plan, "Reset to auto")); return; }
             // Có đoạn rejoin ⇒ tuyến đổi: xoá tên người dùng theo SourceKey rồi tính lại + đánh số lại.
             foreach (var r in plan.Targets) NameStore.SetLine(r.PanelData.PanelKey, r.Line, null);
@@ -293,8 +308,9 @@ namespace MCG_3DPanel.UI
                               longest: r.Line.Pieces.OrderByDescending(x => x.Length).First().Key)).ToList();
             foreach (var r in plan.Targets)
             {
-                if (r.Line.IsMerged) NameStore.Unmerge(r.PanelData.PanelKey, r.Line);
-                else NameStore.Split(r.PanelData.PanelKey, r.Line);
+                // Gỡ nhóm Merge còn sót (vd dòng đã Reset khi còn Split) TRƯỚC khi Split, kẻo dòng gộp quay lại.
+                NameStore.Unmerge(r.PanelData.PanelKey, r.Line);
+                if (!r.Line.IsMerged) NameStore.Split(r.PanelData.PanelKey, r.Line);
             }
             var touched = plan.Targets.Select(r => r.PanelData).Distinct().ToList();
             foreach (var p in touched) p.Recompute();
@@ -395,7 +411,7 @@ namespace MCG_3DPanel.UI
             var left = _panels.Where(p => p.Db != db).ToList();
             if (left.Count == _panels.Count) return;
             SetPanels(left, null);
-            if (left.Count == 0) SetStatus("Drawing closed — select a panel again.");
+            if (left.Count == 0) SetStatus("Drawing closed — insert the 2D block, check the Input tab, then run Build 3D.");
         }
 
         public void OnDocumentActivated(Database db)
@@ -481,7 +497,7 @@ namespace MCG_3DPanel.UI
             {
                 EntityHighlighter.Clear();
                 if (other > 0) SetStatus(OtherDrawingText(rows.First(r => adoc == null || r.PanelData.Db != adoc.Database)).Replace("rename", "highlight"), error: true);
-                else SetStatus("These objects no longer exist (erased or undone) — select the panel again.", error: true);
+                else SetStatus("These objects no longer exist (erased or undone) — run Build 3D again.", error: true);
                 return;
             }
             string err = EntityHighlighter.ShowMany(paths, box ?? new Extents3d(), zoom && box != null);
@@ -573,7 +589,7 @@ namespace MCG_3DPanel.UI
 
         private void CopyRows(List<NamingRow> rows)
         {
-            if (rows.Count == 0) { SetStatus("Nothing to copy — select a panel first.", error: true); return; }
+            if (rows.Count == 0) { SetStatus("Nothing to copy — run Build 3D first.", error: true); return; }
             var sb = new StringBuilder();
             sb.AppendLine("Panel\tName\tSize\tKind");
             foreach (var r in rows)

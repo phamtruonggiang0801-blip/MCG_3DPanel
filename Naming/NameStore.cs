@@ -116,13 +116,21 @@ namespace MCG_3DPanel.Naming
             foreach (var p in line.Pieces) if (!string.IsNullOrEmpty(p.Key)) s.Add(p.Key);
         }
 
-        /// <summary>Bỏ Split của các đoạn thuộc <paramref name="line"/> (về gom tự động). Trả true nếu có bỏ.</summary>
-        public static bool Unsplit(string panelKey, NamingLine line)
+        /// <summary>Bỏ Split của các SourceKey (về gom tự động). Trả true nếu thật sự có key bị bỏ.</summary>
+        public static bool Unsplit(string panelKey, IEnumerable<string> keys)
         {
-            if (panelKey == null || line == null || !_splits.TryGetValue(panelKey, out var s)) return false;
+            if (panelKey == null || keys == null || !_splits.TryGetValue(panelKey, out var s)) return false;
             bool any = false;
-            foreach (var p in line.Pieces) if (p.Key != null && s.Remove(p.Key)) any = true;
+            foreach (var k in keys) if (k != null && s.Remove(k)) any = true;
             return any;
+        }
+
+        /// <summary>Bỏ mọi nhóm Merge chạm vào <paramref name="keys"/>. Trả true nếu có bỏ.</summary>
+        public static bool UnmergeKeys(string panelKey, IEnumerable<string> keys)
+        {
+            if (panelKey == null || keys == null || !_merges.TryGetValue(panelKey, out var list)) return false;
+            var ks = new HashSet<string>(keys.Where(k => k != null));
+            return list.RemoveAll(g => g.Overlaps(ks)) > 0;
         }
 
         /// <summary>Lấy lại MỌI tuyến đã Del Name của panel. Trả số đoạn được trả lại.</summary>

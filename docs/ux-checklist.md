@@ -78,8 +78,8 @@ built in a second drawing.
 
 | # | Steps | Expected |
 |---|---|---|
-| G1 | Naming tab → Select panel… → pick a 2D panel (no 3D). | One row per Web/HP line and per flat bar, names T#/L#/HT#/HL#/BS; clicking a row highlights every piece of the line. |
-| G2 | Rename a line (type `T6a`, Enter), Ctrl+S, close and reopen the drawing, Select panel… again. | The name `T6a` is still there (blue); the other numbers are unchanged. |
+| G1 | Build 3D (Keep) a panel, then open the Naming tab. | One row per Web/HP line and per flat bar, names T#/L#/HT#/HL#/BS; clicking a row highlights every piece of the line. |
+| G2 | Rename a line (type `T6a`, Enter), Ctrl+S, close and reopen the drawing, insert the 2D block, Build 3D (Keep) again. | The name `T6a` is still there (blue); the other numbers are unchanged. |
 | G3 | Select 12 BS rows, type `BS1` on one of them and press Enter. | All 12 rows get `BS1`; the status shows the count. |
 | G4 | Right-click → Reset to auto on renamed rows. | They return to the generated names (black). |
 | G5 | Change Position to Starboard. | L/HL numbers reverse (top → bottom); T/HT stay; your own names stay. |
@@ -93,7 +93,11 @@ built in a second drawing.
 | G13 | Select panel… with an invalid value on the Input tab. | A message asks to fix the Input tab; nothing is selected. |
 | G14 | Look at the columns. | Name (editable, e.g. `T1`) and Size (read-only, e.g. `WEB 374x6.0/FLANGE 100x20.0`) are separate; Copy pastes them in separate columns. |
 | G15 | Click a Web row that has a flange (2D and after Build/Keep). | The web and its flange(s) highlight together. |
-| G16 | Select T3 and T4 → right-click Merge. Then Unmerge. | One row `T3`, Kind `Web (merged)`, T5 becomes T4…; Unmerge splits and renumbers back. Merging Web with HP, or T with L, is refused with a message. Survives Ctrl+S + reopen. |
+| G16 | Insert the 2D block, Build 3D (Keep), open Naming. Select T3 and T4 → right-click Merge. Then Unmerge. | One row `T3`, Kind `Web (merged)`, T5 becomes T4…; Unmerge splits and renumbers back. Merging Web with HP, or T with L, is refused with a message. Survives Ctrl+S + reopen (insert the block and Build 3D again). |
+| G17 | Right-click a line of 2+ pieces that was never merged → Unmerge. | The line splits into one row per piece and everything renumbers; the status says Unmerged. Unmerge on a single-piece line is disabled with a tooltip. |
+| G18 | After G17, right-click ONE of the split rows → Reset to auto. | All pieces of that automatic line rejoin into one row (not only the clicked piece); the status says the pieces rejoined. Merge a+b of a split line, Reset the merged row, then Unmerge: you get separate rows, never a merged one. |
+| G19 | On a split row: Del Name, then Restore deleted names. | The row disappears and the rest renumber; Restore brings the piece back as its own split row, and numbers update again. |
+| G20 | Result tab → Export dropdown, with the STEP item disabled (no 3D built or another drawing). | CSV works; STEP is greyed with a tooltip saying why; clicking it does nothing and no error appears. |
 
 ## H. Pick in drawing / Esc
 

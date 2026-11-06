@@ -141,7 +141,7 @@ namespace MCG_3DPanel.UI
             {
                 _builds = left;
                 GridResult.ItemsSource = null;
-                SetStatus("Drawing closed — Build 3D again to list solids.");
+                SetStatus("Drawing closed — insert the 2D block, check the Input tab, then run Build 3D.");
                 return;
             }
             Load(left);
@@ -671,7 +671,7 @@ namespace MCG_3DPanel.UI
 
         private void CopyRows(List<ResultRow> rows)
         {
-            if (rows.Count == 0) { SetStatus("Nothing to copy — classify a panel first.", error: true); return; }
+            if (rows.Count == 0) { SetStatus("Nothing to copy — run Build 3D first.", error: true); return; }
 
             var sb = new StringBuilder();
             sb.AppendLine(Header.Replace(',', '\t'));
@@ -692,7 +692,7 @@ namespace MCG_3DPanel.UI
             var rows = Rows;
             if (rows.Count == 0)
             {
-                SetStatus("Nothing to export — classify a panel first.", error: true);
+                SetStatus("Nothing to export — run Build 3D first.", error: true);
                 return;
             }
 

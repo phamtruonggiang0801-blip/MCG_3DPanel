@@ -207,6 +207,20 @@ namespace MCG_3DPanel.Naming
             return ordered;
         }
 
+        /// <summary>Mọi SourceKey của tuyến TỰ ĐỘNG (không merge, không split) có chứa một trong <paramref name="keys"/> —
+        /// dùng cho Reset to auto: bỏ Split của CẢ tuyến để các đoạn nhập lại.</summary>
+        public static HashSet<string> AutoLineKeys(IEnumerable<NamingPiece> pieces, PanelPosition pos,
+            ICollection<string> deleted, IEnumerable<string> keys)
+        {
+            var want = new HashSet<string>(keys ?? Enumerable.Empty<string>());
+            var res = new HashSet<string>();
+            if (want.Count == 0) return res;
+            foreach (var l in Lines(pieces, pos, deleted))
+                if (l.Pieces.Any(p => p.Key != null && want.Contains(p.Key)))
+                    foreach (var p in l.Pieces) if (p.Key != null) res.Add(p.Key);
+            return res;
+        }
+
         /// <summary>Tuyến tách được (Split): không phải tuyến Merge và có từ 2 SourceKey khác nhau trở lên.</summary>
         public static bool CanSplit(NamingLine line)
             => line != null && !line.IsMerged && line.Pieces.Where(p => p.Key != null).Select(p => p.Key).Distinct().Skip(1).Any();

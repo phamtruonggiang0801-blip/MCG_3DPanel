@@ -215,6 +215,6 @@
 
         <!-- ===== Row 3: Trạng thái ===== -->
         <TextBlock Grid.Row="3" x:Name="TxtStatus" Style="{StaticResource StatusTextStyle}"
-                   Text="No 3D model yet. Run Build 3D in the Input tab."/>
+                   Text="No panel in this session. Run Build 3D on a 2D block."/>
     </Grid>
 </UserControl>
