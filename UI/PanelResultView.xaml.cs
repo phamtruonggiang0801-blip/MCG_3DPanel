@@ -553,10 +553,10 @@ namespace MCG_3DPanel.UI
         private void BtnPick_Click(object sender, RoutedEventArgs e)
         {
             if (Rows.Count == 0) { SetStatus("Nothing listed yet — build or load a panel first.", error: true); return; }
-            SetStatus("Pick objects in the drawing… Enter = done, Esc = clear.");
+            SetStatus("Pick objects or drag a window in the drawing… Enter = done, Esc = clear.");
             string err;
             int hits;
-            try { err = CadPick.PickLoop(SelectFromCad, PaletteManager.Instance.ClearAllSelections, out hits); }
+            try { err = CadPick.PickLoop(SelectFromCad, SelectInWindow, PaletteManager.Instance.ClearAllSelections, out hits); }
             catch (System.Exception ex) { SetStatus("Pick failed: " + ex.Message, error: true); return; }
             if (err != null) { SetStatus(err, error: true); return; }
             if (_statusIsError) return;   // giữ lỗi highlight trong lúc pick (vd không highlight được)
@@ -566,16 +566,31 @@ namespace MCG_3DPanel.UI
         }
 
         /// <summary>Chọn THÊM dòng của solid vừa pick (drawing đang mở), cuộn tới, highlight. Không có dòng ⇒ false (im lặng).</summary>
-        public bool SelectFromCad(Autodesk.AutoCAD.DatabaseServices.ObjectId picked)
+        public bool SelectFromCad(Autodesk.AutoCAD.DatabaseServices.ObjectId picked, bool remove)
         {
             var row = Rows.FirstOrDefault(r => r.Solid != null && r.Solid.SolidId == picked);
             if (row == null) return false;
             _suspendShow = true;
-            try { if (!GridResult.SelectedItems.Contains(row)) GridResult.SelectedItems.Add(row); }
+            try { if (remove) GridResult.SelectedItems.Remove(row); else if (!GridResult.SelectedItems.Contains(row)) GridResult.SelectedItems.Add(row); }
             finally { _suspendShow = false; }
-            GridResult.ScrollIntoView(row);
+            if (!remove) GridResult.ScrollIntoView(row);
             Show(Selected, zoom: false);
             return true;
+        }
+
+        /// <summary>Quét chọn trong Pick: THÊM mọi dòng (drawing đang mở, solid còn) có hộp bao khớp khung. Trả số dòng thêm.</summary>
+        public int SelectInWindow(Func<Autodesk.AutoCAD.DatabaseServices.Extents3d, bool> hit, bool remove)
+        {
+            var adoc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+            if (adoc == null) return 0;
+            var rows = Rows.Where(r => !r.Deleted && r.Solid != null && !r.Solid.SolidId.IsNull && !r.Solid.SolidId.IsErased
+                                       && r.Solid.SolidId.Database == adoc.Database && hit(r.Bounds)).ToList();
+            int added = 0;
+            _suspendShow = true;
+            try { foreach (var r in rows) { if (remove) { if (GridResult.SelectedItems.Contains(r)) { GridResult.SelectedItems.Remove(r); added++; } } else if (!GridResult.SelectedItems.Contains(r)) { GridResult.SelectedItems.Add(r); added++; } } }
+            finally { _suspendShow = false; }
+            if (rows.Count > 0) { if (!remove) GridResult.ScrollIntoView(rows[0]); Show(Selected, zoom: false); }
+            return added;
         }
 
         /// <summary>Esc (bản vẽ hoặc grid): bỏ chọn + tắt highlight.</summary>

@@ -477,10 +477,10 @@ namespace MCG_3DPanel.UI
         private void BtnPick_Click(object sender, RoutedEventArgs e)
         {
             if (Rows.Count == 0) { SetStatus("Nothing listed yet — run Build 3D first.", error: true); return; }
-            SetStatus("Pick objects in the drawing… Enter = done, Esc = clear.");
+            SetStatus("Pick objects or drag a window in the drawing… Enter = done, Esc = clear.");
             string err;
             int hits;
-            try { err = CadPick.PickLoop(SelectFromCad, PaletteManager.Instance.ClearAllSelections, out hits); }
+            try { err = CadPick.PickLoop(SelectFromCad, SelectInWindow, PaletteManager.Instance.ClearAllSelections, out hits); }
             catch (System.Exception ex) { SetStatus("Pick failed: " + ex.Message, error: true); return; }
             if (err != null) { SetStatus(err, error: true); return; }
             if (_statusIsError) return;   // giữ lỗi highlight trong lúc pick
@@ -490,7 +490,7 @@ namespace MCG_3DPanel.UI
 
         /// <summary>Chọn THÊM dòng chứa chi tiết vừa pick (solid 3D hoặc polyline 2D, kể cả flange ⇒ dòng web) trong panel của
         /// drawing đang mở. Không có dòng ⇒ false (im lặng — kỹ sư 2026-11-05).</summary>
-        public bool SelectFromCad(ObjectId picked)
+        public bool SelectFromCad(ObjectId picked, bool remove)
         {
             var adoc = AcadApp.DocumentManager.MdiActiveDocument;
             bool Hit(NamingRow r) => r.Line.Pieces.Concat(r.Line.Flanges).Any(p =>
@@ -498,11 +498,26 @@ namespace MCG_3DPanel.UI
             var row = Rows.FirstOrDefault(r => adoc != null && r.PanelData.Db == adoc.Database && Hit(r));
             if (row == null) return false;
             _suspendShow = true;
-            try { if (!GridNaming.SelectedItems.Contains(row)) GridNaming.SelectedItems.Add(row); }
+            try { if (remove) GridNaming.SelectedItems.Remove(row); else if (!GridNaming.SelectedItems.Contains(row)) GridNaming.SelectedItems.Add(row); }
             finally { _suspendShow = false; }
-            GridNaming.ScrollIntoView(row);
+            if (!remove) GridNaming.ScrollIntoView(row);
             Show(Selected, zoom: false);
             return true;
+        }
+
+        /// <summary>Quét chọn trong Pick: THÊM mọi tuyến (drawing đang mở) có ÍT NHẤT 1 đoạn/flange khớp khung. Trả số dòng thêm.</summary>
+        public int SelectInWindow(Func<Extents3d, bool> hit, bool remove)
+        {
+            var adoc = AcadApp.DocumentManager.MdiActiveDocument;
+            if (adoc == null) return 0;
+            var rows = Rows.Where(r => r.PanelData.Db == adoc.Database
+                && r.Line.Pieces.Concat(r.Line.Flanges).Any(p => r.PanelData.Bounds.TryGetValue(p.Key, out var b) && hit(b))).ToList();
+            int added = 0;
+            _suspendShow = true;
+            try { foreach (var r in rows) { if (remove) { if (GridNaming.SelectedItems.Contains(r)) { GridNaming.SelectedItems.Remove(r); added++; } } else if (!GridNaming.SelectedItems.Contains(r)) { GridNaming.SelectedItems.Add(r); added++; } } }
+            finally { _suspendShow = false; }
+            if (rows.Count > 0) { if (!remove) GridNaming.ScrollIntoView(rows[0]); Show(Selected, zoom: false); }
+            return added;
         }
 
         /// <summary>Esc (bản vẽ hoặc grid): bỏ chọn + tắt highlight.</summary>

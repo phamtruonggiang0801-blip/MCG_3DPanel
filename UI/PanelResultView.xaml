@@ -52,7 +52,7 @@
             <Button x:Name="BtnCopy" Content="Copy" Style="{StaticResource ToolbarButtonStyle}"
                     Click="BtnCopy_Click" ToolTip="Copy the table to the clipboard (paste straight into Excel)"/>
             <Button x:Name="BtnPick" Content="Pick" Style="{StaticResource ToolbarButtonStyle}"
-                    Click="BtnPick_Click" ToolTip="Click objects in the drawing to find their rows (Enter = done, Esc = clear the selection)"/>
+                    Click="BtnPick_Click" ToolTip="Click objects, or drag a window on empty space (left→right = fully inside, right→left = touching), to find their rows. Shift + click / drag (or type R) = unselect, A = add again. Enter = done, Esc = clear the selection"/>
         </WrapPanel>
 
         <TextBlock Grid.Row="1" Style="{StaticResource HelperTextStyle}" Margin="2,2,2,6"
@@ -75,7 +75,7 @@
                 <ContextMenu Opened="GridMenu_Opened">
                     <MenuItem Header="Zoom to Object" Click="MnuZoomTo_Click"/>
                     <MenuItem Header="Pick in Drawing" Click="BtnPick_Click"
-                              ToolTip="Click objects in the drawing to find their rows (Enter = done, Esc = clear the selection)"/>
+                              ToolTip="Click objects, or drag a window on empty space (left→right = fully inside, right→left = touching), to find their rows. Shift + click / drag (or type R) = unselect, A = add again. Enter = done, Esc = clear the selection"/>
                     <MenuItem x:Name="MnuDelete" Header="Delete" Click="MnuDelete_Click"
                               ToolTip="Remove the selected solids from the 3D block (kept across rebuilds; Restore to undo)"/>
                     <MenuItem x:Name="MnuRestore" Header="Restore" Click="MnuRestore_Click"

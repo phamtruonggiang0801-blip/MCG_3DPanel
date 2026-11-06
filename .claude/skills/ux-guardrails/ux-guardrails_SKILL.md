@@ -62,3 +62,9 @@ Prompt mở từ palette (`GetNestedEntity`, `GetSelection`… — vd nút Pick)
 Gửi `SendStringToExecute` lúc đó ⇒ chuỗi lệnh bị gõ VÀO prompt và mất (Pick → sửa Tripping → 3D không đổi).
 **Luật:** mọi chỗ gửi lệnh từ Idle phải chờ `CommandInProgress` rỗng **và** `Editor.IsQuiescent` (và `CadPick.IsPicking`
 = false). Checklist H10.
+
+## Prompt lấy điểm thay cho chọn đối tượng (lỗi 2026-11-05)
+`GetPoint`/`GetCorner` dùng để chọn kiểu AutoCAD: Shift = tạm bật Ortho (`TEMPOVERRIDES`), không có điểm gốc ⇒ khoá
+theo LASTPOINT (thường 0,0) ⇒ góc khung nhảy về gốc; OSnap/Ortho làm lệch góc. **Luật:** tạm tắt TEMPOVERRIDES,
+ORTHOMODE, OSMODE (bit 16384) trong lúc chọn, khoá document khi đổi, trả lại ở `finally`, báo lên dòng lệnh nếu không
+trả được (`CadPick.SuspendPointAids`). Checklist H13.
