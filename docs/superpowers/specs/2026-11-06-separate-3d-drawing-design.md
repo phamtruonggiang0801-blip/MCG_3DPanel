@@ -54,18 +54,17 @@ This replaces the earlier decision "work only with panels built in this session"
 
 For each selected panel, in the source drawing:
 
-1. Make a copy of the whole database, keeping handles (`Database.Wblock()`), in memory.
-2. In the copy, erase Model Space content except that panel's 2D block reference, and erase any `MCG3D_*` blocks.
+1. Read the saved source file from disk into a side database (`new Database(false, true)`, `ReadDwgFile` with shared
+   read access). Handles are those of the file. `Database.Wblock()` was tried first and kept 0 of 3631 handles.
+2. In the side database, erase Model Space content except that panel's 2D block reference, and erase any `MCG3D_*` blocks.
 3. Move the 2D reference to a frozen, locked layer `MCG3D_2D_SOURCE`.
 4. Purge what is left unused, keeping only this panel's block tree. Other panels' blocks, corrections and names go
    (my call: the file carries this panel only, and auto-fill cannot pick up anything else).
 5. Save as `<source folder>\<panel block name>_3D.dwg` and open it as the active document.
 6. Build there with the Input and Position from the Input tab.
 
-The source drawing is never written. Build from an unsaved drawing uses the Desktop folder.
-
-If the copy does not keep handles, the fallback is to remap keys through the clone id map. That is much riskier,
-because keys are embedded inside `DeleteKey` and tags, so this is checked first (see Spike).
+The source drawing is never written. The source must be saved: if it has unsaved changes or has never been saved,
+Build stops before anything is created, with `Save this drawing first, then Build 3D.` (engineer, 2026-11-06).
 
 ### Keep
 
@@ -108,7 +107,7 @@ the file clears its rows. The source drawing shows no rows. In a 2D drawing the 
 
 ### Spike (first task, in AutoCAD)
 
-Confirm before anything else: `Database.Wblock()` keeps entity handles; a frozen locked reference can still be read by
+Confirm before anything else: the side database keeps entity handles; a frozen locked reference can still be read by
 classification; a palette button can open a document and continue building there.
 
 This is a hard gate: if handles are not kept, stop and go back to the engineer before planning the key remap (my call).

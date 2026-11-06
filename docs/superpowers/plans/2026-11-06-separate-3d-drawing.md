@@ -39,7 +39,7 @@
 - [ ] **Step 1: Add command `MCG_Spike3DFile`**
 
 The user picks a 2D panel reference. The command must:
-1. `Database copy = db.Wblock()`; compare the handles of the selected reference and all entities in its block tree against the source; print `handles kept: N / M`.
+1. `Database copy` = side database from `ReadDwgFile(db.Filename, FileOpenMode.OpenForReadAndAllShare, ...)`, stopping with a message if the drawing is unsaved or modified; compare the handles of the selected reference and all entities in its block tree against the source; print `handles kept: N / M`.
 2. In `copy`, create layer `MCG3D_2D_SOURCE`, frozen and locked; move the reference onto it; `SaveAs` to `%TEMP%\mcg_spike_3D.dwg`.
 3. From the palette context, not a command, open the file and make it active; print `opened: yes/no`.
 4. In it, run `ClassificationService.Classify` on the reference at the same handle; print the part count, and the part count from the source.
@@ -176,7 +176,7 @@ git commit -m "feat(panel): save panel data in the 3D block"
 
 - [ ] **Step 1: Implement `Panel3DFile.Create`**
 
-Steps as in the spec's File creation: `source.Wblock()`, erase Model Space entities except `ref2D`, erase `MCG3D_*` block definitions, move the reference to `MCG3D_2D_SOURCE` (frozen, locked), purge with `Database.Purge` until nothing is left except what the reference needs, then `SaveAs`. Dispose the copy.
+Steps as in the spec's File creation: read `source.Filename` into a side database with shared read access, erase Model Space entities except `ref2D`, erase `MCG3D_*` block definitions, move the reference to `MCG3D_2D_SOURCE` (frozen, locked), purge with `Database.Purge` until nothing is left except what the reference needs, then `SaveAs`. Dispose the copy.
 
 - [ ] **Step 2: Add the dialog**
 
@@ -184,7 +184,7 @@ Text `These panels already have a 3D file:`, then the file names, then buttons `
 
 - [ ] **Step 3: Rewrite `RunBuild`**
 
-1. `TryPickPanels`, then compute a target per panel with `Panel3DPath`: folder of `db.Filename`, Desktop when unsaved. A file counts as taken if it exists or is open in `DocumentManager`.
+1. If the drawing has never been saved or has unsaved changes (`DBMOD`), stop before selection with `Save this drawing first, then Build 3D.` Then `TryPickPanels`, and compute a target per panel with `Panel3DPath`, in the folder of `db.Filename`. A file counts as taken if it exists or is open in `DocumentManager`.
 2. Any target taken: ask once. Cancel returns null with nothing created. Open opens those files, or switches to one already open, and skips their build. New copy uses `NextFree`, reserving paths within the batch.
 3. For each panel to build: `Create`, open the file, make it active, lock it, find the reference by the same handle, run `BuildOne`, save the file, raise `FileBuilt`. No solids: close the document, delete the file, tell the user, continue. A panel that throws is reported and skipped.
 
