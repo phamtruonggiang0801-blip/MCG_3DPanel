@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using MCG_3DPanel.Models;
@@ -373,6 +374,79 @@ namespace MCG_3DPanel.Tests
             NamesJson.MergeLoaded(cache, new Dictionary<string, string> { ["a"] = "OLD", ["b"] = "T6a" });
             Assert.Equal("NEW", cache["a"]);
             Assert.Equal("T6a", cache["b"]);
+        }
+
+        internal static List<NamingPiece> Cas7D17C()
+        {
+            var l = new List<NamingPiece>();
+            Action<NamingKind, double, double, double, double, double, string> a =
+                (k, x0, y0, x1, y1, t, key) => l.Add(Spec(P(k, x0, y0, x1, y1, t, key)));
+            // Web xiên (4 đoạn)
+            a(NamingKind.Web, 281.6, -895.7, 502.7, -1329.3, 10, "1ADF9");
+            a(NamingKind.Web, 4541.6, -9250.8, 504.5, -1328.4, 6, "1AE23");
+            a(NamingKind.Web, 6380.7, -12864.3, 4539.8, -9251.7, 10, "1AE5C");
+            a(NamingKind.Web, 6382.5, -12863.4, 10492.1, -20928.1, 6, "1AE5D");
+            // HP xiên (3 đoạn)
+            a(NamingKind.HP, 83.8, -921.5, 4696.6, -9974.0, 6, "1AE8A");
+            a(NamingKind.HP, 4801.0, -10178.9, 5012.3, -10593.5, 6, "1AE8B");
+            a(NamingKind.HP, 5116.7, -10798.5, 10407.7, -21181.9, 6, "1AE8C");
+            // Web thẳng
+            a(NamingKind.Web, 2438.1, -5110.4, 2438.1, -469.0, 6, "1AE47");
+            a(NamingKind.Web, 8397.4, -10074.2, 8397.4, -469.0, 6, "1AE07");
+            a(NamingKind.Web, 8397.4, -16804.8, 8397.4, -11017.7, 6, "1AE3C");
+            return l;
+        }
+
+        [Fact] public void Cas7D17C_SkewWebIsOneLine()
+        {
+            var l = StructureNaming.Lines(Cas7D17C(), PanelPosition.Center);
+            Assert.Equal(new[] { "T1", "T2", "T3" }, Names(l, NamingKind.Web, NamingDir.T));
+            var t2 = Line(l, "T2");
+            Assert.Equal(new[] { "1ADF9", "1AE23", "1AE5C", "1AE5D" }, t2.Pieces.Select(p => p.Key).OrderBy(k => k).ToArray());
+            Assert.Equal(5386.85, t2.Center, 1);   // giữa X 281.6..10492.1
+            Assert.Equal(2438.1, Line(l, "T1").Center, 1);
+            Assert.Equal(8397.4, Line(l, "T3").Center, 1);
+        }
+
+        [Fact] public void Cas7D17C_HpIsSeparateLine()
+        {
+            var l = StructureNaming.Lines(Cas7D17C(), PanelPosition.Center);
+            Assert.Equal(new[] { "HT1" }, Names(l, NamingKind.HP, NamingDir.T));
+            Assert.Equal(3, Line(l, "HT1").Pieces.Count);
+            Assert.Equal(5245.75, Line(l, "HT1").Center, 1);
+        }
+
+        [Fact] public void Skew_SameCenterAsStraight_NotMerged()
+        {
+            var l = StructureNaming.Lines(new[] { P(NamingKind.Web, 1000, 0, 1000, 5000), P(NamingKind.Web, 0, 5000, 2000, 1000) }, PanelPosition.Center);
+            Assert.Equal(2, l.Count);
+        }
+
+        [Fact] public void Skew_Near45_StaysOneLine()
+        {
+            // Đoạn đầu nghiêng về L, đoạn sau về T, cùng 1 đường trong 1°
+            var l = StructureNaming.Lines(new[] { P(NamingKind.Web, 0, 0, 1000, 999), P(NamingKind.Web, 1100, 1099, 2100, 2100) }, PanelPosition.Center);
+            Assert.Single(l);
+        }
+
+        [Fact] public void Skew_ParallelFarApart_TwoLines()
+        {
+            var l = StructureNaming.Lines(new[] { P(NamingKind.Web, 0, 0, 1000, 500), P(NamingKind.Web, 0, 100, 1000, 600) }, PanelPosition.Center);
+            Assert.Equal(2, l.Count);
+        }
+
+        [Fact] public void Skew_DeletedLongest_RestStayOneLine()
+        {
+            var l = StructureNaming.Lines(Cas7D17C(), PanelPosition.Center, new[] { "1AE5D" });
+            var skew = l.Single(x => x.Kind == NamingKind.Web && x.Pieces.Any(p => p.Key == "1AE23"));
+            Assert.Equal(3, skew.Pieces.Count);
+        }
+
+        [Fact] public void Skew_NearAxis_KeepsAxisPath()
+        {
+            // Lệch 0.14° như flange thật ⇒ không phải xiên, tính như đoạn thẳng trục
+            var l = StructureNaming.Lines(new[] { P(NamingKind.Web, 0, 0, 1000, 2.4), P(NamingKind.Web, 2000, 3, 3000, 5) }, PanelPosition.Center);
+            Assert.Single(l);
         }
     }
 }

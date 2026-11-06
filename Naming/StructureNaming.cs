@@ -32,6 +32,43 @@ namespace MCG_3DPanel.Naming
         internal double AxLo => Dir == NamingDir.T ? Math.Min(Y0, Y1) : Math.Min(X0, X1);
         internal double AxHi => Dir == NamingDir.T ? Math.Max(Y0, Y1) : Math.Max(X0, X1);
         internal double Length => Math.Sqrt((X1 - X0) * (X1 - X0) + (Y1 - Y0) * (Y1 - Y0));
+
+        /// <summary>Góc đường tâm so với trục X, 0 ≤ a &lt; 180 (đoạn không có hướng).</summary>
+        internal double AngleDeg
+        {
+            get
+            {
+                double a = Math.Atan2(Y1 - Y0, X1 - X0) * 180 / Math.PI;
+                if (a < 0) a += 180;
+                return a >= 180 ? 0 : a;
+            }
+        }
+
+        /// <summary>Xiên = lệch hơn ANGLE_TOL so với cả 0°, 90° và 180°.</summary>
+        internal bool IsSkew
+        {
+            get
+            {
+                double a = AngleDeg;
+                return a > StructureNaming.ANGLE_TOL && Math.Abs(a - 90) > StructureNaming.ANGLE_TOL
+                       && a < 180 - StructureNaming.ANGLE_TOL;
+            }
+        }
+
+        internal bool Parallel(NamingPiece o)
+        {
+            double d = Math.Abs(AngleDeg - o.AngleDeg);
+            return Math.Min(d, 180 - d) <= StructureNaming.ANGLE_TOL;
+        }
+
+        /// <summary>Khoảng cách từ trung điểm của o tới đường thẳng vô hạn chứa đoạn này.</summary>
+        internal double PerpDist(NamingPiece o)
+        {
+            double mx = (o.X0 + o.X1) / 2 - X0, my = (o.Y0 + o.Y1) / 2 - Y0;
+            double len = Length;
+            if (len < 1e-9) return Math.Sqrt(mx * mx + my * my);
+            return Math.Abs((X1 - X0) * my - (Y1 - Y0) * mx) / len;
+        }
     }
 
     /// <summary>1 tuyến (1 dòng tab Naming): mọi đoạn thẳng hàng mang chung 1 tên.</summary>
@@ -65,6 +102,7 @@ namespace MCG_3DPanel.Naming
     public static class StructureNaming
     {
         public const double LINE_TOL = 15;   // lệch đường tâm tối đa trong 1 tuyến (mm)
+        public const double ANGLE_TOL = 1.0; // lệch góc tối đa (độ): ≤ ⇒ song song / coi là trục
         public const string BS = "BS";
 
         /// <param name="deleted">SourceKey người dùng "Del Name": tuyến có đoạn thuộc tập này bị BỎ (không hiện, không
@@ -84,7 +122,7 @@ namespace MCG_3DPanel.Naming
             foreach (NamingDir dir in new[] { NamingDir.T, NamingDir.L })
             {
                 // Web + HP
-                foreach (var cl in Cluster(all.Where(p => (p.Kind == NamingKind.Web || p.Kind == NamingKind.HP) && p.Dir == dir)))
+                foreach (var cl in Cluster(all.Where(p => (p.Kind == NamingKind.Web || p.Kind == NamingKind.HP) && !p.IsSkew && p.Dir == dir)))
                 {
                     double web = cl.Where(p => p.Kind == NamingKind.Web).Sum(p => p.Length);
                     double hp = cl.Where(p => p.Kind == NamingKind.HP).Sum(p => p.Length);
@@ -92,9 +130,20 @@ namespace MCG_3DPanel.Naming
                     lines.Add(Make(kind, dir, cl, cl.Where(p => p.Kind == kind), flanges));
                 }
                 // FB: chỉ gộp FB với FB; thẳng hàng là 1 dòng dù cách xa (revision 1: BS 947 + BS 8428)
-                foreach (var cl in Cluster(all.Where(p => p.Kind == NamingKind.FB && p.Dir == dir)))
+                foreach (var cl in Cluster(all.Where(p => p.Kind == NamingKind.FB && !p.IsSkew && p.Dir == dir)))
                     lines.Add(Make(NamingKind.FB, dir, cl, cl, flanges));
             }
+
+            // Xiên: gom theo đường thẳng, không phân T/L (đường 45° không bị tách đôi); không bao giờ nhập tuyến trục.
+            foreach (var cl in ClusterSkew(all.Where(p => (p.Kind == NamingKind.Web || p.Kind == NamingKind.HP) && p.IsSkew)))
+            {
+                double web = cl.Where(p => p.Kind == NamingKind.Web).Sum(p => p.Length);
+                double hp = cl.Where(p => p.Kind == NamingKind.HP).Sum(p => p.Length);
+                var kind = web >= hp ? NamingKind.Web : NamingKind.HP;
+                lines.Add(Make(kind, cl.OrderByDescending(p => p.Length).First().Dir, cl, cl.Where(p => p.Kind == kind), flanges));
+            }
+            foreach (var cl in ClusterSkew(all.Where(p => p.Kind == NamingKind.FB && p.IsSkew)))
+                lines.Add(Make(NamingKind.FB, cl.OrderByDescending(p => p.Length).First().Dir, cl, cl, flanges));
 
             foreach (var group in merges ?? Enumerable.Empty<ICollection<string>>())
             {
@@ -168,6 +217,18 @@ namespace MCG_3DPanel.Naming
             if (cur.Count > 0) yield return cur;
         }
 
+        // Xiên: seed = đoạn dài nhất còn lại; nhập nếu song song + đường tâm lệch ≤ LINE_TOL. Không chuỗi trôi.
+        private static IEnumerable<List<NamingPiece>> ClusterSkew(IEnumerable<NamingPiece> pieces)
+        {
+            var groups = new List<List<NamingPiece>>();
+            foreach (var p in pieces.OrderByDescending(p => p.Length))
+            {
+                var g = groups.FirstOrDefault(c => c[0].Parallel(p) && c[0].PerpDist(p) <= LINE_TOL);
+                if (g != null) g.Add(p); else groups.Add(new List<NamingPiece> { p });
+            }
+            return groups;
+        }
+
         private static NamingLine Make(NamingKind kind, NamingDir dir, List<NamingPiece> pieces, IEnumerable<NamingPiece> main,
             List<NamingPiece> flanges)
         {
@@ -192,11 +253,18 @@ namespace MCG_3DPanel.Naming
                 case NamingKind.HP: spec = $"HP {H(longest.Height)}x{T(longest.Thickness)}"; break;
                 default: spec = $"FB {H(longest.Height)}x{T(longest.Thickness)}"; break;
             }
+            // Tuyến toàn đoạn xiên: tâm = giữa min..max của cả tuyến (đoạn dài nhất không đại diện được).
+            double center = longest.Center;
+            if (mainList.All(p => p.IsSkew))
+            {
+                var coords = pieces.SelectMany(p => dir == NamingDir.T ? new[] { p.X0, p.X1 } : new[] { p.Y0, p.Y1 }).ToList();
+                center = (coords.Min() + coords.Max()) / 2;
+            }
             return new NamingLine
             {
                 Kind = kind,
                 Dir = dir,
-                Center = longest.Center,
+                Center = center,
                 Pieces = pieces.OrderBy(p => p.AxLo).ToList(),
                 Length = pieces.Sum(p => p.Length),
                 Spec = spec,
