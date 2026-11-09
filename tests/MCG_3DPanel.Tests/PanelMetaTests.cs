@@ -47,6 +47,32 @@ namespace MCG_3DPanel.Tests
             Assert.True(b.Solids[1].SnipHi);
         }
 
+        // Panel "3 part không dựng được" mở lại file vẫn phải báo như sau Build (tab Result: NotBuiltText).
+        [Fact] public void Meta_RoundTrip_KeepsWarningsAndNotBuilt()
+        {
+            var m = new PanelMeta { SourceRefHandle = "1B", SourceBtrHandle = "2C" };
+            m.Warnings.Add("Collar plate failed at HP 3.");
+            m.NotBuilt.Add(new PanelMetaNotBuilt { Handle = "21913", Type = "Web", Code = "W7" });
+            var b = PanelMeta.FromJson(m.ToJson());
+            Assert.Equal(new[] { "Collar plate failed at HP 3." }, b.Warnings);
+            Assert.Single(b.NotBuilt);
+            Assert.Equal("21913", b.NotBuilt[0].Handle);
+            Assert.Equal("Web", b.NotBuilt[0].Type);
+            Assert.Equal("W7", b.NotBuilt[0].Code);
+        }
+
+        [Theory]
+        [InlineData("{\"SourceRefHandle\":\"1B\",\"SourceBtrHandle\":\"2C\",\"Input\":{},\"Solids\":[]}")]   // file dựng trước khi có 2 trường này
+        [InlineData("{\"SourceRefHandle\":\"1B\",\"SourceBtrHandle\":\"2C\",\"Input\":{},\"Solids\":[],\"Warnings\":null,\"NotBuilt\":null}")]
+        [InlineData("{\"SourceRefHandle\":\"1B\",\"SourceBtrHandle\":\"2C\",\"Input\":{},\"Solids\":[],\"Warnings\":[null],\"NotBuilt\":[null]}")]
+        public void Meta_WithoutWarningsOrNotBuilt_ReadsEmpty(string json)
+        {
+            var b = PanelMeta.FromJson(json);
+            Assert.NotNull(b);
+            Assert.Empty(b.Warnings);
+            Assert.Empty(b.NotBuilt);
+        }
+
         // GE/GB tách từ 1 tấm Web dùng CHUNG SourceKey với phần Web còn lại ⇒ phải khớp thêm theo loại.
         [Fact] public void PartMatcher_SharedKey_PicksByType()
         {

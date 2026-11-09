@@ -23,8 +23,16 @@ namespace MCG_3DPanel.Services.Corrections
         public bool SnipHi { get; set; }
     }
 
-    /// <summary>Dữ liệu lưu cùng mỗi panel 3D (JSON): nguồn 2D, input đã dùng, vị trí, danh sách solid.
-    /// Position là int để lớp độc lập với enum. JSON hỏng/rỗng ⇒ FromJson trả null.</summary>
+    /// <summary>Một part 2D không ra solid: đủ để dựng lại dòng "N 2D part(s) not built (Type Handle)" của tab Result.</summary>
+    public class PanelMetaNotBuilt
+    {
+        public string Handle { get; set; } = "";
+        public string Type { get; set; } = "";
+        public string Code { get; set; } = "";
+    }
+
+    /// <summary>Dữ liệu lưu cùng mỗi panel 3D (JSON): nguồn 2D, input đã dùng, vị trí, danh sách solid, cảnh báo + part không dựng được.
+    /// Position là int để lớp độc lập với enum. JSON hỏng/rỗng ⇒ FromJson trả null. File dựng trước khi có Warnings/NotBuilt ⇒ 2 danh sách rỗng.</summary>
     public class PanelMeta
     {
         public string SourceRefHandle { get; set; } = "";
@@ -32,6 +40,8 @@ namespace MCG_3DPanel.Services.Corrections
         public PanelInput Input { get; set; } = new PanelInput();
         public int Position { get; set; }
         public List<PanelMetaSolid> Solids { get; set; } = new List<PanelMetaSolid>();
+        public List<string> Warnings { get; set; } = new List<string>();
+        public List<PanelMetaNotBuilt> NotBuilt { get; set; } = new List<PanelMetaNotBuilt>();
 
         public string ToJson() => JsonSerializer.Serialize(this);
 
@@ -44,6 +54,11 @@ namespace MCG_3DPanel.Services.Corrections
                 // JSON thiếu/null trường bắt buộc ⇒ coi là hỏng (tránh object nửa vời gây NullReference về sau).
                 if (m == null || m.Input == null || m.Solids == null || m.Solids.Contains(null)
                     || string.IsNullOrEmpty(m.SourceRefHandle) || string.IsNullOrEmpty(m.SourceBtrHandle)) return null;
+                // Hai trường báo cáo, không bắt buộc: thiếu/null ⇒ rỗng, panel vẫn đọc được.
+                m.Warnings = m.Warnings ?? new List<string>();
+                m.NotBuilt = m.NotBuilt ?? new List<PanelMetaNotBuilt>();
+                m.Warnings.RemoveAll(w => w == null);
+                m.NotBuilt.RemoveAll(p => p == null);
                 return m;
             }
             catch (JsonException) { return null; }

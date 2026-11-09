@@ -140,7 +140,7 @@ namespace MCG_3DPanel.UI
             {
                 _builds = left;
                 GridResult.ItemsSource = null;
-                SetStatus("Drawing closed — insert the 2D block, check the Input tab, then run Build 3D.");
+                SetStatus("Drawing closed — open a saved 2D drawing to Build 3D, or a 3D panel file to work on it.");
                 return;
             }
             Load(left);

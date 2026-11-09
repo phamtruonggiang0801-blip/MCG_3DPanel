@@ -78,12 +78,19 @@ namespace MCG_3DPanel.Commands
         {
             Document active = Application.DocumentManager.MdiActiveDocument;
             if (active == null) return null;
+            // File 3D không còn panel đọc được: reference 2D nằm trên layer đóng băng, prompt không chọn được ⇒ dừng trước khi hỏi.
+            if (Panel3DFile.HoldsSourceReference(active.Database))
+            {
+                run.Stop = "This is a 3D panel file with no panel to rebuild. Open the source 2D drawing to Build 3D.";
+                return null;
+            }
             if (!IsSavedOnDisk(active)) { run.Stop = "Save this drawing first, then Build 3D."; return null; }
             if (!TryPickPanels(out Document src, out ObjectId[] ids)) return null;
 
             Database source = src.Database;
+            string sourceFile = src.Name;
             Document lastGood = null;   // file tốt cuối cùng (mở hoặc dựng) — cuối lần chạy phải là file active
-            List<PanelJob> jobs = PlanJobs(source, ids);
+            List<PanelJob> jobs = PlanJobs(source, sourceFile, ids);
 
             var existing = new HashSet<string>(jobs.Select(j => j.Target).Where(IsTaken), System.StringComparer.OrdinalIgnoreCase);
             if (existing.Count > 0)
@@ -109,7 +116,7 @@ namespace MCG_3DPanel.Commands
             var last = new List<BuildResult>();
             for (int i = 0; i < jobs.Count; i++)
             {
-                BuildResult build = BuildInNewFile(source, jobs[i], $"[{i + 1}/{jobs.Count}]", input, position, run, out Document fileDoc);
+                BuildResult build = BuildInNewFile(sourceFile, jobs[i],$"[{i + 1}/{jobs.Count}]", input, position, run, out Document fileDoc);
                 if (build == null) continue;
 
                 lastGood = fileDoc;
@@ -125,7 +132,7 @@ namespace MCG_3DPanel.Commands
         }
 
         /// <summary>Tạo file, mở, dựng, lưu 1 panel. Trả null nếu file không được giữ (không solid / lỗi): file vừa tạo bị bỏ, đã báo người dùng.</summary>
-        private static BuildResult BuildInNewFile(Database source, PanelJob job, string tag, PanelInput input, PanelPosition position,
+        private static BuildResult BuildInNewFile(string sourceFile, PanelJob job,string tag, PanelInput input, PanelPosition position,
             BuildRun run, out Document fileDoc)
         {
             fileDoc = null;
@@ -135,7 +142,7 @@ namespace MCG_3DPanel.Commands
             bool saving = false;    // đã dời .bak cũ ⇒ .bak đứng ở tên đó từ đây là do lần lưu này sinh ra
             try
             {
-                Panel3DFile.Create(source, job.RefId, job.Target);
+                Panel3DFile.Create(sourceFile, job.RefId, job.Target);
                 created = true;
                 doc = Application.DocumentManager.Open(job.Target, false);
                 Activate(doc);
@@ -227,11 +234,14 @@ namespace MCG_3DPanel.Commands
             }
         }
 
-        /// <summary>Bản trên đĩa khớp bản đang mở: đã đặt tên (bản vẽ mới chưa lưu có Filename = file .dwt), file còn đó, không có thay đổi chưa lưu.</summary>
+        /// <summary>Bản trên đĩa khớp bản đang mở: đã đặt tên, là .dwg/.dwt, file còn đó, không có thay đổi chưa lưu.
+        /// Dùng Document.Name, KHÔNG dùng Database.Filename: bản vẽ mới có Filename = file .dwt, sau autosave có thể là .sv$ trong %TEMP%.</summary>
         private static bool IsSavedOnDisk(Document doc)
         {
-            string file = doc.Database.Filename;
+            string file = doc.Name;
             if (!doc.IsNamedDrawing || string.IsNullOrEmpty(file) || !File.Exists(file)) return false;
+            string ext = Path.GetExtension(file);
+            if (!ext.Equals(".dwg", System.StringComparison.OrdinalIgnoreCase) && !ext.Equals(".dwt", System.StringComparison.OrdinalIgnoreCase)) return false;
             // Bit 8 (window) và 16 (view): file 3D đọc từ đĩa nên đổi khung nhìn (zoom, pan) không ảnh hưởng nội dung.
             try { return (System.Convert.ToInt32(Application.GetSystemVariable("DBMOD")) & ~DBMOD_VIEW_ONLY) == 0; }
             catch (System.Exception ex)
@@ -242,9 +252,9 @@ namespace MCG_3DPanel.Commands
         }
 
         /// <summary>Đọc tên block của từng panel từ bản vẽ nguồn (chỉ đọc) và tính file đích, TRƯỚC khi đổi document.</summary>
-        private static List<PanelJob> PlanJobs(Database source, ObjectId[] ids)
+        private static List<PanelJob> PlanJobs(Database source, string sourceFile, ObjectId[] ids)
         {
-            string folder = Path.GetDirectoryName(source.Filename);
+            string folder = Path.GetDirectoryName(sourceFile);
             var jobs = new List<PanelJob>();
             using (Transaction tr = source.TransactionManager.StartOpenCloseTransaction())
             {
@@ -365,18 +375,31 @@ namespace MCG_3DPanel.Commands
             _pending.RemoveAll(b => ReferenceEquals(b, current) || (!string.IsNullOrEmpty(b.BlockName) && b.BlockName == current.BlockName
                                                                    && b.SourceRefId.Database == current.SourceRefId.Database));
             _pending.Add(current);
-            if (_sendScheduled) return;
-            _sendScheduled = true;
-            Application.Idle += SendWhenIdle;
+            ScheduleSend();
         }
 
         /// <summary>Bản vẽ sắp đóng: bỏ yêu cầu rebuild còn treo của nó (ObjectId sắp không còn hợp lệ).</summary>
         internal static void ForgetDatabase(Database db) => _pending.RemoveAll(b => b.SourceRefId.Database == db);
 
+        private static void ScheduleSend()
+        {
+            if (_sendScheduled) return;
+            _sendScheduled = true;
+            Application.Idle += SendWhenIdle;
+        }
+
         private static void SendWhenIdle(object sender, System.EventArgs e)
         {
+            if (_pending.Count == 0)   // drawing của yêu cầu đã đóng ⇒ không còn gì để gửi, thôi chờ
+            {
+                Application.Idle -= SendWhenIdle;
+                _sendScheduled = false;
+                return;
+            }
             Document doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
+            // Yêu cầu thuộc drawing khác ⇒ chờ người dùng quay lại: lệnh chạy ở document active, gửi nhầm chỗ thì không rebuild gì.
+            if (!_pending.Any(b => b.SourceRefId.Database == doc.Database)) return;
             if (!string.IsNullOrEmpty(doc.CommandInProgress)) return;   // còn lệnh khác → chờ Idle sau
             // Đang Pick / Editor đang chờ nhập (prompt KHÔNG phải lệnh ⇒ CommandInProgress rỗng): gửi lúc này thì chuỗi lệnh bị
             // gõ VÀO prompt và mất — lỗi 2026-11-05 "Pick, sửa Tripping, Enter ⇒ 3D không đổi". Chờ prompt xong.
@@ -393,13 +416,13 @@ namespace MCG_3DPanel.Commands
             var batch = _pending.Where(b => b.SourceRefId.Database == doc.Database).ToList();
             _pending.RemoveAll(batch.Contains);
             foreach (var old in batch) RebuildOne(doc, old);
+            if (_pending.Count > 0) ScheduleSend();   // còn yêu cầu của drawing khác: tiếp tục chờ drawing đó
         }
 
         private static void RebuildOne(Document doc, BuildResult old)
         {
             Database db = doc.Database;
-            // Block reference 2D còn (kể cả đã xoá khi Keep, trong phiên) ⇒ dùng luôn (mở bằng openErased).
-            // Không còn (bản vẽ đã đóng/mở lại, hoặc định nghĩa bị purge) ⇒ báo lỗi, không rebuild.
+            // Block reference 2D nguồn nằm trong chính file 3D. Đã xoá (vd LAYDEL) hoặc định nghĩa bị purge ⇒ báo lỗi, không rebuild.
             if (!SourceStillExists(db, old.SourceRefId))
             {
                 Rebuilt?.Invoke(old, null, "Source 2D block no longer exists — cannot rebuild.");
@@ -502,6 +525,9 @@ namespace MCG_3DPanel.Commands
                     Input = build.Input,
                     Position = (int)build.Position,
                 };
+                meta.Warnings.AddRange(build.Warnings);
+                meta.NotBuilt.AddRange(build.Parts.Where(p => !p.Built)
+                    .Select(p => new PanelMetaNotBuilt { Handle = p.Handle ?? "", Type = p.Type ?? "", Code = p.Code ?? "" }));
                 foreach (BuiltSolid s in build.Solids)
                 {
                     var ms = new PanelMetaSolid
@@ -536,15 +562,15 @@ namespace MCG_3DPanel.Commands
             }
         }
 
-        /// <summary>Block reference 2D nguồn còn đọc được (kể cả đã xoá khi Keep) và định nghĩa block chưa bị PURGE.</summary>
+        /// <summary>Block reference 2D nguồn còn sống (chưa bị xoá) và định nghĩa block chưa bị PURGE.</summary>
         private static bool SourceStillExists(Database db, ObjectId src)
         {
-            if (src.IsNull || src.Database != db) return false;
+            if (src.IsNull || src.Database != db || src.IsErased) return false;
             try
             {
                 using (Transaction tr = db.TransactionManager.StartTransaction())
                 {
-                    var br = tr.GetObject(src, OpenMode.ForRead, true) as BlockReference;
+                    var br = tr.GetObject(src, OpenMode.ForRead) as BlockReference;
                     bool ok = br != null && !br.BlockTableRecord.IsNull && !br.BlockTableRecord.IsErased;
                     tr.Commit();
                     return ok;

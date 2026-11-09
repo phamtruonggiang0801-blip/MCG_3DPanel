@@ -41,19 +41,34 @@ namespace MCG_3DPanel.UI
 
         /// <summary>Drawing đang active có panel 3D ⇒ ô nhập hiện giá trị đã lưu của panel và nút thành "Rebuild 3D";
         /// null (drawing 2D) ⇒ nút về "Build 3D", ô giữ nguyên người dùng đã gõ. Gán ô qua code không phải người dùng sửa
-        /// (không có handler theo dõi sửa). Không ném.</summary>
+        /// (không có handler theo dõi sửa). Vẫn đúng panel + đúng giá trị đã lưu (alt-tab, AutoCAD báo lại cùng document) ⇒ KHÔNG
+        /// đụng ô, giữ số người dùng đang gõ; rebuild đổi giá trị đã lưu thì hiện giá trị mới. Không ném.</summary>
         public void ShowPanel(MCG_3DPanel.Services.BuildResult panel)
         {
             try
             {
                 if (panel?.Input == null)
                 {
+                    ForgetShown();   // quay lại panel sau đó phải hiện giá trị của nó: ô giờ là số cho Build 2D
                     _rebuildMode = false;
                     BtnBuild.Content = "Build 3D";
                     BtnBuild.ToolTip = "Pick the panel block and build its 3D solid model";
                     return;
                 }
+                _rebuildMode = true;
+                BtnBuild.Content = "Rebuild 3D";
+                BtnBuild.ToolTip = "Rebuild this panel's 3D in this file with the values above";
+
                 var inp = panel.Input;
+                // Khoá theo tên block + Database, không theo BuildResult: rebuild thay BuildResult nhưng giữ tên block.
+                // Lưu con trỏ, không giữ wrapper Database (ux-guardrails luật 1).
+                IntPtr db = panel.BtrId.IsNull ? IntPtr.Zero : panel.BtrId.Database.UnmanagedObject;
+                string values = string.Join("|", panel.BlockName, (int)panel.Position, MCG_3DPanel.Models.PanelInput.Fmt(inp.TopPlateThickness),
+                    MCG_3DPanel.Models.PanelInput.Fmt(inp.WebHeight), MCG_3DPanel.Models.PanelInput.Fmt(inp.FlangeThickness), inp.FlatBarSpec, inp.HpSpec);
+                if (db == _shownDb && values == _shownValues) return;
+                _shownDb = db;
+                _shownValues = values;
+
                 TxtTopPlateThk.Text = MCG_3DPanel.Models.PanelInput.Fmt(inp.TopPlateThickness);
                 TxtWebHeight.Text = MCG_3DPanel.Models.PanelInput.Fmt(inp.WebHeight);
                 TxtFlangeThk.Text = MCG_3DPanel.Models.PanelInput.Fmt(inp.FlangeThickness);
@@ -64,11 +79,18 @@ namespace MCG_3DPanel.UI
                 var hp = CmbHpSpec.Items.OfType<HpItem>().FirstOrDefault(i => i.Spec == inp.HpSpec);
                 if (hp != null) CmbHpSpec.SelectedItem = hp;
                 else { CmbHpSpec.SelectedItem = null; SetStatus($"HP size {MCG_3DPanel.Models.PanelInput.FormatSpec(inp.HpSpec)} of this panel is not in the standard list — choose one before rebuilding.", error: true); }
-                _rebuildMode = true;
-                BtnBuild.Content = "Rebuild 3D";
-                BtnBuild.ToolTip = "Rebuild this panel's 3D in this file with the values above";
             }
             catch (System.Exception ex) { Debug.WriteLine("[MCG_3DPanel] ShowPanel: " + ex.Message); }
+        }
+
+        // Panel + giá trị đã lưu đang hiện trên các ô (xem ShowPanel).
+        private IntPtr _shownDb;
+        private string _shownValues;
+
+        private void ForgetShown()
+        {
+            _shownDb = IntPtr.Zero;
+            _shownValues = null;
         }
 
         private void BtnBuild_Click(object sender, RoutedEventArgs e)
@@ -136,9 +158,16 @@ namespace MCG_3DPanel.UI
             try
             {
                 if (_pending == null || !ReferenceEquals(old, _pending)) return;
-                if (neu != null) { _pending = null; SetStatus(message ?? "Rebuilt.", error: false); return; }
+                if (neu != null)
+                {
+                    _pending = null;
+                    ShowPanel(neu);   // nhớ giá trị mới ngay, để lần refresh sau không đè số người dùng gõ tiếp
+                    SetStatus(message ?? "Rebuilt.", error: false);
+                    return;
+                }
                 var panel = _pending;
                 RevertPending();
+                ForgetShown();   // ô còn số vừa gõ, giá trị đã lưu không đổi ⇒ buộc hiện lại giá trị thật
                 ShowPanel(panel);
                 SetStatus(message ?? "Rebuild failed — previous 3D kept.", error: true);
             }
@@ -151,6 +180,7 @@ namespace MCG_3DPanel.UI
             try
             {
                 if (_pending != null && !_pending.SourceRefId.IsNull && _pending.SourceRefId.Database == db) RevertPending();
+                if (db != null && db.UnmanagedObject == _shownDb) ForgetShown();   // con trỏ có thể bị Database mới dùng lại
             }
             catch (System.Exception ex) { Debug.WriteLine("[MCG_3DPanel] Input OnDocumentClosing: " + ex.Message); }
         }

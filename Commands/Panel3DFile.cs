@@ -25,13 +25,28 @@ namespace MCG_3DPanel.Commands
             "0", "Defpoints", "Standard", "Continuous", "ByLayer", "ByBlock",
         };
 
-        /// <summary>Ghi file 3D tại <paramref name="path"/>. Không ghi đè file có sẵn. Lỗi ⇒ ném exception thông điệp tiếng Anh.</summary>
-        public static void Create(Database source, ObjectId ref2D, string path)
+        /// <summary>Drawing đang mở là file 3D (layer <see cref="SourceLayer"/> có block reference 2D nguồn). Chỉ đọc, không cần LockDocument.</summary>
+        public static bool HoldsSourceReference(Database db)
+        {
+            using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
+            {
+                var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
+                if (!lt.Has(SourceLayer)) return false;
+                ObjectId layer = lt[SourceLayer];
+                var ms = (BlockTableRecord)tr.GetObject(SymbolUtilityServices.GetBlockModelSpaceId(db), OpenMode.ForRead);
+                foreach (ObjectId id in ms)
+                    if (tr.GetObject(id, OpenMode.ForRead) is BlockReference br && br.LayerId == layer) return true;
+                return false;
+            }
+        }
+
+        /// <summary>Ghi file 3D tại <paramref name="path"/> từ file nguồn đã lưu <paramref name="file"/> (Document.Name, KHÔNG dùng Database.Filename:
+        /// sau autosave có thể là file .sv$ trong %TEMP%). Không ghi đè file có sẵn. Lỗi ⇒ ném exception thông điệp tiếng Anh.</summary>
+        public static void Create(string file, ObjectId ref2D, string path)
         {
             string name = Path.GetFileName(path);
             if (File.Exists(path)) throw new InvalidOperationException($"{name} already exists.");
 
-            string file = source.Filename;
             Handle handle = ref2D.Handle;
             // Ghi ra tên tạm rồi Move KHÔNG ghi đè: file xuất hiện giữa lúc kiểm và lúc ghi vẫn được giữ, đích không bao giờ dở dang.
             string temp = $"{path}.tmp{Guid.NewGuid():N}.dwg";

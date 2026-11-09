@@ -422,7 +422,7 @@ namespace MCG_3DPanel.UI
             var left = _panels.Where(p => p.Db != db).ToList();
             if (left.Count == _panels.Count) return;
             SetPanels(left, null);
-            if (left.Count == 0) SetStatus("Drawing closed — insert the 2D block, check the Input tab, then run Build 3D.");
+            if (left.Count == 0) SetStatus("Drawing closed — open a saved 2D drawing to Build 3D, or a 3D panel file to work on it.");
         }
 
         /// <summary>Hiện panel của drawing đang active. Bảng đã đúng các build này ⇒ giữ dòng + vùng chọn (như tab Result).</summary>

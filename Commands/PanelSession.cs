@@ -15,8 +15,8 @@ namespace MCG_3DPanel.Commands
 {
     /// <summary>
     /// Dòng của các tab theo từng drawing: build vừa dựng (<see cref="Set"/>), hoặc đọc lại từ XRecord MCG3D_PANEL khi mở file
-    /// (<see cref="For"/>) — không rebuild, KHÔNG GHI gì (file đóng không hỏi Save): chỉ StartOpenCloseTransaction + ForRead,
-    /// không cần LockDocument, không Regen.
+    /// (<see cref="For"/>) — không rebuild, KHÔNG GHI gì (file đóng không hỏi Save): chỉ mở ForRead (StartOpenCloseTransaction;
+    /// riêng Classify dùng StartTransaction nhưng cũng chỉ đọc), không cần LockDocument, không Regen.
     /// Khoá cache = con trỏ Database (như <see cref="CorrectionStore.PanelKey"/>): không giữ wrapper Database nào; ObjectId
     /// trong cache hết hiệu lực khi drawing đóng ⇒ <see cref="Forget"/> ở DocumentToBeDestroyed, TRƯỚC khi Database bị giải phóng.
     /// </summary>
@@ -39,8 +39,9 @@ namespace MCG_3DPanel.Commands
             IntPtr key = db.UnmanagedObject;
             if (_cache.TryGetValue(key, out Entry hit))
             {
-                // Ctrl+Z 1 lần rebuild làm block trong cache bị xoá ⇒ đọc lại từ file.
-                if (hit.Builds.All(b => !b.BlockRefId.IsNull && !b.BlockRefId.IsErased && !b.BtrId.IsErased))
+                // Ctrl+Z 1 lần rebuild làm block trong cache bị xoá, hoặc người dùng xoá tay 1 solid ⇒ đọc lại từ file (dòng + số solid mất cập nhật).
+                if (hit.Builds.All(b => !b.BlockRefId.IsNull && !b.BlockRefId.IsErased && !b.BtrId.IsErased
+                                        && b.Solids.All(s => s.Deleted || s.SolidId.IsNull || !s.SolidId.IsErased)))
                 {
                     message = hit.Message;
                     return new List<BuildResult>(hit.Builds);
@@ -134,11 +135,11 @@ namespace MCG_3DPanel.Commands
                 using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
                 {
                     string json = CorrectionXRecord.Read(tr, panel.BtrId, CorrectionXRecord.PanelKey);
-                    if (json == null) { notes.Add($"Old 3D block {panel.Name} — run Build 3D on its 2D block again."); return null; }
+                    if (json == null) { notes.Add($"Old 3D block {panel.Name} — open the source 2D drawing and run Build 3D there."); return null; }
                     meta = PanelMeta.FromJson(json);
                     if (meta == null || !Enum.IsDefined(typeof(PanelPosition), meta.Position))
                     {
-                        notes.Add($"The panel data of {panel.Name} could not be read — run Build 3D on its 2D block again.");
+                        notes.Add($"The panel data of {panel.Name} could not be read — open the source 2D drawing and run Build 3D there.");
                         return null;
                     }
                     srcRef = Resolve(db, meta.SourceRefHandle);
@@ -146,7 +147,7 @@ namespace MCG_3DPanel.Commands
                     var br = srcRef.IsNull || srcRef.IsErased ? null : tr.GetObject(srcRef, OpenMode.ForRead) as BlockReference;
                     if (br == null || br.BlockTableRecord != srcBtr || srcBtr.IsErased)
                     {
-                        notes.Add($"The 2D source of {panel.Name} is missing from this file — run Build 3D on its 2D block again.");
+                        notes.Add($"The 2D source of {panel.Name} is missing from this file — open the source 2D drawing and run Build 3D there.");
                         return null;
                     }
                     xform = br.BlockTransform;
@@ -171,6 +172,9 @@ namespace MCG_3DPanel.Commands
                     Position = position,
                 };
                 build.ClassifiedParts.AddRange(cls.Parts);
+                build.Warnings.AddRange(meta.Warnings);
+                foreach (PanelMetaNotBuilt p in meta.NotBuilt)
+                    build.Parts.Add(new BuiltPartInfo { Handle = p.Handle, Type = p.Type, Code = p.Code, Built = false });
 
                 int dropped = AddSolids(db, panel, meta, build);
                 build.SolidCount = build.Solids.Count(s => !s.Deleted);

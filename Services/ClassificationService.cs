@@ -31,7 +31,7 @@ namespace MCG_3DPanel.Services
 
             using (Transaction tr = db.TransactionManager.StartTransaction())
             {
-                // openErased: Keep xoá block reference 2D — rebuild (tab Result) vẫn phải đọc lại được nó.
+                // openErased vô hại: mọi đường gọi đều đưa reference còn sống (RebuildOne qua SourceStillExists, PanelSession kiểm IsErased, Build vừa mở file).
                 var topRef = (BlockReference)tr.GetObject(blockRefId, OpenMode.ForRead, true);
                 result.PanelBlockName = PartCollector.GetName(tr, topRef);
 
