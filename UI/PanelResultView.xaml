@@ -61,7 +61,7 @@
         </WrapPanel>
 
         <TextBlock Grid.Row="1" Style="{StaticResource HelperTextStyle}" Margin="2,2,2,6"
-                   Text="Select rows like in Excel (Shift / Ctrl + click, drag, Ctrl+A) to highlight them. Changing Tripping, Collar, FB height, ⇄ or Sniped End on a selected row applies it to every selected row; the panel rebuilds automatically. Right-click for Delete / Restore; Ctrl+C copies the selection. Pick finds rows from the drawing; Esc clears the selection."/>
+                   Text="Select rows like in Excel (Shift / Ctrl + click, drag, Ctrl+A) to highlight them. Changing Kind (Web / Closed Plate), Tripping, Collar, FB height, ⇄ or Sniped End on a selected row applies it to every selected row; the panel rebuilds automatically. Right-click for Delete / Restore; Ctrl+C copies the selection. Pick finds rows from the drawing; Esc clears the selection."/>
 
         <!-- ===== Row 2: Bảng kết quả ===== -->
         <DataGrid x:Name="GridResult" Grid.Row="2" Style="{StaticResource PanelDataGridStyle}"
@@ -107,8 +107,28 @@
                     </DataGridTextColumn.ElementStyle>
                 </DataGridTextColumn>
 
-                <!-- Kind: CHỈ ĐỌC (kỹ sư 2026-11-05 — người dùng không cần sửa Kind trên tab Result). -->
-                <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="*" MinWidth="110" IsReadOnly="True"/>
+                <!-- Kind: dropdown Web / Closed Plate khi đổi được (kỹ sư 2026-11-09), còn lại chỉ đọc. -->
+                <DataGridTemplateColumn Header="Kind" Width="*" MinWidth="110">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <TextBlock x:Name="KindText" Text="{Binding Kind}" VerticalAlignment="Center"/>
+                                <ComboBox x:Name="KindCombo" ItemsSource="{Binding Options}" Visibility="Collapsed"
+                                          SelectedValuePath="Text" DisplayMemberPath="Text"
+                                          SelectedValue="{Binding Kind, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          Style="{StaticResource CellCombo}"
+                                          PreviewKeyDown="CmbTrip_PreviewKeyDown" PreviewMouseWheel="CmbTrip_PreviewMouseWheel"
+                                          ToolTip="Web or Closed Plate. With several rows selected, every selected Web / Closed Plate row changes. The panel rebuilds automatically."/>
+                            </Grid>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding KindEditable}" Value="True">
+                                    <Setter TargetName="KindText" Property="Visibility" Value="Collapsed"/>
+                                    <Setter TargetName="KindCombo" Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
 
                 <!-- Size: FB ⇒ ô số chiều cao (Enter = ghi, trống = theo tab Input) + "× t" chỉ đọc (kỹ sư 2026-11-05). -->
                 <DataGridTemplateColumn Header="Size" Width="Auto" MinWidth="70">

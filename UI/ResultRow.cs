@@ -23,8 +23,8 @@ namespace MCG_3DPanel.UI
         /// <summary>Kind tool nhận diện ra (đã áp correction cũ nếu có) — chỉ hiển thị.</summary>
         public string DetectedKind { get; set; }
         public List<KindOption> Options { get; set; } = new List<KindOption>();
-        /// <summary>Có part 2D + có lựa chọn ⇒ hiện dropdown; còn lại (solid sinh thêm, HP, FB…) chỉ đọc.</summary>
-        public bool KindEditable => !Deleted && !string.IsNullOrEmpty(SourceKey) && Options.Count > 1;
+        /// <summary>Chỉ dòng Web / Closed Plate có part 2D mới hiện dropdown (kỹ sư 2026-11-09); còn lại chỉ đọc.</summary>
+        public bool KindEditable => !Deleted && !string.IsNullOrEmpty(SourceKey) && ResultCatalog.HasWebChoice(Options);
         /// <summary>Solid đã Delete (correction) — dòng mờ, chuột phải Restore.</summary>
         public bool Deleted { get; set; }
         internal string DeleteKey { get; set; }

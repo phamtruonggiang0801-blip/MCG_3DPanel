@@ -62,6 +62,7 @@ namespace MCG_3DPanel.Commands
                     throw new InvalidOperationException("the panel is not in the saved file. Save the drawing and try again");
 
                 EraseModelSpaceExcept(copy, refId);
+                ErasePaperSpace(copy);
                 EraseBuiltBlocks(copy);
                 MoveToSourceLayer(copy, refId);
                 PurgeUnused(copy);
@@ -156,6 +157,38 @@ namespace MCG_3DPanel.Commands
                 tr.Commit();
             }
         }
+
+        /// <summary>Xoá nội dung Paper Space của mọi layout (kỹ sư 2026-11-09): file 3D chỉ mang panel. Giữ viewport đầu của mỗi
+        /// layout (viewport chính của layout). Trước Purge để block chỉ Paper Space dùng cũng được dọn. Không xoá được 1 đối
+        /// tượng thì bỏ qua, ghi Debug: phần còn sót không ảnh hưởng 3D, không đáng làm hỏng cả lần Build.</summary>
+        private static void ErasePaperSpace(Database db)
+        {
+            using (Transaction tr = db.TransactionManager.StartTransaction())
+            {
+                var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                ObjectId model = bt[BlockTableRecord.ModelSpace];
+                foreach (ObjectId btrId in bt)
+                {
+                    var btr = (BlockTableRecord)tr.GetObject(btrId, OpenMode.ForRead);
+                    if (!btr.IsLayout || btrId == model) continue;
+                    var ids = new List<ObjectId>();
+                    foreach (ObjectId id in btr) ids.Add(id);
+                    bool keptViewport = false;
+                    foreach (ObjectId id in ids)
+                    {
+                        try
+                        {
+                            var e = tr.GetObject(id, OpenMode.ForWrite, false, true);
+                            if (e is Viewport && !keptViewport) { keptViewport = true; continue; }
+                            e.Erase();
+                        }
+                        catch (Autodesk.AutoCAD.Runtime.Exception ex) { Debug.WriteLine($"[Panel3DFile] Paper Space {id.Handle}: {ex.Message}"); }
+                    }
+                }
+                tr.Commit();
+            }
+        }
+
 
         /// <summary>Xoá block 3D cũ (MCG3D_*) còn trong file nguồn, kèm mọi reference của chúng.</summary>
         private static void EraseBuiltBlocks(Database db)

@@ -19,42 +19,43 @@ namespace MCG_3DPanel.Tests
         }
 
         [Fact]
-        public void Describe_WebMergedGeHp_ListsGeGbClosed()
+        public void Describe_WebMergedGe_NoChoices()
         {
             var d = ResultCatalog.Describe("Web", "", null, new[] { "GE-HP" }, new[] { "HP" }, true, true);
             Assert.Equal(ResultFamily.Web, d.Family);
             Assert.Equal("GE", d.Kind);
-            Assert.Equal(new[] { "Web", "GE", "GB", "Closed Plate" }, d.Options.Select(o => o.Text));
+            Assert.Empty(d.Options);
+            Assert.False(ResultCatalog.HasWebChoice(d.Options));
         }
 
         [Fact]
-        public void Describe_WebNoGbAnchor_DisablesGb()
+        public void Describe_WebWithHpEnd_OnlyWebAndClosed()
         {
-            var d = ResultCatalog.Describe("Web", "", null, None, new[] { "HP" }, true, false);
-            var gb = d.Options.Single(o => o.Text == "GB");
-            Assert.False(gb.Enabled);
-            Assert.Equal(ResultCatalog.NoGbAnchorTip, gb.Tooltip);
-            Assert.True(d.Options.Single(o => o.Text == "GE").Enabled);
+            var d = ResultCatalog.Describe("Web", "", null, None, new[] { "HP" }, true, true);
+            Assert.Equal(new[] { "Web", "Closed Plate" }, d.Options.Select(o => o.Text));
+            Assert.True(ResultCatalog.HasWebChoice(d.Options));
         }
 
         [Fact]
-        public void Describe_WebNoGeZone_DisablesGe()
-        {
-            var d = ResultCatalog.Describe("Web", "", null, None, new[] { "FB" }, false, true);
-            var ge = d.Options.Single(o => o.Text == "GE");
-            Assert.False(ge.Enabled);
-            Assert.Equal(ResultCatalog.NoGeZoneTip, ge.Tooltip);
-        }
-
-        [Fact]
-        public void Describe_WebTwoEnds_MixedKindIsPresent()
+        public void Describe_WebTwoEnds_MixedKindNoChoices()
         {
             var d = ResultCatalog.Describe("Web", "", null, new[] { "GE-HP", "GB-FB" }, new[] { "HP", "FB" }, true, true);
             Assert.Equal("GE + GB", d.Kind);
-            Assert.Equal(d.Kind, d.Options[0].Text);
-            Assert.Contains(d.Options, o => o.Text == "GE");
-            Assert.Contains(d.Options, o => o.Text == "GB");
+            Assert.Empty(d.Options);
         }
+
+        [Fact]
+        public void HasWebChoice_ClosedPlate_True()
+            => Assert.True(ResultCatalog.HasWebChoice(ResultCatalog.Describe("ClosedPlate", "", null, None, None, false, false).Options));
+
+        [Theory]
+        [InlineData("GirderEnd", "GE-HP")]
+        [InlineData("GirderEnd", "GB-FB")]
+        [InlineData("Bracket", "OB")]
+        [InlineData("Flange", "")]
+        [InlineData("FacePlate", "")]
+        public void HasWebChoice_OtherKinds_False(string type, string code)
+            => Assert.False(ResultCatalog.HasWebChoice(ResultCatalog.Describe(type, code, null, None, None, true, true).Options));
 
         [Fact]
         public void Describe_WebNoTouchingEnds_OnlyWebAndClosed()

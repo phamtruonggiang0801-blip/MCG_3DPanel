@@ -139,3 +139,5 @@ built in a second drawing.
 | I11 | In a 3D file with corrections and renamed lines, change a value on the Input tab (the button reads Rebuild 3D) and press it. | The same file rebuilds with no selection prompt and no new file. Corrections and names stay. A failed rebuild puts the old Input values back and the status says why. |
 | I12 | Build 3D a panel that produces no solids (wrong layers). | No file stays on disk, the status says the panel built nothing, and the other panels still build. |
 | I13 | Open an old 3D block made before 2026-11-06 (no panel data). | It is not listed, and the status says to Build it again. |
+| I14 | Build a panel from a drawing whose layout has a title block. Open the 3D file's layout tab. | The layout is empty apart from its main viewport; blocks used only there are gone. |
+| I15 | Result tab: a Web row and a Closed Plate row show a Kind dropdown with Web and Closed Plate; GE, GB and bracket rows show text only. Change one, then select several and change one. | The panel rebuilds once, each row shows the new kind in blue, Reset returns the automatic kind, and the change survives Save and reopen. |

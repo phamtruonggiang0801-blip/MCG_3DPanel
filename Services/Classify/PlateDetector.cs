@@ -66,12 +66,15 @@ namespace MCG_3DPanel.Services.Classify
         /// nhận kỹ sư 2026-08-26): dùng đúng ĐOẠN TÂM THẬT (không phải bbox chéo phồng gây "chạm giả"
         /// ở <see cref="ClassifyUtil.HasOnlyWeakTouch"/>) để xác nhận neither đầu THẬT SỰ chạm HP/FB.
         /// </summary>
-        public static bool IsClosedPlateStrict(PanelPart p, List<PanelPart> faceplates,
+        public static bool IsClosedPlateStrict(PanelPart p, List<PanelPart> faceplates, List<PanelPart> longWebs,
             List<PanelPart> allAm0, List<PanelPart> hpParts, List<PanelPart> fbParts)
         {
             if (p.Layer != ClassifyUtil.LAYER_WEB) return false;
             if (!ClassifyUtil.IsRectangle(p)) return false;
             if (p.MemberLength >= ClassifyUtil.GE_MIN_LEN) return false;
+
+            // Loại TIER girder như IsClosedPlate (kỹ sư 2026-11-09, 7D-17P 3D5C8: t10 nối thẳng hàng web t6, FB ngắn chạm cạnh).
+            if (ClassifyUtil.BboxMinDim(p) <= 50.0 && ClassifyUtil.CollinearWithLongWeb(p, longWebs)) return false;
 
             if (!ClassifyUtil.IsClosedEndsPattern(p, allAm0, hpParts, fbParts, ClassifyUtil.ADJ_TOL)) return false;
 

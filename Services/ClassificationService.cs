@@ -167,7 +167,7 @@ namespace MCG_3DPanel.Services
                     // NGẮN HƠN p — phi lý làm chỗ hàn) ⇒ vẫn xét ClosedPlate, đòi hỏi bằng chứng MẠNH
                     // hơn hẳn (đa giác FacePlate thật ≥90%, không phải bbox 25%). Xem ClassifyUtil.HasOnlyWeakTouch.
                     if (touches && ClassifyUtil.HasOnlyWeakTouch(p, hpParts, fbParts, ClassifyUtil.ADJ_TOL)
-                        && PlateDetector.IsClosedPlateStrict(p, faceplates, am0, hpParts, fbParts))
+                        && PlateDetector.IsClosedPlateStrict(p, faceplates, longWebs, am0, hpParts, fbParts))
                     { p.Type = PartType.ClosedPlate; result.Parts.Add(p); continue; }
 
                     webCands.Add(p);

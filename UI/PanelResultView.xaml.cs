@@ -285,7 +285,7 @@ namespace MCG_3DPanel.UI
 
         private void OnKindChanged(ResultRow row)
         {
-            // Cột Kind chỉ đọc (kỹ sư 2026-11-05) — giữ đường lưu để correction Kind cũ vẫn huỷ được bằng Clear.
+            // Chỉ Web ↔ Closed Plate đổi được (kỹ sư 2026-11-09): lưu correction rồi rebuild như các cột khác.
             if (!row.KindEditable || string.IsNullOrEmpty(row.Kind)) return;
             string kind = row.Kind;
             ApplyBulk(row, r => r.KindEditable && r.Options.Any(o => o.Text == kind), (r, c) =>

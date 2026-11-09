@@ -79,9 +79,9 @@ namespace MCG_3DPanel.UI
                 case "Web":
                 {
                     string kind = mergedCodes.Count == 0 ? "Web" : TagList(mergedCodes);
-                    return WebRow(kind, endKinds, geAvailable, gbAvailable);
+                    return WebRow(kind);
                 }
-                case "ClosedPlate": return WebRow("Closed Plate", endKinds, geAvailable, gbAvailable);
+                case "ClosedPlate": return WebRow("Closed Plate");
 
                 case "GirderEnd":
                 {
@@ -126,6 +126,10 @@ namespace MCG_3DPanel.UI
             return TagList(kind.Replace("Web + ", "").Split(new[] { " + " }, StringSplitOptions.RemoveEmptyEntries));
         }
 
+        /// <summary>Dòng được đổi Kind bằng dropdown: chỉ Web ↔ Closed Plate (kỹ sư 2026-11-09). Các loại khác chỉ đọc.</summary>
+        public static bool HasWebChoice(IEnumerable<KindOption> options) =>
+            options != null && options.Any(o => o.Text == "Web") && options.Any(o => o.Text == "Closed Plate");
+
         /// <summary>Kind người dùng chọn → việc ClassificationService phải làm.</summary>
         public static CorrectionIntent ParseIntent(string kind)
         {
@@ -161,26 +165,14 @@ namespace MCG_3DPanel.UI
             return ge && gb ? GE + " + " + GB : gb ? GB : GE;
         }
 
-        /// <summary>Web / Closed Plate: Web · GE · GB (khi có đầu chạm HP/FB) · Closed Plate.</summary>
-        private static RowDescriptor WebRow(string kind, IReadOnlyList<string> endKinds, bool geAvailable, bool gbAvailable)
+        /// <summary>Web / Closed Plate đổi qua lại được (kỹ sư 2026-11-09). Web đã gộp GE/GB không có lựa chọn: đổi sang
+        /// Closed Plate sẽ mất phần GE.</summary>
+        private static RowDescriptor WebRow(string kind)
         {
             var d = new RowDescriptor { Family = ResultFamily.Web, Kind = kind };
+            if (kind != "Web" && kind != "Closed Plate") return d;
             d.Options.Add(new KindOption { Text = "Web" });
-            if (endKinds.Count > 0)
-            {
-                d.Options.Add(new KindOption
-                {
-                    Text = GE,
-                    Enabled = geAvailable, Tooltip = geAvailable ? null : NoGeZoneTip,
-                });
-                d.Options.Add(new KindOption
-                {
-                    Text = GB,
-                    Enabled = gbAvailable, Tooltip = gbAvailable ? null : NoGbAnchorTip,
-                });
-            }
             d.Options.Add(new KindOption { Text = "Closed Plate" });
-            EnsureCurrent(d);
             return d;
         }
 

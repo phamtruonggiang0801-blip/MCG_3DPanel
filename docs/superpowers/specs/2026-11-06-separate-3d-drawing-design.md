@@ -56,7 +56,7 @@ For each selected panel, in the source drawing:
 
 1. Read the saved source file from disk into a side database (`new Database(false, true)`, `ReadDwgFile` with shared
    read access). Handles are those of the file. `Database.Wblock()` was tried first and kept 0 of 3631 handles.
-2. In the side database, erase Model Space content except that panel's 2D block reference, and erase any `MCG3D_*` blocks.
+2. In the side database, erase Model Space content except that panel's 2D block reference, and erase any `MCG3D_*` blocks. Paper Space content is erased too, keeping each layout's main viewport (engineer, 2026-11-09).
 3. Move the 2D reference to a frozen, locked layer `MCG3D_2D_SOURCE`.
 4. Purge what is left unused, keeping only this panel's block tree. Other panels' blocks, corrections and names go
    (my call: the file carries this panel only, and auto-fill cannot pick up anything else).
