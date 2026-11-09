@@ -123,5 +123,22 @@ namespace MCG_3DPanel.Tests
             var a = Panel3DPath.NextFree(@"C:\p\A_3D.dwg", reserved.Contains); reserved.Add(a);
             Assert.Equal(@"C:\p\A_3D_2.dwg", Panel3DPath.NextFree(@"C:\p\A_3D.dwg", reserved.Contains));
         }
+
+        private static readonly System.DateTime T = new System.DateTime(2026, 11, 9, 14, 5, 6);
+
+        [Fact] public void Backup_Name() => Assert.Equal(@"C:\p\A_3D.20261109_140506.bak", Panel3DPath.Backup(@"C:\p\A_3D.dwg", T, _ => false));
+        [Fact] public void Backup_TakenSameSecond()
+        {
+            var taken = new HashSet<string> { @"C:\p\A_3D.20261109_140506.bak" };
+            Assert.Equal(@"C:\p\A_3D.20261109_140506_2.bak", Panel3DPath.Backup(@"C:\p\A_3D.dwg", T, taken.Contains));
+        }
+
+        [Fact] public void Refusal_NoMeta() => Assert.Equal("A_3D.dwg has no panel data; use New copy.", Panel3DPath.UpdateRefusal("A_3D.dwg", null, "1B"));
+        [Fact] public void Refusal_OtherReference()
+            => Assert.Equal("A_3D.dwg was built from another 2D block; use New copy.", Panel3DPath.UpdateRefusal("A_3D.dwg", new PanelMeta { SourceRefHandle = "2C" }, "1B"));
+        [Fact] public void Refusal_SameReference_Null() => Assert.Null(Panel3DPath.UpdateRefusal("A_3D.dwg", new PanelMeta { SourceRefHandle = "1b" }, "1B"));
+
+        [Fact] public void Unmatched_CountsMissingParts() => Assert.Equal(1, Panel3DPath.CountUnmatched(new[] { "1B#0", "2C#1" }, new[] { "1B#0" }));
+        [Fact] public void Unmatched_IgnoresGeneratedKeys() => Assert.Equal(0, Panel3DPath.CountUnmatched(new[] { "CollarPlate:x", "HpEndBracketB:y", "1B#0/GirderFlange#0" }, new string[0]));
     }
 }
