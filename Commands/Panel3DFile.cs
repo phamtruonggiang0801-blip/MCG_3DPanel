@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.IO;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
+using MCG_3DPanel.Models;
+using MCG_3DPanel.Services.Corrections;
 
 namespace MCG_3DPanel.Commands
 {
@@ -41,8 +43,9 @@ namespace MCG_3DPanel.Commands
         }
 
         /// <summary>Ghi file 3D tại <paramref name="path"/> từ file nguồn đã lưu <paramref name="file"/> (Document.Name, KHÔNG dùng Database.Filename:
-        /// sau autosave có thể là file .sv$ trong %TEMP%). Không ghi đè file có sẵn. Lỗi ⇒ ném exception thông điệp tiếng Anh.</summary>
-        public static void Create(string file, ObjectId ref2D, string path)
+        /// sau autosave có thể là file .sv$ trong %TEMP%). Không ghi đè file có sẵn. Lỗi ⇒ ném exception thông điệp tiếng Anh.
+        /// <paramref name="carry"/> (Update): correction và tên của file 3D cũ, thay cho bản đến từ file nguồn.</summary>
+        public static void Create(string file, ObjectId ref2D, string path, OldPanelData carry = null)
         {
             string name = Path.GetFileName(path);
             if (File.Exists(path)) throw new InvalidOperationException($"{name} already exists.");
@@ -65,6 +68,7 @@ namespace MCG_3DPanel.Commands
                 ErasePaperSpace(copy);
                 EraseBuiltBlocks(copy);
                 MoveToSourceLayer(copy, refId);
+                if (carry != null) WriteCarry(copy, refId, carry);
                 PurgeUnused(copy);
 
                 copy.SaveAs(temp, DwgVersion.Current);
@@ -79,6 +83,78 @@ namespace MCG_3DPanel.Commands
             finally
             {
                 DisposeQuietly(ref copy);
+            }
+        }
+
+        /// <summary>Dữ liệu người dùng đọc từ file 3D cũ để Update mang sang file mới.</summary>
+        public sealed class OldPanelData
+        {
+            public PanelMeta Meta;
+            public string CorrectionsJson;
+            public string NamesJson;
+        }
+
+        /// <summary>Đọc file 3D cũ từ đĩa bằng database phụ (chỉ đọc, chia sẻ), luôn giải phóng database. Meta null ⇒ file không có dữ liệu panel
+        /// dùng được (kể cả Position lạ). File hỏng, hoặc mất block 2D mà meta trỏ tới ⇒ ném: correction không đọc được thì không được coi là không có.</summary>
+        public static OldPanelData ReadOld(string path)
+        {
+            Database db = null;
+            try
+            {
+                db = new Database(false, true);
+                db.ReadDwgFile(path, FileOpenMode.OpenForReadAndAllShare, true, null);
+                db.CloseInput(true);
+
+                var old = new OldPanelData();
+                using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
+                {
+                    old.Meta = ReadMeta(tr, db);
+                    if (old.Meta == null) return old;
+                    ObjectId btr2D = ResolveBtr(db, old.Meta.SourceBtrHandle);
+                    old.CorrectionsJson = CorrectionXRecord.Read(tr, btr2D, CorrectionXRecord.CorrectionsKey);
+                    old.NamesJson = CorrectionXRecord.Read(tr, btr2D, CorrectionXRecord.NamesKey);
+                }
+                return old;
+            }
+            finally
+            {
+                DisposeQuietly(ref db);
+            }
+        }
+
+        /// <summary>MCG3D_PANEL trên định nghĩa MCG3D_* đầu tiên có bản ghi này; không có hoặc không đọc được ⇒ null.</summary>
+        private static PanelMeta ReadMeta(Transaction tr, Database db)
+        {
+            var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+            foreach (ObjectId id in bt)
+            {
+                var btr = (BlockTableRecord)tr.GetObject(id, OpenMode.ForRead);
+                if (!btr.Name.StartsWith(BLOCK_PREFIX, StringComparison.OrdinalIgnoreCase)) continue;
+                string json = CorrectionXRecord.Read(tr, id, CorrectionXRecord.PanelKey);
+                if (json == null) continue;
+                PanelMeta meta = PanelMeta.FromJson(json);
+                return meta != null && Enum.IsDefined(typeof(PanelPosition), meta.Position) ? meta : null;
+            }
+            return null;
+        }
+
+        private static ObjectId ResolveBtr(Database db, string hex)
+        {
+            if (long.TryParse(hex, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out long value)
+                && db.TryGetObjectId(new Handle(value), out ObjectId id) && !id.IsNull && !id.IsErased)
+                return id;
+            throw new InvalidOperationException("the 2D block is missing from this file");
+        }
+
+        /// <summary>Ghi correction + tên của file cũ lên định nghĩa block 2D của bản sao; JSON rỗng ⇒ xoá bản đến từ file nguồn.</summary>
+        private static void WriteCarry(Database db, ObjectId refId, OldPanelData carry)
+        {
+            using (Transaction tr = db.TransactionManager.StartTransaction())
+            {
+                ObjectId btr2D = ((BlockReference)tr.GetObject(refId, OpenMode.ForRead)).BlockTableRecord;
+                CorrectionXRecord.Write(tr, btr2D, CorrectionXRecord.CorrectionsKey, carry.CorrectionsJson);
+                CorrectionXRecord.Write(tr, btr2D, CorrectionXRecord.NamesKey, carry.NamesJson);
+                tr.Commit();
             }
         }
 
@@ -139,7 +215,7 @@ namespace MCG_3DPanel.Commands
             }
         }
 
-        private static void DeleteQuietly(string path)
+        internal static void DeleteQuietly(string path)
         {
             try { if (File.Exists(path)) File.Delete(path); }
             catch (System.Exception ex) { Debug.WriteLine($"[Panel3DFile] Delete {path}: {ex.Message}"); }

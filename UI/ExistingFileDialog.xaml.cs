@@ -5,8 +5,8 @@ using AcadApp = Autodesk.AutoCAD.ApplicationServices.Application;
 
 namespace MCG_3DPanel.UI
 {
-    /// <summary>Lựa chọn khi file 3D đích đã có: mở file cũ, dựng bản mới _2, hoặc dừng.</summary>
-    public enum ExistingChoice { Open, NewCopy, Cancel }
+    /// <summary>Lựa chọn khi file 3D đích đã có: lấy 2D đã lưu và giữ chỉnh sửa, mở file cũ, dựng bản mới _2, hoặc dừng.</summary>
+    public enum ExistingChoice { Update, Open, NewCopy, Cancel }
 
     /// <summary>Hỏi 1 lần cho cả lô panel có file 3D sẵn. Đóng cửa sổ = Cancel.</summary>
     public partial class ExistingFileDialog : Window
@@ -25,6 +25,8 @@ namespace MCG_3DPanel.UI
             AcadApp.ShowModalWindow(dialog);
             return dialog._choice;
         }
+
+        private void BtnUpdate_Click(object sender, RoutedEventArgs e) => Choose(ExistingChoice.Update);
 
         private void BtnOpen_Click(object sender, RoutedEventArgs e) => Choose(ExistingChoice.Open);
 

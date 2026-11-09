@@ -1,5 +1,12 @@
 # SESSION LOG — MCG_3DPanel
 
+## Session 2026-11-09 — Update file 3D từ 2D đã sửa (nhánh `fix/3d-file-paper-space`)
+
+- Hộp thoại file có sẵn: `Update` (mặc định), `Open`, `New copy`, `Cancel`. Update lấy 2D đã lưu, mang correction + tên của file 3D cũ sang (`Panel3DFile.ReadOld`, `Create(..., carry)`), dựng bằng Input/Position đã lưu trong file cũ, giữ nguyên tên file.
+- Thứ tự file: file mới đủ trên đĩa, rồi mới dời `.dwg` cũ sang `<name>_3D.<yyyyMMdd_HHmmss>.bak`, rồi mới đưa file mới vào tên. Lỗi sau đó (kể cả không có solid) ⇒ đóng không lưu, xoá file của lần này, trả file cũ về; không trả được thì báo đúng đường dẫn `.bak` và không xoá gì thêm.
+- Panel dừng (đích chưa lưu, không có panel data, khác block 2D, file cũ hỏng) ⇒ đếm failed, lý do lên thanh trạng thái, panel khác chạy tiếp. Chỉnh sửa không còn part 2D ⇒ `{n} edits no longer match the 2D drawing.`
+- **CHƯA chạy trong AutoCAD** — cần kỹ sư chạy các hàng I16–I23 của `docs/ux-checklist.md`.
+
 ## Session 2026-11-06 — Build 3D tách file `<panel>_3D.dwg`, bỏ Keep, bỏ spike (nhánh `feat/separate-3d-drawing`)
 
 - Build 3D tạo file riêng `<panel>_3D.dwg` cạnh file nguồn (đọc file nguồn đã lưu từ đĩa bằng `ReadDwgFile`), mở làm file làm việc; file nguồn không bị ghi. Nguồn chưa lưu ⇒ `Save this drawing first, then Build 3D.`

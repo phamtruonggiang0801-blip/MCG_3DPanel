@@ -8,7 +8,7 @@
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
         FontSize="11">
-    <!-- File 3D đích đã tồn tại: 1 lựa chọn cho cả lô. Không bao giờ ghi đè (spec 2026-11-06). -->
+    <!-- File 3D đích đã tồn tại: 1 lựa chọn cho cả lô. Update giữ file cũ thành .bak; không có lựa chọn nào ghi đè mất file (spec 2026-11-09). -->
     <Window.Resources>
         <ResourceDictionary Source="PanelStyles.xaml"/>
     </Window.Resources>
@@ -20,7 +20,9 @@
                 <ItemsControl x:Name="ListFiles"/>
             </ScrollViewer>
             <StackPanel Style="{StaticResource DialogButtonRowStyle}">
-                <Button Content="Open" IsDefault="True" Style="{StaticResource DialogPrimaryButtonStyle}" Click="BtnOpen_Click"/>
+                <Button Content="Update" IsDefault="True" Style="{StaticResource DialogPrimaryButtonStyle}" Click="BtnUpdate_Click"
+                        ToolTip="Take the saved 2D drawing and keep this file's edits. The old file is kept as .bak."/>
+                <Button Content="Open" Style="{StaticResource DialogButtonStyle}" Click="BtnOpen_Click"/>
                 <Button Content="New copy" Style="{StaticResource DialogButtonStyle}" Click="BtnNewCopy_Click"/>
                 <Button Content="Cancel" IsCancel="True" Style="{StaticResource DialogButtonStyle}"/>
             </StackPanel>

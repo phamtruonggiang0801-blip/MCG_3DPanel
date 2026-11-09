@@ -33,7 +33,7 @@ namespace MCG_3DPanel.Commands
         public static string Backup(string target, DateTime now, Func<string, bool> taken)
         {
             var dir = Path.GetDirectoryName(target);
-            var stem = Path.GetFileNameWithoutExtension(target) + "." + now.ToString("yyyyMMdd_HHmmss");
+            var stem = Path.GetFileNameWithoutExtension(target) + "." + now.ToString("yyyyMMdd_HHmmss", System.Globalization.CultureInfo.InvariantCulture);
             var p = Path.Combine(dir, stem + ".bak");
             for (int i = 2; taken(p); i++) p = Path.Combine(dir, stem + "_" + i + ".bak");
             return p;

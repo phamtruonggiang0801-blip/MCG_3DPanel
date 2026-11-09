@@ -103,13 +103,17 @@ namespace MCG_3DPanel.Commands
                     foreach (string path in existing) lastGood = OpenExisting(path, run) ?? lastGood;
                     jobs.RemoveAll(j => existing.Contains(j.Target));
                 }
+                else if (choice == ExistingChoice.Update)
+                {
+                    foreach (PanelJob job in jobs) job.Update = existing.Contains(job.Target);
+                }
             }
 
-            // NextFree giữ chỗ trong cùng lô: New copy, và 2 bản chèn của cùng 1 block ra 2 file khác nhau.
+            // NextFree giữ chỗ trong cùng lô: New copy, và 2 bản chèn của cùng 1 block ra 2 file khác nhau. Job Update giữ nguyên tên file.
             var reserved = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
             foreach (PanelJob job in jobs)
             {
-                job.Target = Panel3DPath.NextFree(job.Target, p => IsTaken(p) || reserved.Contains(p));
+                if (!job.Update) job.Target = Panel3DPath.NextFree(job.Target, p => IsTaken(p) || reserved.Contains(p));
                 reserved.Add(job.Target);
             }
 
@@ -136,6 +140,8 @@ namespace MCG_3DPanel.Commands
             BuildRun run, out Document fileDoc)
         {
             fileDoc = null;
+            if (job.Update) return UpdateFile(sourceFile, job, tag, run, out fileDoc);
+
             string file = Path.GetFileName(job.Target);
             Document doc = null;
             bool created = false;   // CHỈ bỏ file do chính lần này tạo — không bao giờ xoá file có sẵn của người dùng
@@ -145,29 +151,7 @@ namespace MCG_3DPanel.Commands
                 Panel3DFile.Create(sourceFile, job.RefId, job.Target);
                 created = true;
                 doc = Application.DocumentManager.Open(job.Target, false);
-                Activate(doc);
-
-                Database db = doc.Database;
-                if (!db.TryGetObjectId(job.RefId.Handle, out ObjectId src2D))
-                    throw new System.InvalidOperationException("the panel is missing from the new file");
-
-                BuildResult build;
-                using (doc.LockDocument())
-                {
-                    build = BuildOne(db, src2D, input, position, out ClassificationResult cls);
-                    Say($"\n{LOG_PREFIX} {tag} {cls.PanelBlockName}: {build.SolidCount} solid ({cls.Summary()}). Block: {build.BlockName}\n");
-                    // "Không dựng được" = không có solid nào ĐƯỢC DỰNG (kể cả solid đã Delete theo correction —
-                    // panel xoá hết solid vẫn là kết quả hợp lệ, còn Restore được).
-                    if (build.Solids.Count > 0)
-                    {
-                        build.Kept = true;
-                        RegenActive();
-                        string keptBak = Panel3DFile.MoveOldBakAside(job.Target);
-                        saving = true;
-                        if (keptBak != null) Say($"\n{LOG_PREFIX} The existing .bak of {file} was kept as {keptBak}.\n");
-                        if (!Panel3DFile.Save(doc)) Say($"\n{LOG_PREFIX} {file} is saved, but AutoCAD may still ask to save it on close.\n");
-                    }
-                }
+                BuildResult build = BuildAndSave(doc, job, tag, input, position, ref saving);
                 if (build.Solids.Count > 0)
                 {
                     fileDoc = doc;
@@ -192,6 +176,213 @@ namespace MCG_3DPanel.Commands
                 }
             }
             return null;
+        }
+
+        /// <summary>Đưa file đang mở lên active, dựng panel, và lưu nếu có solid. Build không có solid ⇒ chưa lưu gì, người gọi quyết định.
+        /// <paramref name="saving"/> = đã dời .bak cũ, .bak đứng ở tên đó từ đây là do lần lưu này sinh ra.</summary>
+        private static BuildResult BuildAndSave(Document doc, PanelJob job, string tag, PanelInput input, PanelPosition position, ref bool saving)
+        {
+            string file = Path.GetFileName(job.Target);
+            Activate(doc);
+
+            Database db = doc.Database;
+            if (!db.TryGetObjectId(job.RefId.Handle, out ObjectId src2D))
+                throw new System.InvalidOperationException("the panel is missing from the new file");
+
+            BuildResult build;
+            using (doc.LockDocument())
+            {
+                build = BuildOne(db, src2D, input, position, out ClassificationResult cls);
+                Say($"\n{LOG_PREFIX} {tag} {cls.PanelBlockName}: {build.SolidCount} solid ({cls.Summary()}). Block: {build.BlockName}\n");
+                // "Không dựng được" = không có solid nào ĐƯỢC DỰNG (kể cả solid đã Delete theo correction —
+                // panel xoá hết solid vẫn là kết quả hợp lệ, còn Restore được).
+                if (build.Solids.Count > 0)
+                {
+                    build.Kept = true;
+                    RegenActive();
+                    string keptBak = Panel3DFile.MoveOldBakAside(job.Target);
+                    saving = true;
+                    if (keptBak != null) Say($"\n{LOG_PREFIX} The existing .bak of {file} was kept as {keptBak}.\n");
+                    if (!Panel3DFile.Save(doc)) Say($"\n{LOG_PREFIX} {file} is saved, but AutoCAD may still ask to save it on close.\n");
+                }
+            }
+            return build;
+        }
+
+        // ─── Update: lấy 2D đã lưu, giữ chỉnh sửa của file 3D cũ (spec 2026-11-09) ─────────────
+        // LUẬT TRÊN HẾT: ở mọi điểm lỗi, người dùng vẫn còn .dwg cũ ở đúng tên hoặc ở .bak.
+
+        /// <summary>Thay file 3D cũ bằng bản dựng từ 2D đã lưu, mang theo correction + tên, dùng Input/Position đã lưu trong file cũ.
+        /// Trả null nếu panel dừng hoặc lỗi (đã đếm Failed và báo). Thành công ⇒ giữ bản sao lưu có giờ vĩnh viễn.</summary>
+        private static BuildResult UpdateFile(string sourceFile, PanelJob job, string tag, BuildRun run, out Document fileDoc)
+        {
+            fileDoc = null;
+            string file = Path.GetFileName(job.Target);
+            string newFile = $"{job.Target}.new{System.Guid.NewGuid():N}.dwg";
+
+            Panel3DFile.OldPanelData carry = null;
+            string stop;
+            try { stop = PrepareUpdate(sourceFile, job, newFile, out carry); }
+            catch (System.Exception ex) { stop = $"Could not update {file}: {ex.Message}. The old file was not changed."; }
+            if (stop != null) { StopPanel(run, tag, stop); return null; }
+
+            // File mới đã đủ trên đĩa: từ đây mới đụng file cũ.
+            string backup;
+            try
+            {
+                backup = Panel3DPath.Backup(job.Target, System.DateTime.Now, File.Exists);
+                File.Move(job.Target, backup, false);
+            }
+            catch (System.Exception ex)
+            {
+                Panel3DFile.DeleteQuietly(newFile);
+                StopPanel(run, tag, $"Could not replace {file}: {ex.Message}. The old file was not changed.");
+                return null;
+            }
+
+            try { File.Move(newFile, job.Target, false); }
+            catch (System.Exception ex)
+            {
+                string notBack = MoveBackup(backup, job.Target);
+                if (notBack == null) Panel3DFile.DeleteQuietly(newFile);   // chưa trả được file cũ thì không xoá gì thêm
+                StopPanel(run, tag, notBack ?? $"Could not replace {file}: {ex.Message}. The old file was not changed.");
+                return null;
+            }
+
+            Document doc = null;
+            bool saving = false;
+            BuildResult build = null;
+            string why = "no solid could be built";
+            try
+            {
+                doc = Application.DocumentManager.Open(job.Target, false);
+                build = BuildAndSave(doc, job, tag, carry.Meta.Input, (PanelPosition)carry.Meta.Position, ref saving);
+            }
+            catch (System.Exception ex)
+            {
+                build = null;
+                why = ex.Message;
+            }
+
+            if (build != null && build.Solids.Count > 0)
+            {
+                Say($"\n{LOG_PREFIX} The previous version of {file} was kept as {Path.GetFileName(backup)}.\n");
+                AddUnmatchedNote(carry, build, run);
+                fileDoc = doc;
+                return build;
+            }
+
+            UndoSwap(doc, job.Target, backup, sourceFile, saving, why, tag, run);
+            return null;
+        }
+
+        /// <summary>Bước chưa đụng file cũ: giải phóng file đích, đọc file cũ, kiểm đúng panel, tạo file mới ở <paramref name="newFile"/>.
+        /// Trả lý do dừng (null = đi tiếp). Dừng ở đây thì file cũ còn nguyên.</summary>
+        private static string PrepareUpdate(string sourceFile, PanelJob job, string newFile, out Panel3DFile.OldPanelData carry)
+        {
+            carry = null;
+            string file = Path.GetFileName(job.Target);
+            // Panel tên trùng tên file nguồn (X_3D.dwg chứa panel X): đích chính là bản vẽ nguồn, không bao giờ được đóng hay thay.
+            if (string.Equals(job.Target, sourceFile, System.StringComparison.OrdinalIgnoreCase))
+                return $"{file} is the drawing being built from; use New copy.";
+
+            Document open = FindOpen(job.Target);
+            if (open != null)
+            {
+                Activate(open);   // DBMOD đọc theo document active
+                if (!IsSavedOnDisk(open)) return $"Save or close {file} first, then Update.";
+                ActivateAnother(open, sourceFile);
+                open.CloseAndDiscard();
+            }
+
+            try { carry = Panel3DFile.ReadOld(job.Target); }
+            catch (System.Exception ex) { return $"Could not read {file} ({ex.Message}). Use New copy."; }
+
+            string refusal = Panel3DPath.UpdateRefusal(file, carry.Meta, job.RefId.Handle.ToString());
+            if (refusal != null) return refusal;
+
+            try { Panel3DFile.Create(sourceFile, job.RefId, newFile, carry); }
+            catch (System.Exception ex)   // Create nói tên file tạm trong Message ⇒ lấy lý do gốc
+            {
+                return $"Could not create the new {file}: {(ex.InnerException ?? ex).Message}. The old file was not changed.";
+            }
+            return null;
+        }
+
+        /// <summary>Lỗi sau khi đã thay file: đóng không lưu, xoá file của lần này, trả file cũ về tên cũ. Không ném.</summary>
+        private static void UndoSwap(Document doc, string target, string backup, string sourceFile, bool saving, string why, string tag, BuildRun run)
+        {
+            string file = Path.GetFileName(target);
+            try { ActivateAnother(doc, sourceFile); }
+            catch (System.Exception ex) { Debug.WriteLine($"{LOG_PREFIX} ActivateAnother: {ex.Message}"); }
+
+            string notRemoved = Panel3DFile.Discard(doc, target, saving);
+            string notBack = MoveBackup(backup, target);
+            if (notBack == null)
+            {
+                // Đã trả file cũ về đúng tên: thông báo "Delete it by hand" của Discard sẽ chỉ nhầm vào file cũ ⇒ không hiện cho người dùng.
+                if (notRemoved != null) Debug.WriteLine($"{LOG_PREFIX} {notRemoved}");
+                StopPanel(run, tag, $"Update of {file} failed: {why}. The old file was restored.");
+            }
+            else
+            {
+                StopPanel(run, tag, $"Update of {file} failed: {why}. {notBack}");
+            }
+        }
+
+        /// <summary>Trả bản sao lưu về tên cũ, không ghi đè. Trả thông báo kèm đường dẫn đầy đủ của bản sao lưu nếu không trả được (null = OK). Không ném.</summary>
+        private static string MoveBackup(string backup, string target)
+        {
+            try
+            {
+                File.Move(backup, target, false);
+                return null;
+            }
+            catch (System.Exception ex)
+            {
+                return $"The old file is safe at {backup} but could not be moved back ({ex.Message}). Rename it to {Path.GetFileName(target)} by hand.";
+            }
+        }
+
+        /// <summary>Document sắp đóng đang active ⇒ đưa bản vẽ nguồn (hoặc drawing khác) lên trước khi đóng. Ném nếu không chuyển được.</summary>
+        private static void ActivateAnother(Document closing, string sourceFile)
+        {
+            if (closing == null || Application.DocumentManager.MdiActiveDocument != closing) return;
+            Document other = FindOpen(sourceFile);
+            if (other == null || other == closing)
+            {
+                other = null;
+                foreach (Document d in Application.DocumentManager)
+                    if (d != closing) { other = d; break; }
+            }
+            if (other != null) Activate(other);
+        }
+
+        /// <summary>Panel dừng: đếm lỗi, đưa lý do lên thanh trạng thái và dòng lệnh; các panel khác vẫn chạy.</summary>
+        private static void StopPanel(BuildRun run, string tag, string text)
+        {
+            run.Failed++;
+            run.Problems.Add(text);
+            Say($"\n{LOG_PREFIX} {tag} {text}\n");
+        }
+
+        /// <summary>Chỉnh sửa cũ không còn part 2D tương ứng ⇒ báo số lượng. Chạy SAU khi đã lưu: lỗi ở đây không được làm hỏng lần Update.</summary>
+        private static void AddUnmatchedNote(Panel3DFile.OldPanelData carry, BuildResult build, BuildRun run)
+        {
+            try
+            {
+                CorrectionJson.Deserialize(carry.CorrectionsJson, out var parts, out var deleted);
+                var stored = new HashSet<string>(parts.Keys);
+                stored.UnionWith(deleted);
+                stored.UnionWith(MCG_3DPanel.Naming.NamesJson.Deserialize(carry.NamesJson).Keys);
+                var partKeys = new HashSet<string>(build.ClassifiedParts.Select(p => p.SourceKey).Where(k => k != null));
+                int n = Panel3DPath.CountUnmatched(stored, partKeys);
+                if (n > 0) run.Problems.Add($"{n} edits no longer match the 2D drawing.");
+            }
+            catch (System.Exception ex)
+            {
+                run.Problems.Add($"Could not count the edits that no longer match the 2D drawing: {ex.Message}");
+            }
         }
 
         /// <summary>Tuỳ chọn Open: mở file 3D có sẵn, hoặc chuyển sang nếu đang mở. Không dựng.</summary>
@@ -282,6 +473,7 @@ namespace MCG_3DPanel.Commands
             public ObjectId RefId;   // thuộc bản vẽ nguồn — sang file 3D chỉ dùng Handle
             public string Name;
             public string Target;
+            public bool Update;      // file đích đang có sẽ được thay (giữ chỉnh sửa, file cũ thành .bak)
         }
 
         /// <summary>Ghi dòng lệnh của drawing ĐANG active, lấy Editor mới mỗi lần; không bao giờ ném.</summary>

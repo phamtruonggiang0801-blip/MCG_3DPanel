@@ -204,7 +204,7 @@ namespace MCG_3DPanel.UI
             var notes = new List<string>();
             if (run.Empty > 0) notes.Add($"{run.Empty} panel(s) built nothing");
             if (run.Failed > 0) notes.Add($"{run.Failed} panel(s) failed, see the command line");
-            notes.AddRange(run.Problems);
+            notes.AddRange(run.Problems.Select(p => p.TrimEnd('.')));   // câu tổng tự có dấu chấm cuối
             string tail = string.Concat(notes.Select(n => " · " + n));
             bool error = run.Failed > 0 || run.Problems.Count > 0;
 

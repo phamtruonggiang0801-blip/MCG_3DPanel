@@ -130,7 +130,7 @@ built in a second drawing.
 | I2 | Make a change in the 2D drawing without saving (or use a drawing never saved), then click Build 3D. | Build stops before anything is created. The status says `Save this drawing first, then Build 3D.` |
 | I3 | Save the 2D drawing, then only zoom or pan, then click Build 3D. | The stop of I2 does NOT appear (view changes do not count as unsaved changes). The build runs. |
 | I4 | Select 3 panels in one Build 3D. | One file per panel, each open; the last one is active. A panel that fails or builds nothing does not stop the others, and the status counts them. |
-| I5 | Build 3D a panel whose `<panel>_3D.dwg` already exists. | One dialog lists those panels with Open, New copy and Cancel. No file is overwritten. |
+| I5 | Build 3D a panel whose `<panel>_3D.dwg` already exists. | One dialog lists those panels with Update (default), Open, New copy and Cancel. Nothing is lost whichever is pressed. |
 | I6 | In I5 press Open. | The existing files open (or switch to them if already open); no build for those panels, and their rows fill the tabs. |
 | I7 | In I5 press New copy. | The panel builds into `<panel>_3D_2.dwg` (next free number). Cancel builds nothing and creates nothing. |
 | I8 | Keep a `<panel>_3D.dwg` open in AutoCAD, then Build 3D the same panel and press Open. | AutoCAD switches to the open file. It is not opened twice and no error appears. |
@@ -141,3 +141,11 @@ built in a second drawing.
 | I13 | Open an old 3D block made before 2026-11-06 (no panel data). | It is not listed, and the status says to Build it again. |
 | I14 | Build a panel from a drawing whose layout has a title block. Open the 3D file's layout tab. | The layout is empty apart from its main viewport; blocks used only there are gone. |
 | I15 | Result tab: a Web row and a Closed Plate row show a Kind dropdown with Web and Closed Plate; GE, GB and bracket rows show text only. Change one, then select several and change one. | The panel rebuilds once, each row shows the new kind in blue, Reset returns the automatic kind, and the change survives Save and reopen. |
+| I16 | In a 3D file, correct one part and rename one line, Save and close. Back in the 2D drawing, change another part, Save, Build 3D the same panel, press Update. | Same file name opens with the new 2D. The correction and the name stay on the unchanged part. `<panel>_3D.<yyyyMMdd_HHmmss>.bak` is next to it. The Input tab values were not used: the file's own Input and Position were. |
+| I17 | In the 2D drawing add a new part, Save, then Update. | The new part builds with automatic results. No count of unmatched edits appears because of it. |
+| I18 | Correct or rename a part in the 3D file, delete that part in the 2D drawing, Save, then Update. | The panel builds without the part and the status says `1 edits no longer match the 2D drawing.` (n as counted). |
+| I19 | Keep `<panel>_3D.dwg` open with an unsaved change, then Update it. | That panel stops, the status says `Save or close <panel>_3D.dwg first, then Update.`, the file stays open with its change, and other panels still build. |
+| I20 | Keep `<panel>_3D.dwg` open with nothing unsaved (zoom only is fine), then Update it. | The file closes by itself with no prompt, and the updated file opens under the same name. |
+| I21 | Update a panel whose saved 2D now builds nothing (move its parts off the panel layers, Save). Check the folder. | The status says the update failed and the old file was restored. `<panel>_3D.dwg` is the old file (same size and date), no `.new` file and no new timestamped `.bak` remain. |
+| I22 | Update a file that has no panel data, or a file built from another block of the same name. | That panel stops with `... has no panel data; use New copy.` or `... was built from another 2D block; use New copy.` and the old file is not changed. |
+| I23 | In the same dialog press Open, then repeat with New copy. Also Update a selection where one panel has no 3D file. | Open and New copy behave as in I6 and I7. The panel with no 3D file builds normally with the Input tab values. |
