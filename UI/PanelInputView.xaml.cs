@@ -28,6 +28,7 @@ namespace MCG_3DPanel.UI
             var items = MCG_3DPanel.Services.HpProfileService.StandardSpecs().Select(s => new HpItem(s)).ToList();
             CmbHpSpec.ItemsSource = items;
             CmbHpSpec.SelectedItem = items.FirstOrDefault(i => i.Spec == "120*6") ?? items.FirstOrDefault();
+            PanelCommands.Rebuilt += OnRebuilt;
         }
 
         /// <summary>1 cỡ HP trên dropdown: <see cref="Spec"/> = "120*6" (HP.csv), hiển thị "120 × 6".</summary>
@@ -55,6 +56,7 @@ namespace MCG_3DPanel.UI
             {
                 if (panel?.Input == null)
                 {
+                    _rebuildMode = false;
                     BtnBuild.Content = "Build 3D";
                     BtnBuild.ToolTip = "Pick the panel block and build its 3D solid model";
                     return;
@@ -69,7 +71,8 @@ namespace MCG_3DPanel.UI
                 CmbPanelPos.SelectedIndex = (int)panel.Position;
                 var hp = CmbHpSpec.Items.OfType<HpItem>().FirstOrDefault(i => i.Spec == inp.HpSpec);
                 if (hp != null) CmbHpSpec.SelectedItem = hp;
-                else SetStatus($"HP size {MCG_3DPanel.Models.PanelInput.FormatSpec(inp.HpSpec)} of this panel is not in the standard list — choose one before rebuilding.", error: true);
+                else { CmbHpSpec.SelectedItem = null; SetStatus($"HP size {MCG_3DPanel.Models.PanelInput.FormatSpec(inp.HpSpec)} of this panel is not in the standard list — choose one before rebuilding.", error: true); }
+                _rebuildMode = true;
                 BtnBuild.Content = "Rebuild 3D";
                 BtnBuild.ToolTip = "Rebuild this panel's 3D in this file with the values above";
             }
@@ -90,7 +93,8 @@ namespace MCG_3DPanel.UI
             }
         }
 
-        private bool IsRebuildMode => (BtnBuild.Content as string) == "Rebuild 3D";
+        private bool _rebuildMode;
+        private bool IsRebuildMode => _rebuildMode;
 
         /// <summary>Trong file 3D: áp ô nhập lên panel đầu tiên của file rồi rebuild thường (cùng file, không chọn, không file mới).</summary>
         private void RunRebuildFromInput()
@@ -105,14 +109,58 @@ namespace MCG_3DPanel.UI
             var panel = PanelSession.For(doc.Database, out _).FirstOrDefault();
             if (panel == null)
             {
+                _rebuildMode = false;
                 BtnBuild.Content = "Build 3D";
                 SetStatus("This drawing has no 3D panel any more — the button is back to Build 3D.", error: true);
                 return;
             }
+            RevertPending();   // yêu cầu trước chưa xong (kẹt) ⇒ trả giá trị cũ của nó trước
+            _pending = panel;
+            _oldInput = panel.Input;
+            _oldPosition = panel.Position;
             panel.Input = input;
             panel.Position = (MCG_3DPanel.Models.PanelPosition)Math.Max(0, CmbPanelPos.SelectedIndex);
             SetStatus("Rebuilding… (save the file afterwards)");
             PanelCommands.RequestRebuild(panel);
+        }
+
+        // Panel đang chờ rebuild do tab này gửi + giá trị đang lưu trong file (để trả lại khi rebuild hỏng).
+        private MCG_3DPanel.Services.BuildResult _pending;
+        private MCG_3DPanel.Models.PanelInput _oldInput;
+        private MCG_3DPanel.Models.PanelPosition _oldPosition;
+
+        private void RevertPending()
+        {
+            if (_pending == null) return;
+            _pending.Input = _oldInput;
+            _pending.Position = _oldPosition;
+            _pending = null;
+        }
+
+        /// <summary>Rebuild do tab này gửi xong (hoặc hỏng): hiện kết quả; hỏng ⇒ trả Input/Position cũ cho BuildResult (cache
+        /// session dùng chung) và hiện lại giá trị thật trong file. Rebuild của tab khác bị bỏ qua. Không ném.</summary>
+        private void OnRebuilt(MCG_3DPanel.Services.BuildResult old, MCG_3DPanel.Services.BuildResult neu, string message)
+        {
+            try
+            {
+                if (_pending == null || !ReferenceEquals(old, _pending)) return;
+                if (neu != null) { _pending = null; SetStatus(message ?? "Rebuilt.", error: false); return; }
+                var panel = _pending;
+                RevertPending();
+                ShowPanel(panel);
+                SetStatus(message ?? "Rebuild failed — previous 3D kept.", error: true);
+            }
+            catch (System.Exception ex) { Debug.WriteLine("[MCG_3DPanel] Input OnRebuilt: " + ex.Message); }
+        }
+
+        /// <summary>Drawing sắp đóng: yêu cầu rebuild treo của nó bị bỏ (không có sự kiện Rebuilt) ⇒ trả giá trị cũ. Không ném.</summary>
+        public void OnDocumentClosing(Autodesk.AutoCAD.DatabaseServices.Database db)
+        {
+            try
+            {
+                if (_pending != null && !_pending.SourceRefId.IsNull && _pending.SourceRefId.Database == db) RevertPending();
+            }
+            catch (System.Exception ex) { Debug.WriteLine("[MCG_3DPanel] Input OnDocumentClosing: " + ex.Message); }
         }
 
         private void RunBuildFromInput()

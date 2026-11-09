@@ -68,6 +68,7 @@ namespace MCG_3DPanel.UI
                     Guarded(() => MCG_3DPanel.Naming.NameStore.ClearDatabase(db));
                     Guarded(() => _result.OnDocumentClosing(db));
                     Guarded(() => _naming.OnDocumentClosing(db));
+                    Guarded(() => _input.OnDocumentClosing(db));
                 };
                 // Đổi drawing: tắt highlight/marker KHI drawing cũ còn là current (Transient/Highlight gắn view của nó).
                 Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.DocumentToBeDeactivated += (s, e) => Guarded(() =>
@@ -109,7 +110,7 @@ namespace MCG_3DPanel.UI
                 // Sự kiện document truyền Database của chính document đó (không lấy MdiActiveDocument: document đang đóng
                 // sẽ bị nạp lại vào cache sau Forget).
                 var db = eventDb ?? Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument?.Database;
-                if (db == null) return;   // đóng hết drawing: OnDocumentClosing đã dọn bảng
+                if (db == null) { _input.ShowPanel(null); return; }   // đóng hết drawing: OnDocumentClosing đã dọn bảng
                 var builds = MCG_3DPanel.Commands.PanelSession.For(db, out string message);
                 // Input TRƯỚC các tab: Naming đọc Position từ ô Input qua PositionProvider.
                 _input.ShowPanel(builds.Count > 0 ? builds[0] : null);
