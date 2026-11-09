@@ -22,6 +22,9 @@ namespace MCG_3DPanel.Services
 
         public PartType Type { get; set; }
 
+        // Loại trước khi áp correction Kind (ClassificationService.ApplyTypeCorrections). null = part chưa qua bước đó.
+        public PartType? AutoType { get; set; }
+
         // Các part cùng 1 Web logic (chuỗi collinear) chia sẻ GroupId. -1 = độc lập.
         public int GroupId { get; set; } = -1;
 

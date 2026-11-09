@@ -130,6 +130,23 @@ namespace MCG_3DPanel.UI
         public static bool HasWebChoice(IEnumerable<KindOption> options) =>
             options != null && options.Any(o => o.Text == "Web") && options.Any(o => o.Text == "Closed Plate");
 
+        /// <summary>Kind tự động của dòng. Web / Closed Plate theo phân loại LẦN NÀY (<paramref name="originalKind"/> có thể cũ: Update mang correction
+        /// sang 2D mới); loại khác (GE, bracket…) vẫn theo Kind gốc đã lưu vì phân loại trước correction chưa biết các loại đó.</summary>
+        /// <param name="autoType">PartType trước correction; null nếu không có part 2D.</param>
+        /// <param name="originalKind">Kind gốc lưu trong correction, null nếu không có.</param>
+        /// <param name="currentKind">Kind đang hiện trên dòng.</param>
+        public static string AutomaticKind(string autoType, string originalKind, string currentKind)
+        {
+            string kind = ShortKind(originalKind) ?? currentKind;
+            bool webChoice = kind == "Web" || kind == "Closed Plate";
+            if (webChoice && autoType == "ClosedPlate") return "Closed Plate";
+            if (webChoice && autoType == "Web") return "Web";
+            return kind;
+        }
+
+        /// <summary>Kind cần lưu vào correction khi người dùng chọn <paramref name="chosen"/>: trùng Kind tự động ⇒ null (huỷ correction Kind).</summary>
+        public static string CorrectionKindFor(string chosen, string automaticKind) => chosen == automaticKind ? null : chosen;
+
         /// <summary>Kind người dùng chọn → việc ClassificationService phải làm.</summary>
         public static CorrectionIntent ParseIntent(string kind)
         {

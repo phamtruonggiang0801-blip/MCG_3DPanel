@@ -8,6 +8,21 @@ namespace MCG_3DPanel.Tests
     {
         private static readonly string[] None = new string[0];
 
+        // Chọn đúng Kind tự động của HÔM NAY ⇒ huỷ correction Kind; khác ⇒ lưu Kind đã chọn.
+        [Fact] public void CorrectionKindFor_SameAsAutomatic_Null() => Assert.Null(ResultCatalog.CorrectionKindFor("Web", "Web"));
+        [Fact] public void CorrectionKindFor_DiffersFromAutomatic_Chosen() => Assert.Equal("Web", ResultCatalog.CorrectionKindFor("Web", "Closed Plate"));
+
+        // Lỗi gốc: {Kind:"Closed Plate", OriginalKind:"Web"} qua Update, 2D mới tự ra Closed Plate ⇒ Kind tự động là Closed Plate, không phải "Web" đã lưu.
+        [Fact] public void AutomaticKind_StaleOriginal_FollowsClassification() => Assert.Equal("Closed Plate", ResultCatalog.AutomaticKind("ClosedPlate", "Web", "Closed Plate"));
+        [Fact] public void AutomaticKind_CorrectedToClosedPlate_IsWeb() => Assert.Equal("Web", ResultCatalog.AutomaticKind("Web", "Web", "Closed Plate"));
+        [Fact] public void AutomaticKind_NotCorrected_ClosedPlate() => Assert.Equal("Closed Plate", ResultCatalog.AutomaticKind("ClosedPlate", null, "Closed Plate"));
+        [Fact] public void AutomaticKind_NotCorrected_Web() => Assert.Equal("Web", ResultCatalog.AutomaticKind("Web", null, "Web"));
+        [Fact] public void AutomaticKind_NotCorrected_WebMergedGe_KeepsRowKind() => Assert.Equal("GE", ResultCatalog.AutomaticKind("Web", null, "GE"));
+        [Fact] public void AutomaticKind_NoAutoType_FallsBackToRowKind() => Assert.Equal("Collar Plate", ResultCatalog.AutomaticKind(null, null, "Collar Plate"));
+        // Kind gốc ngoài Web/Closed Plate (GE, bracket): phân loại trước GE/bracket không biết ⇒ giữ bản đã lưu, dạng tên ngắn.
+        [Fact] public void AutomaticKind_OriginalGe_Kept() => Assert.Equal("GE", ResultCatalog.AutomaticKind("Web", "Web + GE-HP", "Web"));
+        [Fact] public void AutomaticKind_BracketOriginal_Kept() => Assert.Equal("OB", ResultCatalog.AutomaticKind("Bracket", "OB", "IB"));
+
         [Fact]
         public void Describe_Bracket_OB12_IsBracketOB_CanFlip()
         {

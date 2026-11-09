@@ -20,7 +20,7 @@ namespace MCG_3DPanel.UI
         public string Panel { get; set; }
         public string Handle { get; set; }         // handle của solid trong block 3D
         public ResultFamily Family { get; set; }
-        /// <summary>Kind tool nhận diện ra (đã áp correction cũ nếu có) — chỉ hiển thị.</summary>
+        /// <summary>Kind tool tự nhận diện, TRƯỚC correction (<see cref="ResultCatalog.AutomaticKind"/>) — cột DetectedKind khi Export; chọn lại Kind này ⇒ huỷ correction Kind.</summary>
         public string DetectedKind { get; set; }
         public List<KindOption> Options { get; set; } = new List<KindOption>();
         /// <summary>Chỉ dòng Web / Closed Plate có part 2D mới hiện dropdown (kỹ sư 2026-11-09); còn lại chỉ đọc.</summary>
@@ -157,7 +157,7 @@ namespace MCG_3DPanel.UI
                 Panel = PanelName(build),
                 Handle = s.SolidId.IsNull ? s.StoredHandle ?? "" : s.SolidId.Handle.ToString(),
                 Family = d.Family,
-                DetectedKind = ResultCatalog.ShortKind(corr?.OriginalKind) ?? d.Kind,
+                DetectedKind = ResultCatalog.AutomaticKind(p?.AutoType?.ToString(), corr?.OriginalKind, d.Kind),
                 Options = d.Options,
                 CanFlip = d.CanFlip && (p != null || s.FlipKey != null) && !s.Deleted,
                 Size = SizeOf(build.Input, p, d.Family, corr),

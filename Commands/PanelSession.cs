@@ -176,10 +176,12 @@ namespace MCG_3DPanel.Commands
                 foreach (PanelMetaNotBuilt p in meta.NotBuilt)
                     build.Parts.Add(new BuiltPartInfo { Handle = p.Handle, Type = p.Type, Code = p.Code, Built = false });
 
-                int dropped = AddSolids(db, panel, meta, build);
+                int dropped = AddSolids(db, panel, meta, build, out int reclassified);
                 build.SolidCount = build.Solids.Count(s => !s.Deleted);
                 if (dropped > 0)
                     notes.Add($"{dropped} solid(s) of {panel.Name} are no longer in the file or no longer match the 2D block, so they are not listed — rebuild the panel to bring them back.");
+                if (reclassified > 0)
+                    notes.Add($"{reclassified} rows were classified differently; rebuild the panel.");
                 return build;
             }
             catch (System.Exception ex)
@@ -189,9 +191,11 @@ namespace MCG_3DPanel.Commands
             }
         }
 
-        /// <summary>Thêm solid đã lưu vào <paramref name="build"/>; trả số solid bị bỏ (đã mất khỏi file, hoặc part 2D không còn khớp).</summary>
-        private static int AddSolids(Database db, PanelBlock panel, PanelMeta meta, BuildResult build)
+        /// <summary>Thêm solid đã lưu vào <paramref name="build"/>; trả số solid bị bỏ (đã mất khỏi file, hoặc part 2D không còn khớp).
+        /// <paramref name="reclassified"/> = số solid khớp vào part nay thuộc loại khác loại lúc dựng.</summary>
+        private static int AddSolids(Database db, PanelBlock panel, PanelMeta meta, BuildResult build, out int reclassified)
         {
+            reclassified = 0;
             var match = new PartMatcher<PanelPart>(build.ClassifiedParts, p => p.SourceKey, p => p.Type.ToString());
             using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
             {
@@ -209,6 +213,7 @@ namespace MCG_3DPanel.Commands
                     {
                         part = match.Take(m.PartKey, m.Type);
                         if (part == null) { dropped++; continue; }
+                        if (m.ClassifiedDifferently(part.Type.ToString())) reclassified++;
                         part.SnipLo = m.SnipLo;   // builder ghi lúc dựng, phân loại không có — tab Result hiện theo đây
                         part.SnipHi = m.SnipHi;
                     }

@@ -108,7 +108,7 @@
                 </DataGridTextColumn>
 
                 <!-- Kind: dropdown Web / Closed Plate khi đổi được (kỹ sư 2026-11-09), còn lại chỉ đọc. -->
-                <DataGridTemplateColumn Header="Kind" Width="*" MinWidth="110">
+                <DataGridTemplateColumn Header="Kind" Width="*" MinWidth="110" SortMemberPath="Kind">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <Grid>

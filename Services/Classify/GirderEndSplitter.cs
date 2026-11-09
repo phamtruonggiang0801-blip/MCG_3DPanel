@@ -232,7 +232,7 @@ namespace MCG_3DPanel.Services.Classify
             bool horiz = (maxX - minX) >= (maxY - minY);
             return new PanelPart
             {
-                Id = src.Id, IdPath = src.IdPath, Type = type, SourceKey = src.SourceKey,
+                Id = src.Id, IdPath = src.IdPath, Type = type, AutoType = src.AutoType, SourceKey = src.SourceKey,
                 Layer = src.Layer, ColorIndex = src.ColorIndex, VertexCount = 4,
                 FootprintThickness = src.FootprintThickness, MemberLength = t1 - t0,
                 Area = (t1 - t0) * src.FootprintThickness,

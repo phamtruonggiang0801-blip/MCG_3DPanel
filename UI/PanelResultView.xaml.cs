@@ -291,7 +291,7 @@ namespace MCG_3DPanel.UI
             ApplyBulk(row, r => r.KindEditable && r.Options.Any(o => o.Text == kind), (r, c) =>
             {
                 if (c.OriginalKind == null) c.OriginalKind = r.DetectedKind;
-                c.Kind = kind == c.OriginalKind ? null : kind;
+                c.Kind = ResultCatalog.CorrectionKindFor(kind, r.DetectedKind);
             }, $"Kind = {kind}");
         }
 

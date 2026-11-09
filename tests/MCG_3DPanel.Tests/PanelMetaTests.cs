@@ -109,6 +109,12 @@ namespace MCG_3DPanel.Tests
             Assert.Null(match.Take(null, "Web"));
         }
 
+        // Solid dựng là ClosedPlate nhưng khớp vào part nay là Web ⇒ dòng và solid lệch nhau.
+        [Fact] public void Solid_StoredKindDiffers_Counted() => Assert.True(new PanelMetaSolid { Type = "ClosedPlate" }.ClassifiedDifferently("Web"));
+        [Fact] public void Solid_SameKind_NotCounted() => Assert.False(new PanelMetaSolid { Type = "Web" }.ClassifiedDifferently("Web"));
+        [Fact] public void Solid_NoStoredKind_NotCounted() => Assert.False(new PanelMetaSolid { Type = "" }.ClassifiedDifferently("Web"));
+        [Fact] public void Solid_Deleted_NotCounted() => Assert.False(new PanelMetaSolid { Type = "ClosedPlate", Deleted = true }.ClassifiedDifferently("Web"));
+
         [Fact] public void Target_Plain() => Assert.Equal(@"C:\p\7D-14P_Assy_3D.dwg", Panel3DPath.Target(@"C:\p", "7D-14P_Assy"));
         [Fact] public void Target_IllegalChars_Replaced() => Assert.Equal(@"C:\p\A_B_3D.dwg", Panel3DPath.Target(@"C:\p", "A/B"));
         [Fact] public void NextFree_FreeStaysSame() => Assert.Equal(@"C:\p\A_3D.dwg", Panel3DPath.NextFree(@"C:\p\A_3D.dwg", _ => false));

@@ -21,6 +21,10 @@ namespace MCG_3DPanel.Services.Corrections
         /// <summary>Đầu nào đã vát Sniped End (builder quyết định khi dựng, phân loại không tính lại được).</summary>
         public bool SnipLo { get; set; }
         public bool SnipHi { get; set; }
+
+        /// <summary>Solid dựng theo <see cref="Type"/> (loại part lúc dựng) nhưng part khớp được nay là loại khác: dòng và solid lệch nhau.
+        /// Solid đã Delete không còn gì để lệch; file không lưu loại thì không đếm.</summary>
+        public bool ClassifiedDifferently(string partType) => !Deleted && !string.IsNullOrEmpty(Type) && Type != partType;
     }
 
     /// <summary>Một part 2D không ra solid: đủ để dựng lại dòng "N 2D part(s) not built (Type Handle)" của tab Result.</summary>

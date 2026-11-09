@@ -9,8 +9,8 @@ namespace MCG_3DPanel.Services.Corrections
         public string Kind { get; set; }
         /// <summary>Đảo chiều đổ: HP → đảo bụng; Bracket → đảo hướng gấp lip.</summary>
         public bool FlipDir { get; set; }
-        /// <summary>Kind tool nhận diện TRƯỚC correction đầu tiên — cột DetectedKind khi Export; chọn lại đúng
-        /// Kind này ⇒ huỷ correction Kind.</summary>
+        /// <summary>Kind tool nhận diện TRƯỚC correction đầu tiên, ghi 1 lần nên có thể cũ sau Update. Web / Closed Plate đã theo
+        /// phân loại lần này (<see cref="UI.ResultCatalog.AutomaticKind"/>); loại khác vẫn dùng giá trị này.</summary>
         public string OriginalKind { get; set; }
         /// <summary>Sniped End ép theo từng đầu (HP/FB): lo = đầu L (ngang) / B (đứng), hi = R / T.
         /// null = để tool tự quyết; true = vát; false = để vuông (End 30 cũng không ép bracket B).</summary>

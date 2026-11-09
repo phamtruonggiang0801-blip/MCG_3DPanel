@@ -88,6 +88,7 @@ namespace MCG_3DPanel.Commands
             if (!TryPickPanels(out Document src, out ObjectId[] ids)) return null;
 
             Database source = src.Database;
+            if (ids.Any(id => !Panel3DFile.IsInModelSpace(source, id))) { run.Stop = Panel3DFile.ModelSpaceOnly; return null; }
             string sourceFile = src.Name;
             string lastGood = null;   // ĐƯỜNG DẪN file tốt cuối cùng (mở hoặc dựng) — cuối lần chạy phải là file active. Không giữ Document: có thể bị đóng trong lúc chạy
             List<PanelJob> jobs = PlanJobs(source, sourceFile, ids);
@@ -155,6 +156,7 @@ namespace MCG_3DPanel.Commands
                 BuildResult build = BuildAndSave(doc, job, tag, input, position, ref saving, ref keptBak);
                 if (build.Solids.Count > 0)
                 {
+                    Panel3DFile.DeleteOwnBak(job.Target, saving);
                     fileDoc = doc;
                     return build;
                 }
@@ -280,6 +282,7 @@ namespace MCG_3DPanel.Commands
 
             if (build != null && build.Solids.Count > 0)
             {
+                Panel3DFile.DeleteOwnBak(job.Target, saving);
                 Say($"\n{LOG_PREFIX} The previous version of {file} was kept as {Path.GetFileName(backup)}.\n");
                 AddUnmatchedNote(carry, build, run);
                 fileDoc = doc;
@@ -416,7 +419,11 @@ namespace MCG_3DPanel.Commands
                 CorrectionJson.Deserialize(carry.CorrectionsJson, out var parts, out var deleted);
                 var stored = new HashSet<string>(parts.Keys);
                 stored.UnionWith(deleted);
-                stored.UnionWith(MCG_3DPanel.Naming.NamesJson.Deserialize(carry.NamesJson).Keys);
+                var names = MCG_3DPanel.Naming.NamesJson.Deserialize(carry.NamesJson, out var deletedNames, out var merges, out var splits);
+                stored.UnionWith(names.Keys);
+                stored.UnionWith(deletedNames);
+                stored.UnionWith(merges.SelectMany(g => g));
+                stored.UnionWith(splits);
                 var partKeys = new HashSet<string>(build.ClassifiedParts.Select(p => p.SourceKey).Where(k => k != null));
                 int n = Panel3DPath.CountUnmatched(stored, partKeys);
                 if (n > 0) run.Problems.Add($"{n} edits no longer match the 2D drawing.");

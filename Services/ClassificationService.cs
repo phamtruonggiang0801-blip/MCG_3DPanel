@@ -220,6 +220,8 @@ namespace MCG_3DPanel.Services
         /// <summary>Đổi PartType trong cùng họ theo correction: Web↔Closed Plate, Flange↔Faceplate, Bracket↔Backing Plate.</summary>
         private static void ApplyTypeCorrections(ClassificationResult result, IReadOnlyDictionary<string, PartCorrection> corrections)
         {
+            // Ghi cho MỌI part, kể cả khi không có correction nào: dòng chưa sửa cũng cần Kind tự động.
+            foreach (var p in result.Parts) p.AutoType = p.Type;
             if (corrections == null || corrections.Count == 0) return;
             foreach (var p in result.Parts)
             {

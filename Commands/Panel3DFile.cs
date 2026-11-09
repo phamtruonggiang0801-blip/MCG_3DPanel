@@ -27,6 +27,16 @@ namespace MCG_3DPanel.Commands
             "0", "Defpoints", "Standard", "Continuous", "ByLayer", "ByBlock",
         };
 
+        /// <summary>Thông báo khi block chọn không nằm trong Model Space.</summary>
+        internal const string ModelSpaceOnly = "Select a panel in Model Space, then Build 3D.";
+
+        /// <summary>Đối tượng thuộc Model Space của <paramref name="db"/>. Chỉ đọc, không cần LockDocument.</summary>
+        internal static bool IsInModelSpace(Database db, ObjectId id)
+        {
+            using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
+                return tr.GetObject(id, OpenMode.ForRead).OwnerId == SymbolUtilityServices.GetBlockModelSpaceId(db);
+        }
+
         /// <summary>Drawing đang mở là file 3D (layer <see cref="SourceLayer"/> có block reference 2D nguồn). Chỉ đọc, không cần LockDocument.</summary>
         public static bool HoldsSourceReference(Database db)
         {
@@ -63,6 +73,7 @@ namespace MCG_3DPanel.Commands
 
                 if (!copy.TryGetObjectId(handle, out ObjectId refId) || refId.IsNull || refId.IsErased)
                     throw new InvalidOperationException("the panel is not in the saved file. Save the drawing and try again");
+                if (!IsInModelSpace(copy, refId)) throw new InvalidOperationException(ModelSpaceOnly);   // ErasePaperSpace sẽ xoá chính reference này
 
                 EraseModelSpaceExcept(copy, refId);
                 ErasePaperSpace(copy);
@@ -71,6 +82,7 @@ namespace MCG_3DPanel.Commands
                 if (carry != null) WriteCarry(copy, refId, carry);
                 PurgeUnused(copy);
 
+                copy.TileMode = true;   // TILEMODE=1: file nguồn lưu ở layout thì file 3D vẫn mở trên Model Space, không phải trang trống
                 copy.SaveAs(temp, DwgVersion.Current);
                 DisposeQuietly(ref copy);   // nhả file tạm trước khi Move
                 File.Move(temp, path, false);   // đích đã có ⇒ ném, không ghi đè
@@ -213,6 +225,13 @@ namespace MCG_3DPanel.Commands
             {
                 return $"Could not remove {Path.GetFileName(path)}: {ex.Message}. Delete it by hand.";
             }
+        }
+
+        /// <summary>Build hoặc Update đã thành công: xoá .bak do lần lưu này sinh ra (bản trước khi dựng, chưa có solid), kẻo lần Update sau dời nó thành
+        /// bản sao có giờ cạnh bản thật. <paramref name="ownBak"/> như ở <see cref="Discard"/>: false ⇒ .bak không phải của lần này, giữ nguyên.</summary>
+        public static void DeleteOwnBak(string path, bool ownBak)
+        {
+            if (ownBak) DeleteQuietly(Path.ChangeExtension(path, ".bak"));
         }
 
         internal static void DeleteQuietly(string path)
