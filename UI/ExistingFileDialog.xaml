@@ -1,0 +1,29 @@
+<Window x:Class="MCG_3DPanel.UI.ExistingFileDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="MCG 3D Panel"
+        Width="380"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontSize="11">
+    <!-- File 3D đích đã tồn tại: 1 lựa chọn cho cả lô. Không bao giờ ghi đè (spec 2026-11-06). -->
+    <Window.Resources>
+        <ResourceDictionary Source="PanelStyles.xaml"/>
+    </Window.Resources>
+
+    <Border Style="{StaticResource DialogBodyStyle}">
+        <StackPanel>
+            <TextBlock Text="These panels already have a 3D file:" Style="{StaticResource DialogTextStyle}"/>
+            <ScrollViewer Style="{StaticResource DialogListStyle}">
+                <ItemsControl x:Name="ListFiles"/>
+            </ScrollViewer>
+            <StackPanel Style="{StaticResource DialogButtonRowStyle}">
+                <Button Content="Open" IsDefault="True" Style="{StaticResource DialogPrimaryButtonStyle}" Click="BtnOpen_Click"/>
+                <Button Content="New copy" Style="{StaticResource DialogButtonStyle}" Click="BtnNewCopy_Click"/>
+                <Button Content="Cancel" IsCancel="True" Style="{StaticResource DialogButtonStyle}"/>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

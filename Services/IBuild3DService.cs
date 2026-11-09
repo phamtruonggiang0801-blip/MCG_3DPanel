@@ -55,6 +55,8 @@ namespace MCG_3DPanel.Services
     public class BuiltSolid
     {
         public ObjectId SolidId { get; set; }
+        /// <summary>Handle đã lưu trong MCG3D_PANEL — hiện trên dòng Deleted đọc từ file (solid đã xoá ⇒ <see cref="SolidId"/> null); Build mới để null.</summary>
+        public string StoredHandle { get; set; }
         /// <summary>Part 2D nguồn; null với solid sinh thêm (Collar Plate, Bracket B đầu HP).</summary>
         public PanelPart Part { get; set; }
         /// <summary>Loại khi <see cref="Part"/> null: "CollarPlate" / "HpEndBracketB" / "GirderFlange" / "TrippingBracket".</summary>

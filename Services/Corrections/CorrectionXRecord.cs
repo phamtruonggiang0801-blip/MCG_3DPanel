@@ -14,6 +14,7 @@ namespace MCG_3DPanel.Services.Corrections
     {
         public const string CorrectionsKey = "MCG3D_CORRECTIONS";   // trên BTR 2D nguồn
         public const string NamesKey = "MCG3D_NAMES";               // trên BTR 2D nguồn — tên người dùng (tab Naming)
+        public const string PanelKey = "MCG3D_PANEL";               // trên BTR 3D — dữ liệu panel để mở lại file vẫn điền được tab
         private const int CHUNK = 250;
 
         public static string Read(Transaction tr, ObjectId btrId, string key)

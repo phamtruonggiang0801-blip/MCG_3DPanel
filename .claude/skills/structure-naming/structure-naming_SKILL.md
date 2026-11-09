@@ -37,8 +37,8 @@ Nguồn: `CAS.dump.json` panel 7D-16C — người vẽ ghi Text cạnh mặt c�
   khi test thật).
 
 ## UI (`UI/PanelNamingView`)
-- Select panel… = chỉ phân loại 2D (`PanelCommands.ClassifyOnly`); sau Build/rebuild tab tự nạp (`BuildResult.ClassifiedParts`).
-- Highlight: solid 3D nếu panel đã Keep, polyline 2D nếu chưa/bỏ 3D. Enter = đổi tên cả vùng chọn; rời ô = chỉ dòng đó.
+- Tab tự nạp theo file 3D đang active (nút Select panel… đã bỏ, xem mục cuối) và sau Build/rebuild (`BuildResult.ClassifiedParts`).
+- Highlight: solid 3D của file 3D đang mở (không còn Keep; xem mục "Build 3D tách file" cuối skill). Enter = đổi tên cả vùng chọn; rời ô = chỉ dòng đó.
 - ux-guardrails: dòng của drawing khác không ghi gì và báo tên drawing; checklist mục G.
 
 ## Revision 1 (kỹ sư 2026-11-05)
@@ -63,3 +63,18 @@ Nguồn: `CAS.dump.json` panel 7D-16C — người vẽ ghi Text cạnh mặt c�
 - Bỏ nút **Select panel…** (và đường phân loại-2D-only `ClassifyOnly`/`FromBlock`), nút **Copy** trên thanh công cụ
   (Copy vẫn ở chuột phải + Ctrl+C) và ô **Position**: tab chỉ nạp panel từ Build 3D / rebuild, đánh số theo
   Position của **tab Input** (`PositionProvider`); mở tab Naming sau khi đổi Position ⇒ đánh số lại (`OnActivated`).
+
+## Build 3D tách file (kỹ sư 2026-11-06, nhánh `feat/separate-3d-drawing`)
+- **Build 3D** tạo file riêng `<tên block panel>_3D.dwg` cạnh file nguồn (`Commands/Panel3DFile.cs`, `Panel3DPath.cs`):
+  đọc file nguồn ĐÃ LƯU từ đĩa bằng `Database.ReadDwgFile` (giữ handle; `Wblock()` làm mất hết, spike 3631/3631 so với 0),
+  giữ block 2D của panel đó trên layer đóng băng/khoá `MCG3D_2D_SOURCE`, lưu rồi mở làm file làm việc và dựng ở đó.
+  File nguồn không bị ghi. Nguồn chưa lưu / có thay đổi ⇒ dừng với `Save this drawing first, then Build 3D.`
+- `SourceKey` = `{handle 2D}#{i}` nên tên, Merge/Split/Deleted và correction đi theo file; mọi thứ nằm trong XRecord
+  trên block (`MCG3D_NAMES`, correction, và `MCG3D_PANEL` = Input, Position, handle solid/loại/khoá — `PanelMetaJson`).
+- Mở file 3D (hoặc palette mở) ⇒ tab Result/Naming tự nạp từ `MCG3D_PANEL` + phân loại chỉ-đọc, KHÔNG ghi gì, đóng file
+  không hỏi Save. Solid bị xoá tay ⇒ dòng bị bỏ, rebuild đem lại. Block 3D cũ không có `MCG3D_PANEL` ⇒ không liệt kê.
+- File đích đã có (kể cả đang mở) ⇒ KHÔNG ghi đè: một hộp thoại Open / New copy (`_3D_2.dwg`…) / Cancel. Panel không ra
+  solid ⇒ xoá file. Nhiều panel ⇒ mỗi panel một file, panel lỗi không dừng các panel khác.
+- Trong file 3D, nút Input thành **Rebuild 3D**: áp ô nhập lên panel qua rebuild thường, giữ correction và tên.
+- Đã xác nhận bằng spike trong AutoCAD: handle giữ nguyên, mở file từ palette và dựng tiếp được, phân loại đọc được
+  tham chiếu trên layer đóng băng (332/332). Luồng Build đầy đủ CHƯA chạy end-to-end trong AutoCAD.
