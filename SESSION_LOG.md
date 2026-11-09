@@ -1,5 +1,13 @@
 # SESSION LOG — MCG_3DPanel
 
+## Session 2026-11-06 — Build 3D tách file `<panel>_3D.dwg`, bỏ Keep, bỏ spike (nhánh `feat/separate-3d-drawing`)
+
+- Build 3D tạo file riêng `<panel>_3D.dwg` cạnh file nguồn (đọc file nguồn đã lưu từ đĩa bằng `ReadDwgFile`), mở làm file làm việc; file nguồn không bị ghi. Nguồn chưa lưu ⇒ `Save this drawing first, then Build 3D.`
+- Bỏ Keep. Dữ liệu panel lưu trong XRecord `MCG3D_PANEL` (`PanelMetaJson`); mở file 3D thì tab Result/Naming tự nạp, không ghi gì. File đích đã có ⇒ hộp thoại Open / New copy / Cancel, không ghi đè. Trong file 3D nút thành Rebuild 3D.
+- Spike xác nhận trong AutoCAD: `ReadDwgFile` giữ handle (3631/3631) trong khi `Wblock()` giữ 0; mở file từ palette và dựng tiếp được; phân loại đọc được tham chiếu trên layer đóng băng (332/332). Đã xoá `Commands/Spike3DFile.cs` và nút Spike.
+- Tài liệu: `docs/ux-checklist.md` (viết lại A1-A3, B3, G1/G2/G6/G7/G13/G15/G16, H2; thêm mục I), skill `ux-guardrails` (tab theo document active; luật không dùng `Editor` cũ sau khi document đổi, từ crash 2026-11-06), skill `structure-naming`.
+- **Luồng Build CHƯA được chạy end to end trong AutoCAD** (chỉ spike từng bước và unit test). Cần kỹ sư chạy các hàng mục I của checklist.
+
 ## Session 2026-11-06 — Cột Kind GE/GB, Closed Plate theo thân tấm, GE mốc Closed Plate (nhánh `feat/kind-ge-gb`)
 
 - Kind tab Result: `GE` / `GB` / `GE + GB`; correction chữ cũ vẫn đọc được (`ShortKind`).

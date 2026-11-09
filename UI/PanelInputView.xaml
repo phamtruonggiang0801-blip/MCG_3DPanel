@@ -64,8 +64,6 @@
                                       ToolTip="Standard HP table. Thickness is read from the plan geometry; this only sets the profile height (b)."/>
                         </Grid>
 
-                        <Button x:Name="BtnSpike" Content="Spike" Click="BtnSpike_Click" Margin="0,4,0,0"
-                                ToolTip="TEMPORARY spike for the separate 3D drawing - will be removed"/>
                         <Button x:Name="BtnBuild" Content="Build 3D" Style="{StaticResource PrimaryButtonStyle}"
                                 Click="BtnBuild_Click" Margin="0,4,0,0"
                                 ToolTip="Pick the panel block and build its 3D solid model"/>

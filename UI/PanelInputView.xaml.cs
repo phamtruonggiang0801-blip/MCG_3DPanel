@@ -39,14 +39,6 @@ namespace MCG_3DPanel.UI
             public override string ToString() => MCG_3DPanel.Models.PanelInput.FormatSpec(Spec);
         }
 
-        // TẠM: nút Spike (xoá ở Task 7)
-        private void BtnSpike_Click(object sender, RoutedEventArgs e) 
-        {
-            // Không để exception nào thoát khỏi handler (AutoCAD sẽ chết).
-            try { Spike3DFile.Run((m, err) => SetStatus(m, err)); }
-            catch (System.Exception ex) { try { SetStatus("Spike failed: " + ex.Message, true); } catch { } }
-        }
-
         /// <summary>Drawing đang active có panel 3D ⇒ ô nhập hiện giá trị đã lưu của panel và nút thành "Rebuild 3D";
         /// null (drawing 2D) ⇒ nút về "Build 3D", ô giữ nguyên người dùng đã gõ. Gán ô qua code không phải người dùng sửa
         /// (không có handler theo dõi sửa). Không ném.</summary>
@@ -193,7 +185,7 @@ namespace MCG_3DPanel.UI
             else { summary = $"No solids were built (check layers/inputs){tail}."; error = true; }
             SetStatus(summary, error);
 
-            // Chỉ Open / không dựng được gì: giữ nguyên dòng đang có trên các tab (có thể là của file vừa chuyển sang).
+            // Chỉ Open / không dựng được gì: không có build nào để đẩy vào tab. Tab tự theo document đang active (file vừa chuyển sang tự nạp dòng của nó), nên không đụng.
             if (builds.Count == 0) return;
             try { Built?.Invoke(builds); }
             catch (System.Exception ex)

@@ -15,9 +15,9 @@ built in a second drawing.
 
 | # | Steps | Expected |
 |---|---|---|
-| A1 | Build panel P1 in drawing A. Open a new drawing B, copy in panel P2 and build it. Click rows and ⌖. | B's rows highlight. ⌖ zooms. No error. |
-| A2 | After A1, switch back to drawing A without building. | The status bar says the rows belong to drawing B. Nothing stays highlighted in B. |
-| A3 | After A2, switch to B again. | The normal summary returns, and the selected row is highlighted again without clicking. |
+| A1 | Build 3D panel P1 from drawing A (saved), then build panel P2 from saved drawing B. Click rows and ⌖ in each 3D file. | Each file shows only its own panel. Highlight and ⌖ work in the active file. No error. |
+| A2 | After A1, switch to drawing A (the 2D source). | The Result and Naming tabs show no rows (A has no 3D panel). Nothing stays highlighted in the other file. |
+| A3 | After A2, switch back to a 3D file. | Its rows return by themselves (tabs follow the active drawing), and the selected row is highlighted again without clicking. |
 | A4 | Close the drawing whose rows are listed. | The rows disappear and the status says "Drawing closed…". AutoCAD does not crash. |
 | A5 | From another drawing, change Tripping / ⇄ / Sniped End / Delete / Clear Correction on a row. | The status says "This panel is in drawing X — switch to it to change P". Nothing is saved, and the control returns to its real state. |
 | A6 | Close the active drawing while one of its rows is highlighted, then click a row of another open drawing. | No crash. The status explains what happened. |
@@ -29,7 +29,7 @@ built in a second drawing.
 | B1 | Build, then change a correction (Tripping On, ⇄, Sniped End). | Exactly one rebuild. The same row stays selected and highlighted, and the view does **not** zoom. |
 | B6 | Focus the Tripping dropdown, press Esc, then press ↑ / ↓, or scroll the mouse wheel over it. | Nothing changes and there is no rebuild. The wheel scrolls the grid. |
 | B2 | Ctrl+Z after a rebuild, then click a row. | The status says "Solid no longer exists…". No exception. |
-| B3 | Save, close, reopen the drawing. | The Result and Naming tabs are empty; Build 3D on an inserted 2D block brings back corrections and names. |
+| B3 | Save the 3D file, close it, reopen it (File > Open, or Open in the build dialog). | The Result and Naming tabs fill by themselves, with no Load and no rebuild. Corrections and names are intact. The file closes with no Save prompt. |
 | B4 | Build several panels at once. | The Panel column is visible. Every row highlights in its own block. |
 | B5 | Delete a row (right-click), then Restore it. | The row turns grey/italic, then comes back after the rebuild. |
 
@@ -78,26 +78,26 @@ built in a second drawing.
 
 | # | Steps | Expected |
 |---|---|---|
-| G1 | Build 3D (Keep) a panel, then open the Naming tab. | One row per Web/HP line and per flat bar, names T#/L#/HT#/HL#/BS; clicking a row highlights every piece of the line. |
-| G2 | Rename a line (type `T6a`, Enter), Ctrl+S, close and reopen the drawing, insert the 2D block, Build 3D (Keep) again. | The name `T6a` is still there (blue); the other numbers are unchanged. |
+| G1 | Build 3D a panel (it opens as `<panel>_3D.dwg`), then open the Naming tab. | One row per Web/HP line and per flat bar, names T#/L#/HT#/HL#/BS; clicking a row highlights every piece of the line. |
+| G2 | Rename a line (type `T6a`, Enter), Ctrl+S, close and reopen the 3D file. | The name `T6a` is still there (blue); the other numbers are unchanged. |
 | G3 | Select 12 BS rows, type `BS1` on one of them and press Enter. | All 12 rows get `BS1`; the status shows the count. |
 | G4 | Right-click → Reset to auto on renamed rows. | They return to the generated names (black). |
 | G5 | Change Position to Starboard. | L/HL numbers reverse (top → bottom); T/HT stay; your own names stay. |
-| G6 | Select panel in drawing A, switch to drawing B, rename a row. | Nothing is saved; the status names drawing A. |
-| G7 | Build 3D (Keep), then open Naming; then change a Kind on Result (rebuild). | Naming lists the built panel and highlights its 3D solids; after the rebuild the rows and your names are still there. |
+| G6 | With 3D file A and 3D file B open, switch to B and rename a row. | Only B changes; A is untouched. Switching back to A shows its own names. |
+| G7 | Build 3D, then open Naming; then change a Kind on Result (rebuild). | Naming lists the built panel and highlights its 3D solids; after the rebuild the rows and your names are still there. |
 | G8 | Type a name, then click another row without pressing Enter. | Only the edited row is renamed. |
 | G9 | Look at T1 and a web without flange, an HP and a BS row. | `T1 WEB 374x6.0/FLANGE 100x20.0`, `T2 WEB 374x6.0` (if no flange), `HL1 HP 120x6.0`, `BS FB 80x6.0`; only Panel/Name/Kind columns. |
 | G10 | Edit `T7 WEB …` to `T6a WEB …` (or just `T6a`), Enter. | Name becomes `T6a WEB 374x6.0/FLANGE …`; the size is never doubled. |
 | G11 | Select 2 stray rows → right-click Del Name. Then Restore deleted names (N). | Rows disappear and the rest renumber; Restore brings them back and renumbers again; survives Ctrl+S + reopen. |
 | G12 | A BS line split far apart (e.g. 947 + 8428 on one axis). | One row. |
-| G13 | Select panel… with an invalid value on the Input tab. | A message asks to fix the Input tab; nothing is selected. |
+| G13 | Click Build 3D with an invalid value on the Input tab. | A message asks to fix the Input tab; no file is created. |
 | G14 | Look at the columns. | Name (editable, e.g. `T1`) and Size (read-only, e.g. `WEB 374x6.0/FLANGE 100x20.0`) are separate; Copy pastes them in separate columns. |
-| G15 | Click a Web row that has a flange (2D and after Build/Keep). | The web and its flange(s) highlight together. |
-| G16 | Insert the 2D block, Build 3D (Keep), open Naming. Select T3 and T4 → right-click Merge. Then Unmerge. | One row `T3`, Kind `Web (merged)`, T5 becomes T4…; Unmerge splits and renumbers back. Merging Web with HP, or T with L, is refused with a message. Survives Ctrl+S + reopen (insert the block and Build 3D again). |
+| G15 | Click a Web row that has a flange (right after Build, and after reopening the 3D file). | The web and its flange(s) highlight together. |
+| G16 | In a 3D file, open Naming. Select T3 and T4 → right-click Merge. Then Unmerge. | One row `T3`, Kind `Web (merged)`, T5 becomes T4…; Unmerge splits and renumbers back. Merging Web with HP, or T with L, is refused with a message. Survives Ctrl+S + reopen of the 3D file. |
 | G17 | Right-click a line of 2+ pieces that was never merged → Unmerge. | The line splits into one row per piece and everything renumbers; the status says Unmerged. Unmerge on a single-piece line is disabled with a tooltip. |
 | G18 | After G17, right-click ONE of the split rows → Reset to auto. | All pieces of that automatic line rejoin into one row (not only the clicked piece); the status says the pieces rejoined. Merge a+b of a split line, Reset the merged row, then Unmerge: you get separate rows, never a merged one. |
 | G19 | On a split row: Del Name, then Restore deleted names. | The row disappears and the rest renumber; Restore brings the piece back as its own split row, and numbers update again. |
-| G20 | Result tab → Export dropdown, with the STEP item disabled (no 3D built or another drawing). | CSV works; STEP is greyed with a tooltip saying why; clicking it does nothing and no error appears. |
+| G20 | Result tab → Export dropdown, with the STEP item disabled (active drawing has no 3D panel). | CSV works; STEP is greyed with a tooltip saying why; clicking it does nothing and no error appears. |
 | G21 | Pick: drag right-to-left around one Web in an isometric view, not touching any top plate or flange edge. | Only that Web is selected; the top plate and flanges are not. |
 
 ## H. Pick in drawing / Esc
@@ -105,7 +105,7 @@ built in a second drawing.
 | # | Steps | Expected |
 |---|---|---|
 | H1 | Result tab → Pick → click 3 solids inside the 3D block, Enter. | The 3 rows are selected (scrolled to) and highlighted; the selection stays after Enter. |
-| H2 | Naming tab (2D panel from Select panel) → Pick → click a web polyline, then its flange. | The web line row is selected both times; web + flange highlight. |
+| H2 | Naming tab (3D file) → Pick → click a web solid, then its flange. | The web line row is selected both times; web + flange highlight. |
 | H3 | Pick an object with no row (bracket on Naming, top plate…). | Nothing happens, no message; picking continues. |
 | H4 | During Pick press Esc. | Picking ends; CAD highlight and grid selection (both tabs) are cleared. |
 | H5 | Select rows, click in the drawing area, press Esc (no command). | Highlight off in CAD, no row selected on either tab. |
@@ -121,3 +121,21 @@ built in a second drawing.
 | H11 | Pick → click empty space and drag left→right over a few solids/lines, then right→left. | Window adds only objects fully inside; Crossing adds objects touching the box. Works in plan and in a rotated 3D view. Diagonal members may be over-selected by Crossing (bounding box). |
 | H12 | During Pick: Shift + click a selected object; Shift + drag a window; type R, click, then A, click. | Shift (or Remove mode) unselects those rows and their highlight; A returns to adding. Shift on a row that is not selected does nothing. |
 | H13 | Turn Ortho (F8) and OSnap (F3) on, set LASTPOINT far from the panel (e.g. draw a line at 0,0). Pick → hold Shift, click empty space, drag. | The window starts exactly where you clicked (no jump to 0,0), corners don't snap; after Enter/Esc, Ortho, OSnap and Shift-override are back as before. |
+
+## I. Separate 3D drawing (2026-11-06)
+
+| # | Steps | Expected |
+|---|---|---|
+| I1 | Save the 2D drawing, run Build 3D on one panel, then check the source drawing. | `<panel>_3D.dwg` opens as the active drawing and the source is not modified: no `*` in its tab, no Save prompt on close, no new blocks or layers. |
+| I2 | Make a change in the 2D drawing without saving (or use a drawing never saved), then click Build 3D. | Build stops before anything is created. The status says `Save this drawing first, then Build 3D.` |
+| I3 | Save the 2D drawing, then only zoom or pan, then click Build 3D. | The stop of I2 does NOT appear (view changes do not count as unsaved changes). The build runs. |
+| I4 | Select 3 panels in one Build 3D. | One file per panel, each open; the last one is active. A panel that fails or builds nothing does not stop the others, and the status counts them. |
+| I5 | Build 3D a panel whose `<panel>_3D.dwg` already exists. | One dialog lists those panels with Open, New copy and Cancel. No file is overwritten. |
+| I6 | In I5 press Open. | The existing files open (or switch to them if already open); no build for those panels, and their rows fill the tabs. |
+| I7 | In I5 press New copy. | The panel builds into `<panel>_3D_2.dwg` (next free number). Cancel builds nothing and creates nothing. |
+| I8 | Keep a `<panel>_3D.dwg` open in AutoCAD, then Build 3D the same panel and press Open. | AutoCAD switches to the open file. It is not opened twice and no error appears. |
+| I9 | Save and close a 3D file, then reopen it from the Start tab or File > Open. | Result and Naming fill by themselves. Close it again without changes: no Save prompt. |
+| I10 | In a 3D file, erase one solid by hand (ERASE), then reopen the file or switch away and back. | The row is dropped and the status says how many solids are missing. A rebuild brings the solid back. |
+| I11 | In a 3D file with corrections and renamed lines, change a value on the Input tab (the button reads Rebuild 3D) and press it. | The same file rebuilds with no selection prompt and no new file. Corrections and names stay. A failed rebuild puts the old Input values back and the status says why. |
+| I12 | Build 3D a panel that produces no solids (wrong layers). | No file stays on disk, the status says the panel built nothing, and the other panels still build. |
+| I13 | Open an old 3D block made before 2026-11-06 (no panel data). | It is not listed, and the status says to Build it again. |

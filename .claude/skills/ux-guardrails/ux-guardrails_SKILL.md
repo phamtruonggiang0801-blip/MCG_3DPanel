@@ -17,7 +17,8 @@ AutoCAD có NHIỀU drawing mở cùng lúc; palette + static là DÙNG CHUNG.
   sau này — Database đã free ⇒ crash), lấy+xoá state TRƯỚC khi LockDocument, dọn trên ĐÚNG drawing chủ (`FindDocument(db)`),
   luôn xoá kể cả khi lỗi, và được dọn ở `DocumentToBeDeactivated` / `DocumentToBeDestroyed`.
 - `UI/PaletteManager.cs` đã nối: `DocumentToBeDeactivated` (tắt highlight/marker), `DocumentBecameCurrent`
-  (`PanelResultView.OnDocumentActivated` — báo bảng thuộc drawing khác), `DocumentToBeDestroyed` (bỏ build).
+  (tab Result/Naming **theo document đang active**: file 3D hiện đúng dòng của nó, drawing 2D không có dòng; không còn
+  thông báo "bảng thuộc drawing khác"), `DocumentToBeDestroyed` (bỏ build, xoá dòng của drawing đóng).
 - Mẫu đã đúng: `PanelCommands.RequestRebuild`, `StepExport.Request` (lọc theo `Database`).
 
 ⚠️ Bài học: build 716C (drawing A) → drawing mới build 716P ⇒ `_last` (id của A) mở bằng transaction của B
@@ -68,3 +69,13 @@ Gửi `SendStringToExecute` lúc đó ⇒ chuỗi lệnh bị gõ VÀO prompt v�
 theo LASTPOINT (thường 0,0) ⇒ góc khung nhảy về gốc; OSnap/Ortho làm lệch góc. **Luật:** tạm tắt TEMPOVERRIDES,
 ORTHOMODE, OSMODE (bit 16384) trong lúc chọn, khoá document khi đổi, trả lại ở `finally`, báo lên dòng lệnh nếu không
 trả được (`CadPick.SuspendPointAids`). Checklist H13.
+
+## Editor/Document đổi giữa chừng, và exception trong sự kiện (lỗi crash 2026-11-06)
+Build 3D mở file 3D mới ⇒ document active đổi trong lúc code vẫn cầm `Editor` của document cũ ⇒ dùng `Editor` đó sau khi
+đổi ⇒ AutoCAD crash. Exception thoát khỏi handler sự kiện document / palette cũng làm AutoCAD chết.
+**Luật:**
+- Không bao giờ dùng `Editor` (hay `Document`) đã lưu lại sau khi document active có thể đã đổi. Mỗi lần dùng, lấy lại
+  `Application.DocumentManager.MdiActiveDocument.Editor` (kiểm null).
+- Không để exception nào thoát khỏi sự kiện document (`DocumentBecameCurrent`, `DocumentToBeDestroyed`…) hoặc handler
+  nút/palette: bọc `try/catch` ngoài cùng; lỗi do người dùng gây ra ⇒ báo `SetStatus(..., error: true)`, lỗi dọn dẹp ⇒
+  `Debug.WriteLine`. Checklist mục I.
