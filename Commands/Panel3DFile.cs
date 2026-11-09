@@ -82,7 +82,9 @@ namespace MCG_3DPanel.Commands
                 if (carry != null) WriteCarry(copy, refId, carry);
                 PurgeUnused(copy);
 
-                copy.TileMode = true;   // TILEMODE=1: file nguồn lưu ở layout thì file 3D vẫn mở trên Model Space, không phải trang trống
+                // TILEMODE=1: file nguồn lưu ở layout thì file 3D vẫn mở trên Model Space, không phải trang trống. Chỉ để tiện: lỗi thì bỏ qua, không được làm hỏng Build.
+                try { copy.TileMode = true; }
+                catch (System.Exception ex) { Debug.WriteLine($"[Panel3DFile] TileMode: {ex.Message}"); }
                 copy.SaveAs(temp, DwgVersion.Current);
                 DisposeQuietly(ref copy);   // nhả file tạm trước khi Move
                 File.Move(temp, path, false);   // đích đã có ⇒ ném, không ghi đè
