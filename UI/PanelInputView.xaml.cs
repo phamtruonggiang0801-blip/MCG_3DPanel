@@ -204,15 +204,16 @@ namespace MCG_3DPanel.UI
             var notes = new List<string>();
             if (run.Empty > 0) notes.Add($"{run.Empty} panel(s) built nothing");
             if (run.Failed > 0) notes.Add($"{run.Failed} panel(s) failed, see the command line");
-            notes.AddRange(run.Problems.Select(p => p.TrimEnd('.')));   // câu tổng tự có dấu chấm cuối
+            notes.AddRange(run.Problems);
             string tail = string.Concat(notes.Select(n => " · " + n));
             bool error = run.Failed > 0 || run.Problems.Count > 0;
 
             string summary;
-            if (run.Files > 0) summary = $"Built {run.Solids} solids in {run.Files} 3D file(s){tail}.";
-            else if (run.Opened > 0) summary = $"Opened {run.Opened} existing 3D file(s){tail}.";
-            else if (run.Failed > 0) { summary = $"No 3D file was built{tail}."; error = true; }
-            else { summary = $"No solids were built (check layers/inputs){tail}."; error = true; }
+            if (run.Files > 0) summary = $"Built {run.Solids} solids in {run.Files} 3D file(s){tail}";
+            else if (run.Opened > 0) summary = $"Opened {run.Opened} existing 3D file(s){tail}";
+            else if (run.Failed > 0) { summary = $"No 3D file was built{tail}"; error = true; }
+            else { summary = $"No solids were built (check layers/inputs){tail}"; error = true; }
+            if (!summary.EndsWith(".")) summary += ".";   // note cuối có thể đã tự có dấu chấm
             SetStatus(summary, error);
 
             // Chỉ Open / không dựng được gì: không có build nào để đẩy vào tab. Tab tự theo document đang active (file vừa chuyển sang tự nạp dòng của nó), nên không đụng.
