@@ -38,14 +38,41 @@
     <AcadPath>C:\Program Files\Autodesk\AutoCAD $(AcadYear)</AcadPath>
   </PropertyGroup>
 
-  <!-- Debug: DLL kèm timestamp => NETLOAD nạp lại được mà KHÔNG cần restart AutoCAD. -->
+  <!-- Debug: DLL kèm timestamp => NETLOAD nạp lại được mà KHÔNG cần restart AutoCAD.
+       BuildStamp PHẢI truyền từ dòng lệnh (deploy.bat: -p:BuildStamp=...): WPF dựng thêm project tạm
+       *_wpftmp và ĐÁNH GIÁ LẠI csproj; nếu tự lấy DateTime.Now thì 2 lần đánh giá có thể lệch 1 giây
+       → URI XAML trỏ tới assembly không tồn tại → MCG_Build3DPanel crash 0xC0000005 (2026-11-10:
+       DLL _100422 chứa "/MCG_3DPanel_..._100423;component/UI/PanelInputView.xaml").
+       Thuộc tính global từ dòng lệnh truyền nguyên sang project tạm nên 2 lần trùng nhau.
+       Fallback Now chỉ cho build tay (dotnet build không tham số) — vẫn có thể lệch, dùng deploy.bat.
+       Build nền của IDE (DesignTimeBuild) dùng tên CỐ ĐỊNH: nếu lấy Now, mỗi lần đánh giá ra tên mới →
+       IDE ghi lại obj\Debug\UI\*.g.cs → tự kích hoạt lần đánh giá kế (vòng lặp ~1,5 giây, đã sinh 151.878
+       file *_MarkupCompile.cache) và ghi đè .g.cs ngay giữa lúc deploy.bat đang build. -->
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
-    <AssemblyName>MCG_3DPanel_$([System.DateTime]::Now.ToString('yyyyMMdd_HHmmss'))</AssemblyName>
+    <BuildStamp Condition="'$(BuildStamp)' == '' and '$(DesignTimeBuild)' == 'true'">design</BuildStamp>
+    <!-- Build nền của IDE ghi file trung gian ra obj\Design\, không đụng obj\Debug\ của deploy.bat. -->
+    <IntermediateOutputPath Condition="'$(DesignTimeBuild)' == 'true'">$(BaseIntermediateOutputPath)Design\</IntermediateOutputPath>
+    <BuildStamp Condition="'$(BuildStamp)' == ''">$([System.DateTime]::Now.ToString('yyyyMMdd_HHmmss'))</BuildStamp>
+    <AssemblyName>MCG_3DPanel_$(BuildStamp)</AssemblyName>
   </PropertyGroup>
   <!-- Release: tên ổn định cho bundle autoload. -->
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <AssemblyName>MCG_3DPanel</AssemblyName>
   </PropertyGroup>
+
+  <!-- Chặn DLL hỏng: mọi XAML sinh code (*.g.cs có ";component/") phải trỏ đúng AssemblyName của
+       lần build này. Lệch (IDE ghi đè giữa chừng) ⇒ build FAIL thay vì ra DLL làm AutoCAD crash. -->
+  <Target Name="CheckXamlAssemblyName" BeforeTargets="CoreCompile"
+          Condition="'$(DesignTimeBuild)' != 'true' and !$(MSBuildProjectName.EndsWith('_wpftmp'))">
+    <ItemGroup>
+      <!-- Chỉ file đang được biên dịch (@(Compile)), không quét obj: .g.cs của XAML đã xoá vẫn nằm lại đó. -->
+      <_XamlGen Include="@(Compile)" Condition="$([System.String]::Copy('%(Filename)%(Extension)').EndsWith('.g.cs'))" />
+      <_XamlBad Include="@(_XamlGen)"
+                Condition="$([System.IO.File]::ReadAllText('%(FullPath)').Contains(';component/')) and !$([System.IO.File]::ReadAllText('%(FullPath)').Contains('/$(AssemblyName);'))" />
+    </ItemGroup>
+    <Error Condition="'@(_XamlBad)' != ''"
+           Text="XAML generated code does not match assembly '$(AssemblyName)' (overwritten by another build, e.g. the IDE): @(_XamlBad->'%(Filename)%(Extension)'). Build again with deploy.bat." />
+  </Target>
 
   <!-- Release: deploy NGUYÊN thư mục output + PackageContents.xml vào
        C:\CustomTools\Autocad\MCG_3DPanel\. -->

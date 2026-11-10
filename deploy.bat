@@ -10,8 +10,18 @@ rem  !!! NETLOAD DLL nay PHAI vao AutoCAD 2026 (.NET 8). Nap vao AutoCAD 2023/20
 set "CFG=%~1"
 if "%CFG%"=="" set "CFG=Debug"
 
+rem Tinh timestamp MOT lan, truyen vao MSBuild (xem ghi chu BuildStamp trong csproj).
+rem %date%/%time% phu thuoc locale nen chi bo ky tu phan cach; chi can duy nhat, khong can dinh dang.
+set "STAMP=%date%_%time%"
+set "STAMP=%STAMP:/=%"
+set "STAMP=%STAMP::=%"
+set "STAMP=%STAMP:.=%"
+set "STAMP=%STAMP:,=%"
+set "STAMP=%STAMP:-=%"
+set "STAMP=%STAMP: =%"
+
 echo === Build MCG_3DPanel (%CFG%) ===
-dotnet build -c %CFG% "%~dp0MCG_3DPanel.csproj"
+dotnet build -c %CFG% "%~dp0MCG_3DPanel.csproj" -p:BuildStamp=%STAMP%
 if errorlevel 1 (
     echo.
     echo *** BUILD THAT BAI *** — xem loi CS o tren.
