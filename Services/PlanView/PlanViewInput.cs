@@ -7,6 +7,8 @@ namespace MCG_3DPanel.Services.PlanView
     /// <summary>1 đoạn thanh còn sống (từ tab Naming), toạ độ block 2D. Kind "Web" | "HP" | "FB" | "Flange"; Dir "T" | "L".</summary>
     public sealed class PvMember
     {
+        /// <summary>Số tuyến (dòng tab Naming); đoạn của tuyến gộp chung 1 số. Nhãn: 1 cái mỗi tuyến (nhiều tuyến cùng "BS").</summary>
+        public int Line { get; set; }
         public string Name { get; set; }
         public string Kind { get; set; }
         public string Dir { get; set; }
