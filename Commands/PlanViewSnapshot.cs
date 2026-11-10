@@ -108,6 +108,7 @@ namespace MCG_3DPanel.Commands
             {
                 if (!(tr.GetObject(id, OpenMode.ForRead) is BlockReference br)) continue;
                 var btr = (BlockTableRecord)tr.GetObject(br.BlockTableRecord, OpenMode.ForRead);
+                if (btr.Name.EndsWith("_Top Plate", StringComparison.Ordinal) && input.Cog == null) ReadCog(tr, btr, br.BlockTransform, input);
                 string source = btr.Name.EndsWith("_Structure", StringComparison.Ordinal) ? "Structure"
                               : btr.Name.EndsWith("_Lashing Hole", StringComparison.Ordinal) ? "LashingHole" : null;
                 if (source == null) continue;
@@ -134,10 +135,11 @@ namespace MCG_3DPanel.Commands
                             Oblique = blk1.Equals("_Oblique", StringComparison.OrdinalIgnoreCase) && blk2.Equals("_Oblique", StringComparison.OrdinalIgnoreCase),
                         });
                     }
-                    else if (source == "LashingHole" && input.Lashing == null && ent is Circle c)
+                    else if (source == "LashingHole" && ent is Circle c)
                     {
                         Point3d pc = c.Center.TransformBy(xf);
-                        input.Lashing = new PvLashing { Diameter = 2 * c.Radius * Math.Abs(br.ScaleFactors.X), X = pc.X, Y = pc.Y };
+                        if (input.Lashing == null) input.Lashing = new PvLashing { Diameter = 2 * c.Radius * Math.Abs(br.ScaleFactors.X), X = pc.X, Y = pc.Y };
+                        input.Lashing.Holes.Add((pc.X, pc.Y));   // mọi lỗ: chọn lỗ ghi Ø + hàng/cột lỗ cho kích thước cục bộ
                     }
                 }
             }
@@ -225,6 +227,23 @@ namespace MCG_3DPanel.Commands
             }
             catch (Autodesk.AutoCAD.Runtime.Exception) { }
             return null;
+        }
+
+        /// <summary>Block "COG" đầu tiên trong &lt;panel&gt;_Top Plate: tâm (hệ block 2D) + bán kính vòng tròn của block × scale.</summary>
+        private static void ReadCog(Transaction tr, BlockTableRecord topPlate, Matrix3d xf, PlanViewInput input)
+        {
+            foreach (ObjectId id in topPlate)
+            {
+                if (!(tr.GetObject(id, OpenMode.ForRead) is BlockReference cog)) continue;
+                var def = (BlockTableRecord)tr.GetObject(cog.BlockTableRecord, OpenMode.ForRead);
+                if (!string.Equals(def.Name, "COG", StringComparison.OrdinalIgnoreCase)) continue;
+                double r = 0;
+                foreach (ObjectId eid in def)
+                    if (tr.GetObject(eid, OpenMode.ForRead) is Circle c) { r = c.Radius * Math.Abs(cog.ScaleFactors.X); break; }
+                Point3d p = cog.Position.TransformBy(xf);
+                input.Cog = (p.X, p.Y, r);
+                return;
+            }
         }
 
         private static string NameOf(Transaction tr, ObjectId id)

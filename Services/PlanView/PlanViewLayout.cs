@@ -29,6 +29,9 @@ namespace MCG_3DPanel.Services.PlanView
         public const double LashRightMargin = 45.6;    // tấm rộng ⇒ dời trái để chừa lề phải
         public const double LashChainLeft = 8.3;       // chuỗi kích thước dọc: trái mép trái tấm
         public const double LashChainTop = 9.6;        // chuỗi kích thước ngang: trên mép trên tấm
+        public const double LashCogRight = 10.4, LashCogTop = 20.4;   // kích thước COG từ góc (mép phải, y 0): dọc bên phải, ngang chuỗi ngoài
+        public const double DiaPickX = 0.026, DiaPickY = 0.167;      // Ø lỗ: lỗ gần (tâm + 2.6% bề rộng, đáy + 16.7% chiều cao) — tờ 7D-17P
+        public const double DiaAngleDeg = 28;                         // hướng chữ Ø (tờ tay)
         public const double MdBelowTop = 50.3;         // M.D1/M.D2 dưới mép trên tấm
         public const double MdFirstFromCentre = 0.2141; // × bề rộng tấm (M.D1 trái tâm)
         public const double MdSpacing = 0.4067;        // × bề rộng tấm (M.D1 → M.D2)

@@ -70,6 +70,8 @@ namespace MCG_3DPanel.Services.PlanView
         public double Diameter { get; set; }
         public double X { get; set; }
         public double Y { get; set; }
+        /// <summary>Tâm mọi lỗ lashing (hệ block) — chọn lỗ ghi Ø và cột/hàng lỗ kế tiếp cho kích thước cục bộ. Rỗng ⇒ dùng (X, Y).</summary>
+        public List<(double X, double Y)> Holes { get; } = new List<(double X, double Y)>();
     }
 
     /// <summary>Ảnh chụp dữ liệu 1 panel (đọc từ file 3D) — đầu vào của mọi quy tắc Plan View. Toạ độ block 2D.</summary>
@@ -88,5 +90,7 @@ namespace MCG_3DPanel.Services.PlanView
         public PvLashing Lashing { get; set; }
         /// <summary>Bản vẽ có block &lt;panel&gt;_Lashing Hole ⇒ vẽ mặt bằng lỗ lashing + M.D1/M.D2 + tiêu đề của nó.</summary>
         public bool HasLashingHoleBlock { get; set; }
+        /// <summary>Block COG trong &lt;panel&gt;_Top Plate (tâm + bán kính vòng tròn, hệ block); null = không có.</summary>
+        public (double X, double Y, double R)? Cog { get; set; }
     }
 }
