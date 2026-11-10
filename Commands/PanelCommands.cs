@@ -153,7 +153,7 @@ namespace MCG_3DPanel.Commands
                 Panel3DFile.Create(sourceFile, job.RefId, job.Target);
                 created = true;
                 doc = Application.DocumentManager.Open(job.Target, false);
-                BuildResult build = BuildAndSave(doc, job, tag, input, position, ref saving, ref keptBak);
+                BuildResult build = BuildAndSave(doc, job, tag, input, position, sourceFile, ref saving, ref keptBak);
                 if (build.Solids.Count > 0)
                 {
                     Panel3DFile.DeleteOwnBak(job.Target, saving);
@@ -185,7 +185,7 @@ namespace MCG_3DPanel.Commands
         /// <summary>Đưa file đang mở lên active, dựng panel, và lưu nếu có solid. Build không có solid ⇒ chưa lưu gì, người gọi quyết định.
         /// <paramref name="saving"/> = đã dời .bak cũ, .bak đứng ở tên đó từ đây là do lần lưu này sinh ra.
         /// <paramref name="keptBak"/> = tên mới của .bak cũ (null nếu không có), còn đúng cả khi lần lưu sau đó ném.</summary>
-        private static BuildResult BuildAndSave(Document doc, PanelJob job, string tag, PanelInput input, PanelPosition position, ref bool saving, ref string keptBak)
+        private static BuildResult BuildAndSave(Document doc, PanelJob job, string tag, PanelInput input, PanelPosition position, string sourceFile, ref bool saving, ref string keptBak)
         {
             string file = Path.GetFileName(job.Target);
             Activate(doc);
@@ -197,7 +197,7 @@ namespace MCG_3DPanel.Commands
             BuildResult build;
             using (doc.LockDocument())
             {
-                build = BuildOne(db, src2D, input, position, out ClassificationResult cls);
+                build = BuildOne(db, src2D, input, position, sourceFile, out ClassificationResult cls);
                 Say($"\n{LOG_PREFIX} {tag} {cls.PanelBlockName}: {build.SolidCount} solid ({cls.Summary()}). Block: {build.BlockName}\n");
                 // "Không dựng được" = không có solid nào ĐƯỢC DỰNG (kể cả solid đã Delete theo correction —
                 // panel xoá hết solid vẫn là kết quả hợp lệ, còn Restore được).
@@ -272,7 +272,7 @@ namespace MCG_3DPanel.Commands
             try
             {
                 doc = Application.DocumentManager.Open(job.Target, false);
-                build = BuildAndSave(doc, job, tag, carry.Meta.Input, (PanelPosition)carry.Meta.Position, ref saving, ref keptBak);
+                build = BuildAndSave(doc, job, tag, carry.Meta.Input, (PanelPosition)carry.Meta.Position, sourceFile, ref saving, ref keptBak);
             }
             catch (System.Exception ex)
             {
@@ -585,7 +585,7 @@ namespace MCG_3DPanel.Commands
         }
 
         /// <summary>Phân loại (kèm correction tab Result của panel này) + dựng 3D cho 1 block 2D. Cần LockDocument.</summary>
-        internal static BuildResult BuildOne(Database db, ObjectId src2D, PanelInput input, PanelPosition position,
+        internal static BuildResult BuildOne(Database db, ObjectId src2D, PanelInput input, PanelPosition position, string sourcePath,
             out ClassificationResult cls)
         {
             var sw = Stopwatch.StartNew();
@@ -611,6 +611,7 @@ namespace MCG_3DPanel.Commands
             build.SourceTransform = xform;
             build.Input = input;
             build.Position = position;
+            build.SourcePath = sourcePath ?? "";
             WritePanelMeta(db, build);   // SAU khi có Input/Position/SourceRefId — dữ liệu mở-lại-file cần đủ
             build.BuildSeconds = sw.Elapsed.TotalSeconds;
             return build;
@@ -714,7 +715,7 @@ namespace MCG_3DPanel.Commands
             BuildResult neu;
             try
             {
-                neu = BuildOne(db, old.SourceRefId, old.Input, old.Position, out _);
+                neu = BuildOne(db, old.SourceRefId, old.Input, old.Position, old.SourcePath, out _);
             }
             catch (System.Exception ex)
             {
@@ -792,6 +793,7 @@ namespace MCG_3DPanel.Commands
                 {
                     SourceRefHandle = build.SourceRefId.IsNull ? "" : build.SourceRefId.Handle.ToString(),
                     SourceBtrHandle = build.SourceBtrId.IsNull ? "" : build.SourceBtrId.Handle.ToString(),
+                    SourcePath = build.SourcePath ?? "",
                     Input = build.Input,
                     Position = (int)build.Position,
                 };

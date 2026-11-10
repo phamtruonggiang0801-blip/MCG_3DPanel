@@ -33,6 +33,8 @@ namespace MCG_3DPanel.Services
         public Autodesk.AutoCAD.Geometry.Matrix3d SourceTransform { get; set; }
         public PanelInput Input { get; set; }
         public PanelPosition Position { get; set; }
+        /// <summary>Bản vẽ 2D đã dựng ra panel này (PanelMeta.SourcePath) — Create Drawing ghi ngược về đó. "" = chưa biết.</summary>
+        public string SourcePath { get; set; } = "";
         /// <summary>Thời gian phân loại + dựng (giây) — hiện trên thanh trạng thái sau rebuild.</summary>
         public double BuildSeconds { get; set; }
         /// <summary>File report JSON đã ghi sau Build (không tự mở) — null nếu ghi lỗi.</summary>

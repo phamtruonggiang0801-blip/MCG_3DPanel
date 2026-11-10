@@ -41,6 +41,8 @@ namespace MCG_3DPanel.Services.Corrections
     {
         public string SourceRefHandle { get; set; } = "";
         public string SourceBtrHandle { get; set; } = "";
+        /// <summary>Đường dẫn đầy đủ của bản vẽ 2D đã dựng ra file này (Create Drawing ghi ngược về đó). File cũ chưa có ⇒ "".</summary>
+        public string SourcePath { get; set; } = "";
         public PanelInput Input { get; set; } = new PanelInput();
         public int Position { get; set; }
         public List<PanelMetaSolid> Solids { get; set; } = new List<PanelMetaSolid>();
@@ -61,6 +63,7 @@ namespace MCG_3DPanel.Services.Corrections
                 // Hai trường báo cáo, không bắt buộc: thiếu/null ⇒ rỗng, panel vẫn đọc được.
                 m.Warnings = m.Warnings ?? new List<string>();
                 m.NotBuilt = m.NotBuilt ?? new List<PanelMetaNotBuilt>();
+                m.SourcePath = m.SourcePath ?? "";
                 m.Warnings.RemoveAll(w => w == null);
                 m.NotBuilt.RemoveAll(p => p == null);
                 return m;

@@ -170,6 +170,7 @@ namespace MCG_3DPanel.Commands
                     SourceTransform = xform,
                     Input = meta.Input,
                     Position = position,
+                    SourcePath = meta.SourcePath,
                 };
                 build.ClassifiedParts.AddRange(cls.Parts);
                 build.Warnings.AddRange(meta.Warnings);

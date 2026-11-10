@@ -22,6 +22,24 @@ namespace MCG_3DPanel.Tests
             Assert.Equal("GE-HP", b.Solids[0].MergedCodes[0]);
         }
 
+        [Fact] public void FromJson_OldJsonWithoutSourcePath_IsEmpty()
+        {
+            var b = PanelMeta.FromJson("{\"SourceRefHandle\":\"1B\",\"SourceBtrHandle\":\"2C\",\"Input\":{},\"Solids\":[]}");
+            Assert.Equal("", b.SourcePath);
+        }
+
+        [Fact] public void FromJson_NullSourcePath_IsEmpty()
+        {
+            var b = PanelMeta.FromJson("{\"SourceRefHandle\":\"1B\",\"SourceBtrHandle\":\"2C\",\"Input\":{},\"Solids\":[],\"SourcePath\":null}");
+            Assert.Equal("", b.SourcePath);
+        }
+
+        [Fact] public void ToJson_RoundTrips_SourcePath()
+        {
+            var m = new PanelMeta { SourceRefHandle = "1B", SourceBtrHandle = "2C", SourcePath = @"C:\a\7D-17P.dwg" };
+            Assert.Equal(@"C:\a\7D-17P.dwg", PanelMeta.FromJson(m.ToJson()).SourcePath);
+        }
+
         [Theory] [InlineData(null)] [InlineData("")] [InlineData("{bad")] [InlineData("{}")] [InlineData("[]")] [InlineData("{\"Input\":null}")] [InlineData("{\"Solids\":null}")] [InlineData("{\"Solids\":[null]}")]
         public void Meta_Invalid_Null(string json) => Assert.Null(PanelMeta.FromJson(json));
 
