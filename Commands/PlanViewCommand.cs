@@ -74,6 +74,9 @@ namespace MCG_3DPanel.Commands
                 SheetContext sheet = PlanViewWriter.Sheet(db, refH, input, out var assyRef, out string sheetErr) ?? throw new StopException(sheetErr);
                 PlanViewModel model = PlanViewBuilder.Build(input, sheet);
                 var missing = PlanViewWriter.Missing(db, model);
+                var blocks = PlanViewBlockSource.Prepare(db, model.RequiredBlocks);   // chỉ đọc
+                missing.AddRange(blocks.Unavailable.Select(b => "block " + b));
+                if (blocks.Unavailable.Count > 0 && !blocks.TemplateFound) missing.Add("(template not found: " + PlanViewBlockSource.TemplatePath + ")");
                 if (missing.Count > 0)
                     throw new StopException($"Plan View stopped; the 2D drawing is missing: {string.Join(", ", missing)}. Nothing was drawn.");
 
@@ -93,8 +96,10 @@ namespace MCG_3DPanel.Commands
                 // 7, 9. Xoá phần vẽ tay (Replace) + phần tool vẽ lần trước, rồi vẽ lại — TẤT CẢ trong 1 transaction ngoài:
                 // lỗi ở bất kỳ bước nào ⇒ huỷ hết, tờ giữ nguyên như trước khi chạy (review 2026-11-10).
                 int labels, dims;
+                List<string> addedTables;
                 using (Transaction outer = db.TransactionManager.StartTransaction())
                 {
+                    addedTables = PlanViewBlockSource.Apply(db, blocks);
                     if (choice == HandDrawnChoice.Replace) PlanViewWriter.EraseAll(db, hand);
                     if (choice == HandDrawnChoice.KeepBoth) PlanViewWriter.SetKeepMarker(db, btrH, true);
                     PlanViewWriter.EraseOwn(db, btrH);
@@ -102,7 +107,11 @@ namespace MCG_3DPanel.Commands
                     outer.Commit();
                 }
                 Application.UpdateScreen();
-                return $"Plan View: {labels} labels, {dims} dimensions, sections X-X / Y-Y. {Path.GetFileName(path)} is not saved.";
+                string added = "";
+                if (blocks.FromTemplate.Count > 0) added += " Added from CAS.dwt: " + string.Join(", ", blocks.FromTemplate) + ".";
+                if (blocks.Drawn.Count > 0) added += " Drew profile blocks: " + string.Join(", ", blocks.Drawn) + ".";
+                if (addedTables.Count > 0) added += " New with the blocks: " + string.Join(", ", addedTables) + ".";
+                return $"Plan View: {labels} labels, {dims} dimensions, sections X-X / Y-Y.{added} {Path.GetFileName(path)} is not saved.";
             }
         }
 

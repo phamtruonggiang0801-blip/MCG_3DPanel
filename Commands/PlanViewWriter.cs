@@ -58,7 +58,8 @@ namespace MCG_3DPanel.Commands
             }
         }
 
-        /// <summary>Tài nguyên mô hình cần mà bản vẽ chưa có (layer, dim style, text style, block). Rỗng ⇒ ghi được.</summary>
+        /// <summary>Layer / dim style / text style mô hình cần mà bản vẽ chưa có. Rỗng ⇒ ghi được. Block thiếu do
+        /// <see cref="PlanViewBlockSource"/> bổ sung (template CAS.dwt hoặc tự vẽ profile).</summary>
         public static List<string> Missing(Database db, PlanViewModel model)
         {
             var miss = new List<string>();
@@ -70,8 +71,6 @@ namespace MCG_3DPanel.Commands
                 foreach (var s in AllDims(model).Select(d => d.DimStyle).Distinct()) if (!ds.Has(s)) miss.Add("dim style " + s);
                 var ts = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
                 if (!ts.Has(TextStyle)) miss.Add("text style " + TextStyle);
-                var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
-                foreach (var b in model.RequiredBlocks) if (!bt.Has(b)) miss.Add("block " + b);
                 tr.Commit();
             }
             return miss;
