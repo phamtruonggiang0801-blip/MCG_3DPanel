@@ -26,6 +26,8 @@
     <Compile Include="..\..\Commands\PickWindow.cs" Link="PickWindow.cs" />
     <Compile Include="..\..\Services\Corrections\PanelMeta.cs" Link="PanelMeta.cs" />
     <Compile Include="..\..\Commands\Panel3DPath.cs" Link="Panel3DPath.cs" />
+    <!-- Plan View: cả thư mục là C# thuần (spec 2026-11-10-create-drawing-plan-view). -->
+    <Compile Include="..\..\Services\PlanView\*.cs" LinkBase="PlanView" />
   </ItemGroup>
 
   <ItemGroup>

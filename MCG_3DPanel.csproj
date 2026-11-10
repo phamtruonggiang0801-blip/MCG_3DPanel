@@ -93,6 +93,8 @@
   <ItemGroup>
     <Compile Remove="tests/**" />
     <None Remove="tests/**" />
+    <Compile Remove="tools/**" />
+    <None Remove="tools/**" />
   </ItemGroup>
 
   <!-- Tham chiếu AutoCAD 2026 .NET API. Private=false => KHÔNG copy vào bin -->
