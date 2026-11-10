@@ -66,11 +66,11 @@ namespace MCG_3DPanel.Commands
             using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
             {
                 var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-                foreach (var l in Layers) if (!lt.Has(l)) miss.Add("layer " + l);
+                foreach (var l in Layers) if (!SymbolTables.HasLive(lt, l)) miss.Add("layer " + l);
                 var ds = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
-                foreach (var s in AllDims(model).Select(d => d.DimStyle).Distinct()) if (!ds.Has(s)) miss.Add("dim style " + s);
+                foreach (var s in AllDims(model).Select(d => d.DimStyle).Distinct()) if (!SymbolTables.HasLive(ds, s)) miss.Add("dim style " + s);
                 var ts = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
-                if (!ts.Has(TextStyle)) miss.Add("text style " + TextStyle);
+                if (!SymbolTables.HasLive(ts, TextStyle)) miss.Add("text style " + TextStyle);
                 tr.Commit();
             }
             return miss;
@@ -172,7 +172,7 @@ namespace MCG_3DPanel.Commands
                     var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
                     var ts = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
                     var ds = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
-                    ObjectId style = ts[TextStyle];
+                    ObjectId style = SymbolTables.Require(ts, TextStyle, "Text style");
                     var xd = new ResultBuffer(new TypedValue((int)DxfCode.ExtendedDataRegAppName, App),
                                               new TypedValue((int)DxfCode.ExtendedDataAsciiString, btrHandle));
                     var x = new Placer(s);
@@ -200,7 +200,7 @@ namespace MCG_3DPanel.Commands
                     {
                         var leader = new Leader { Layer = ld.Layer };
                         foreach (var q in ld.Points) leader.AppendVertex(x.P(ld.Space, q.X, q.Y));
-                        if (ds.Has("AM_ISO")) leader.DimensionStyle = ds["AM_ISO"];
+                        if (SymbolTables.HasLive(ds, "AM_ISO")) leader.DimensionStyle = SymbolTables.Live(ds, "AM_ISO");
                         leader.HasArrowHead = true;
                         Add(leader);
                         leader.Dimscale = s.Scale;   // override SAU khi vào bản vẽ (như kích thước)
@@ -268,7 +268,7 @@ namespace MCG_3DPanel.Commands
             using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
             {
                 var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
-                if (bt.Has("_Oblique")) return bt["_Oblique"];
+                if (SymbolTables.HasLive(bt, "_Oblique")) return SymbolTables.Live(bt, "_Oblique");
             }
             try
             {
@@ -278,7 +278,7 @@ namespace MCG_3DPanel.Commands
                 using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
                 {
                     var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
-                    return bt.Has("_Oblique") ? bt["_Oblique"] : ObjectId.Null;
+                    return SymbolTables.Live(bt, "_Oblique");
                 }
             }
             catch { return ObjectId.Null; }
@@ -286,7 +286,7 @@ namespace MCG_3DPanel.Commands
 
         private static Dimension MakeDim(PvDim d, Placer x, DimStyleTable ds)
         {
-            ObjectId style = ds[d.DimStyle];
+            ObjectId style = SymbolTables.Require(ds, d.DimStyle, "Dim style");
             string text = d.TextOverride ?? "";
             Dimension dim;
             if (d.Kind == "Diametric")
@@ -312,7 +312,7 @@ namespace MCG_3DPanel.Commands
 
         private static void InsertBlock(Transaction tr, BlockTable bt, PvInsert i, Placer x, int scale, Action<Entity> add)
         {
-            ObjectId btrId = bt[i.Block];
+            ObjectId btrId = SymbolTables.Require(bt, i.Block, "Block");
             double f = i.ScaleIsAbsolute ? i.Scale : i.Scale * scale / 50.0;
             var br = new BlockReference(x.P(i.Space, i.X, i.Y), btrId)
             {
@@ -336,13 +336,14 @@ namespace MCG_3DPanel.Commands
         private static ObjectId DefineSection(Transaction tr, Database db, BlockTable bt, PvSection sec)
         {
             BlockTableRecord btr;
-            if (bt.Has(sec.BlockName))
+            if (SymbolTables.HasLive(bt, sec.BlockName))
             {
-                btr = (BlockTableRecord)tr.GetObject(bt[sec.BlockName], OpenMode.ForWrite);
+                btr = (BlockTableRecord)tr.GetObject(SymbolTables.Live(bt, sec.BlockName), OpenMode.ForWrite);
                 foreach (ObjectId id in btr) tr.GetObject(id, OpenMode.ForWrite).Erase();
             }
             else
             {
+                SymbolTables.FreeErasedName(tr, bt, sec.BlockName);
                 btr = new BlockTableRecord { Name = sec.BlockName, Origin = Point3d.Origin };
                 bt.UpgradeOpen(); bt.Add(btr); tr.AddNewlyCreatedDBObject(btr, true);
             }
@@ -357,7 +358,7 @@ namespace MCG_3DPanel.Commands
             }
             foreach (var p in sec.Profiles)
             {
-                var br = new BlockReference(new Point3d(p.X, p.Y, 0), bt[p.Block]) { Layer = "0" };
+                var br = new BlockReference(new Point3d(p.X, p.Y, 0), SymbolTables.Require(bt, p.Block, "Block")) { Layer = "0" };
                 btr.AppendEntity(br); tr.AddNewlyCreatedDBObject(br, true);
             }
             return btr.ObjectId;
@@ -432,7 +433,7 @@ namespace MCG_3DPanel.Commands
         private static void EnsureRegApp(Transaction tr, Database db)
         {
             var rat = (RegAppTable)tr.GetObject(db.RegAppTableId, OpenMode.ForRead);
-            if (rat.Has(App)) return;
+            if (SymbolTables.HasLive(rat, App)) return;
             rat.UpgradeOpen();
             var r = new RegAppTableRecord { Name = App };
             rat.Add(r); tr.AddNewlyCreatedDBObject(r, true);

@@ -34,12 +34,12 @@ namespace MCG_3DPanel.Commands
             using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
             {
                 var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
-                missing = required.Where(b => !bt.Has(b)).ToList();
+                missing = required.Where(b => !SymbolTables.HasLive(bt, b)).ToList();
                 // Block lồng (CS_horl_up_right ⇒ CS_symbol) cũng phải có — chèn TRƯỚC block cha.
                 foreach (var b in missing.ToList())
                     if (SymbolBlockShapes.Has(b))
                         foreach (var dep in SymbolBlockShapes.Dependencies(b))
-                            if (!bt.Has(dep) && !missing.Contains(dep)) missing.Insert(missing.IndexOf(b), dep);
+                            if (!SymbolTables.HasLive(bt, dep) && !missing.Contains(dep)) missing.Insert(missing.IndexOf(b), dep);
                 tr.Commit();
             }
             if (missing.Count == 0) return p;
@@ -54,7 +54,7 @@ namespace MCG_3DPanel.Commands
                     using (Transaction tr = tdb.TransactionManager.StartOpenCloseTransaction())
                     {
                         var bt = (BlockTable)tr.GetObject(tdb.BlockTableId, OpenMode.ForRead);
-                        foreach (var b in missing) if (bt.Has(b)) inTemplate.Add(b);
+                        foreach (var b in missing) if (SymbolTables.HasLive(bt, b)) inTemplate.Add(b);
                         tr.Commit();
                     }
                 }
@@ -73,6 +73,13 @@ namespace MCG_3DPanel.Commands
         public static List<string> Apply(Database db, Plan plan)
         {
             var before = TableNames(db);
+            // Tên còn bị bản ghi ĐÃ XOÁ giữ (lần chạy trước bị huỷ) ⇒ giải phóng trước khi chép / vẽ.
+            using (Transaction tr = db.TransactionManager.StartTransaction())
+            {
+                var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                foreach (var name in plan.FromTemplate.Concat(plan.Drawn)) SymbolTables.FreeErasedName(tr, bt, name);
+                tr.Commit();
+            }
             if (plan.FromTemplate.Count > 0)
             {
                 using (var tdb = new Database(false, true))
@@ -82,7 +89,7 @@ namespace MCG_3DPanel.Commands
                     using (Transaction tr = tdb.TransactionManager.StartOpenCloseTransaction())
                     {
                         var bt = (BlockTable)tr.GetObject(tdb.BlockTableId, OpenMode.ForRead);
-                        foreach (var b in plan.FromTemplate) ids.Add(bt[b]);
+                        foreach (var b in plan.FromTemplate) ids.Add(SymbolTables.Require(bt, b, "Template block"));
                         tr.Commit();
                     }
                     // Ignore: block/layer trùng tên đã có trong bản vẽ giữ nguyên, không bị template ghi đè.
@@ -145,11 +152,11 @@ namespace MCG_3DPanel.Commands
                         {
                             Contents = s.Text, TextHeight = s.Height, Width = s.Width, Attachment = AttachmentPoint.TopLeft,
                             Location = new Point3d(s.Points[0].Item1, s.Points[0].Item2, 0),
-                            TextStyleId = ts.Has("STANDARD") ? ts["STANDARD"] : db.Textstyle,
+                            TextStyleId = SymbolTables.HasLive(ts, "STANDARD") ? SymbolTables.Live(ts, "STANDARD") : db.Textstyle,
                         };
                         break;
                     default:   // BlockRef — block lồng đã được vẽ/chép trước (Prepare xếp thứ tự)
-                        e = new BlockReference(Point3d.Origin, bt[s.Block]) { Rotation = s.Rotation };
+                        e = new BlockReference(Point3d.Origin, SymbolTables.Require(bt, s.Block, "Block")) { Rotation = s.Rotation };
                         break;
                 }
                 e.Layer = s.Layer;
@@ -162,7 +169,7 @@ namespace MCG_3DPanel.Commands
         internal static void EnsureLayer(Transaction tr, Database db, string name)
         {
             var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-            if (lt.Has(name)) return;
+            if (SymbolTables.HasLive(lt, name)) return;
             var spec = SymbolBlockShapes.Layer(name);
             var ltt = (LinetypeTable)tr.GetObject(db.LinetypeTableId, OpenMode.ForRead);
             var rec = new LayerTableRecord { Name = name };
@@ -170,7 +177,7 @@ namespace MCG_3DPanel.Commands
             {
                 rec.Color = Autodesk.AutoCAD.Colors.Color.FromColorIndex(Autodesk.AutoCAD.Colors.ColorMethod.ByAci, spec.Color);
                 rec.LineWeight = (LineWeight)spec.LineweightHundredths;
-                if (ltt.Has(spec.Linetype)) rec.LinetypeObjectId = ltt[spec.Linetype];
+                if (SymbolTables.HasLive(ltt, spec.Linetype)) rec.LinetypeObjectId = SymbolTables.Live(ltt, spec.Linetype);
             }
             lt.UpgradeOpen(); lt.Add(rec); tr.AddNewlyCreatedDBObject(rec, true);
         }
