@@ -52,6 +52,9 @@ namespace MCG_3DPanel.Commands
             var deleted = new HashSet<string>(CorrectionStore.Deleted(CorrectionStore.PanelKey(build.SourceBtrId)) ?? Array.Empty<string>());
             PanelInput.TryParseSpec(build.Input?.HpSpec, out double hpH, out double hpT);
 
+            var partByKey = new Dictionary<string, PanelPart>();
+            foreach (var part in build.ClassifiedParts) if (!string.IsNullOrEmpty(part.SourceKey) && !partByKey.ContainsKey(part.SourceKey)) partByKey[part.SourceKey] = part;
+            Matrix3d toBlock = build.SourceTransform.Inverse();
             int lineNo = 0;
             foreach (NamingLine line in p.Lines)
             {
@@ -68,6 +71,12 @@ namespace MCG_3DPanel.Commands
                                      : piece.Kind == NamingKind.FB ? "BS " + Num(piece.Height) + "x" + Num(piece.Thickness) : null,
                         Deleted = piece.Key != null && deleted.Contains(piece.Key),
                     });
+                    if (piece.Kind == NamingKind.HP && piece.Key != null && partByKey.TryGetValue(piece.Key, out var hp) && hp.BellyDir.Length > 1e-9)
+                    {
+                        var bd = hp.BellyDir.TransformBy(toBlock).GetNormal();
+                        input.Members[input.Members.Count - 1].BellyX = bd.X;
+                        input.Members[input.Members.Count - 1].BellyY = bd.Y;
+                    }
                 }
                 foreach (NamingPiece f in line.Flanges)
                     input.Members.Add(new PvMember
@@ -87,6 +96,8 @@ namespace MCG_3DPanel.Commands
             var pts = new[] { e.MinPoint, new Point3d(e.MaxPoint.X, e.MinPoint.Y, 0), e.MaxPoint, new Point3d(e.MinPoint.X, e.MaxPoint.Y, 0) }
                 .Select(q => q.TransformBy(toBlock)).ToList();
             input.TopPlate = (pts.Min(q => q.X), pts.Min(q => q.Y), pts.Max(q => q.X), pts.Max(q => q.Y));
+            if (plate.Vertices != null)
+                foreach (var v in plate.Vertices) { var b = v.TransformBy(toBlock); input.PlateOutline.Add((b.X, b.Y)); }
         }
 
         // ─── Nháp AM_9 trong <panel>_Structure / <panel>_Lashing Hole (lồng trong block 2D) + 1 lỗ lashing ───
@@ -113,7 +124,14 @@ namespace MCG_3DPanel.Commands
                         else continue;
                         Point3d pa = a.TransformBy(xf), pb = b.TransformBy(xf);
                         Vector3d u = new Vector3d(Math.Cos(rot), Math.Sin(rot), 0).TransformBy(xf);
-                        input.Drafts.Add(new PvDraft { Source = source, X1 = pa.X, Y1 = pa.Y, X2 = pb.X, Y2 = pb.Y, Rotation = Math.Atan2(u.Y, u.X) });
+                        string blk1 = "", blk2 = "";
+                        try { blk1 = NameOf(tr, dim.Dimblk1); blk2 = NameOf(tr, dim.Dimblk2); } catch { }
+                        input.Drafts.Add(new PvDraft
+                        {
+                            Source = source, X1 = pa.X, Y1 = pa.Y, X2 = pb.X, Y2 = pb.Y, Rotation = Math.Atan2(u.Y, u.X),
+                            Text = dim.DimensionText == "<>" ? "" : dim.DimensionText ?? "", Tmove = dim.Dimtmove == 1,
+                            Oblique = blk1.Equals("_Oblique", StringComparison.OrdinalIgnoreCase) && blk2.Equals("_Oblique", StringComparison.OrdinalIgnoreCase),
+                        });
                     }
                     else if (source == "LashingHole" && input.Lashing == null && ent is Circle c)
                     {
@@ -134,11 +152,11 @@ namespace MCG_3DPanel.Commands
                     s.MergedCodes, p?.EndTouchKinds, p?.GeAvailable ?? false, p?.GbAvailable ?? false);
                 string kind = ResultCatalog.ShortKind(d.Kind) ?? "";
 
-                if (p == null && s.Type == "TrippingBracket") AddAt(input, "B", Centre(s.Bounds, toBlock));
+                if (p == null && (s.Type == "TrippingBracket" || s.Type == "HpEndBracketB")) AddAt(input, "B", Centre(s.Bounds, toBlock));   // tờ tay: B = tripping + bracket đầu HP
                 else if (kind.StartsWith("GE", StringComparison.Ordinal) || kind.StartsWith("GB", StringComparison.Ordinal))
                     AddAt(input, kind, Centre(s.Bounds, toBlock));
                 else if (p != null && p.Type == PartType.Bracket && !string.IsNullOrEmpty(p.Code))
-                    AddAt(input, p.Code, Centre(s.Bounds, toBlock));
+                    { AddAt(input, p.Code, Centre(s.Bounds, toBlock)); input.Marks[input.Marks.Count - 1].IsBracket = true; }
 
                 if (p != null && (p.Type == PartType.HP || p.Type == PartType.FlatBar) && (p.SnipLo || p.SnipHi))
                 {
@@ -153,6 +171,9 @@ namespace MCG_3DPanel.Commands
                 }
             }
         }
+
+        private static string NameOf(Transaction tr, ObjectId id)
+            => id.IsNull ? "" : ((BlockTableRecord)tr.GetObject(id, OpenMode.ForRead)).Name;
 
         private static void AddAt(PlanViewInput input, string text, Point3d p) => input.Marks.Add(new PvMark { Text = text, X = p.X, Y = p.Y });
 

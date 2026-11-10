@@ -24,6 +24,9 @@ namespace MCG_3DPanel.Services.PlanView
         /// <summary>Block profile cho mặt cắt ("HP120x6", "BS 80x6"); null với Web/Flange.</summary>
         public string ProfileBlock { get; set; }
         public bool Deleted { get; set; }
+        /// <summary>Hướng bầu HP (đơn vị, hệ block 2D); (0,0) với Web/FB/Flange. Mặt cắt lật block profile khi bầu ngược trục.</summary>
+        public double BellyX { get; set; }
+        public double BellyY { get; set; }
     }
 
     /// <summary>Kích thước nháp AM_9. Source "LashingHole" | "Structure". Rotation = hướng đo.</summary>
@@ -35,6 +38,10 @@ namespace MCG_3DPanel.Services.PlanView
         public double X2 { get; set; }
         public double Y2 { get; set; }
         public double Rotation { get; set; }
+        /// <summary>Chữ ghi đè của nháp ("" = giá trị đo) + override DIMTMOVE=1 / mũi tên xiên — bản chép giữ nguyên.</summary>
+        public string Text { get; set; } = "";
+        public bool Tmove { get; set; } = true;
+        public bool Oblique { get; set; }
     }
 
     /// <summary>Ký hiệu chữ (B, S, GE…, GB…, OB…) tại điểm đánh dấu. (DirX, DirY) = hướng đẩy chữ ra khỏi thanh (đơn vị; 0,0 = không đẩy).</summary>
@@ -45,6 +52,8 @@ namespace MCG_3DPanel.Services.PlanView
         public double Y { get; set; }
         public double DirX { get; set; }
         public double DirY { get; set; }
+        /// <summary>Mã bracket (OB, OB1…): chữ đẩy ra ngoài bracket về phía mép tấm.</summary>
+        public bool IsBracket { get; set; }
     }
 
     /// <summary>1 lỗ lashing đại diện — để ghi kích thước đường kính.</summary>
@@ -63,6 +72,8 @@ namespace MCG_3DPanel.Services.PlanView
         public int Position { get; set; }
         public double PlateThickness { get; set; }
         public (double MinX, double MinY, double MaxX, double MaxY) TopPlate { get; set; }
+        /// <summary>Đường bao Top Plate (hệ block 2D) — đường cắt giữa panel + điểm đo kích thước bao. Rỗng ⇒ dùng khung bao.</summary>
+        public List<(double X, double Y)> PlateOutline { get; } = new List<(double X, double Y)>();
         public List<PvMember> Members { get; } = new List<PvMember>();
         public List<PvDraft> Drafts { get; } = new List<PvDraft>();
         public List<PvMark> Marks { get; } = new List<PvMark>();

@@ -85,6 +85,8 @@ namespace MCG_3DPanel.Services.PlanView
             ["Mechanical-AM_4"] = new LayerSpec { Name = "Mechanical-AM_4", Color = 3, Linetype = "Continuous", LineweightHundredths = 25 },
             ["Mechanical-AM_6"] = new LayerSpec { Name = "Mechanical-AM_6", Color = 2, Linetype = "Continuous", LineweightHundredths = 35 },
             ["Mechanical-AM_8"] = new LayerSpec { Name = "Mechanical-AM_8", Color = 1, Linetype = "Continuous", LineweightHundredths = 25 },
+            ["Mechanical-AM_7"] = new LayerSpec { Name = "Mechanical-AM_7", Color = 4, Linetype = "AM_ISO08W050", LineweightHundredths = 25 },
+            ["posb"] = new LayerSpec { Name = "posb", Color = 7, Linetype = "Continuous", LineweightHundredths = -3 },   // ByLineWeightDefault
         };
 
         public static bool Has(string block) => block != null && Catalog.ContainsKey(block);

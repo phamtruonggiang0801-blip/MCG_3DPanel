@@ -54,7 +54,13 @@ namespace MCG_3DPanel.Tests
             Assert.Single(m.Texts, t => t.Category == "Symbol" && t.Text == "B");
             foreach (var b in new[] { "CS_horl_up_right", "thk_sym", "HP120x6", "BS 80x6", "M.D1", "M.D2", "Rec. for tolerance", "Measurements_Tolerances vFuture", "7D-17P_Top Plate", "7D-17P_Lashing Hole" })
                 Assert.Contains(b, m.RequiredBlocks);
-            Assert.Equal(2, m.Dims.Count(d => d.Layer == "Mechanical-AM_4"));   // nháp lashing: mặt bằng chính + mặt bằng lỗ lashing
+            Assert.Equal(1, m.Dims.Count(d => d.Layer == "Mechanical-AM_4"));   // nháp lashing CHỈ trên mặt bằng lỗ lashing (tờ 7D-17P)
+            Assert.Equal(2, m.Dims.Count(d => d.TextOverride == DraftDimRules.OverallText));   // mặt bằng chính: chỉ 2 kích thước bao
+            Assert.All(m.Inserts.Where(x => x.Block == "CS_horl_up_right"), x => Assert.False(x.MirrorX));
+            Assert.Equal(2, m.Lines.Count(l => l.Layer == "Mechanical-AM_7"));   // 2 đường chéo đo kiểm
+            Assert.Equal(2, m.Leaders.Count);
+            Assert.Equal(3, m.Polylines.Count(p => p.Layer == "Mechanical-AM_8"));   // khung 3 lớp quanh member list
+            Assert.Equal(9, m.Lines.Count(l => l.Layer == "Mechanical-AM_8"));
         }
 
         [Fact] public void Fixed_ToleranceNote_At1to75()
@@ -66,16 +72,18 @@ namespace MCG_3DPanel.Tests
             Assert.Equal(PvSpace.Sheet, n.Space);
         }
 
-        [Fact] public void LashingPlan_RightOfPlan_SameY()
+        /// <summary>Tờ 7D-17P: tấm rộng 16298.9 ⇒ mép trái tấm lashing tại 841 − 45.6 − 326.0 = 469.4 mm (tờ tay: chèn 23830.9);
+        /// M.D1 28133.5 / M.D2 34764.1 / Y 20462.0 trên tờ tay.</summary>
+        [Fact] public void LashingPlan_7D17P_MatchesManualWithin5()
         {
-            var ins = SheetItemRules.LashingPlan(Panel7D17P(), Sheet(50));
+            var i = new PlanViewInput { Panel = "7D-17P", TopPlate = (-359.06, -12891.26, 15939.84, 500.84), PlateThickness = 6, HasLashingHoleBlock = true };
+            var s = new SheetContext { Scale = 50, FrameX = 0, FrameY = 0, PlanMinX = 4660.7, PlanMinY = 9585.4, PlanMaxX = 20959.6, PlanMaxY = 22977.5,
+                                       AssyTransform = new[] { 1.0, 0, 0, 1, 5019.76, 22476.66 } };
+            var ins = SheetItemRules.LashingPlan(i, s);
             var tp = ins.Single(x => x.Block == "7D-17P_Top Plate");
-            Assert.Equal(21000 + PlanViewLayout.LashingPlanGap * 50 - 0, tp.X, 3);   // plate min X (block) = 0
-            Assert.Equal(9000, tp.Y, 3);
-            var md1 = ins.Single(x => x.Block == "M.D1");
-            Assert.Equal(tp.X + PlanViewLayout.MdOffsetX * 50, md1.X, 3);
-            Assert.Equal(tp.Y + 13000 + PlanViewLayout.MdOffsetY * 50, md1.Y, 3);
-            Assert.Equal(md1.X + PlanViewLayout.MdSpacing * 50, ins.Single(x => x.Block == "M.D2").X, 3);
+            Assert.InRange(tp.X, 23830.9 - 3, 23830.9 + 3); Assert.Equal(22476.66, tp.Y, 2);
+            var md1 = ins.Single(x => x.Block == "M.D1"); var md2 = ins.Single(x => x.Block == "M.D2");
+            Assert.InRange(md1.X, 28133.5 - 5, 28133.5 + 5); Assert.InRange(md2.X, 34764.1 - 7, 34764.1 + 7); Assert.InRange(md1.Y, 20462 - 2, 20462 + 2);
         }
 
         [Fact] public void NoLashingBlock_NoLashingPlan()
@@ -89,7 +97,7 @@ namespace MCG_3DPanel.Tests
         [Fact] public void ToleranceBoxes_AtOverallDims()
         {
             var i = Panel7D17P();
-            var overall = DraftDimRules.Overall(i, 50, DraftDimRules.FromDrafts(i, 50)).Where(d => d.Kind == "Rotated").ToList();
+            var overall = DraftDimRules.Overall(i, 50);
             var boxes = SheetItemRules.ToleranceBoxes(overall, 50);
             Assert.Equal(2, boxes.Count);
             Assert.All(boxes, b => { Assert.True(b.ScaleIsAbsolute); Assert.Equal(50, b.Scale); Assert.Equal(PvSpace.Block, b.Space); });

@@ -4,7 +4,8 @@ using Xunit;
 
 namespace MCG_3DPanel.Tests
 {
-    /// <summary>Nhãn tên trên tờ (T/L trên AM_1 5 mm, HT/HL/BS trên AM_6 3 mm) + member list MText.</summary>
+    /// <summary>Nhãn tên theo tờ mẫu 7D-17P: MiddleLeft; T (21.0), HT (25.2), BS phương T (31.8) trên mép trên, căn giữa thanh;
+    /// L (35.8), HL/BS phương L (42.6) trái mép trái. + member list MText.</summary>
     public class LabelRulesTests
     {
         private const int Scale = 50;
@@ -20,49 +21,41 @@ namespace MCG_3DPanel.Tests
             return i;
         }
 
-        [Fact] public void Names_GirderOnAM1_StiffenerOnAM6()
+        [Fact] public void Names_TDirection_Rows_7D17P()
         {
-            var t = LabelRules.Names(Input(M(1, "T1", "Web", 300, 0, 300, 13000), M(2, "HT1", "HP", 1000, 500, 1000, 12500)), Scale, 0, 0);
+            var t = LabelRules.Names(Input(M(1, "T1", "Web", 300, 0, 300, 13000), M(2, "HT1", "HP", 1000, 500, 1000, 12500), M(3, "BS", "FB", 2000, 0, 2000, 13000)), Scale);
             var g = t.Single(x => x.Text == "T1");
-            Assert.Equal("Mechanical-AM_1", g.Layer);
-            Assert.Equal(5, g.PaperHeight);
-            Assert.Equal("BottomCenter", g.Justify);
+            Assert.Equal("Mechanical-AM_1", g.Layer); Assert.Equal(5, g.PaperHeight); Assert.Equal("CenterMiddleLeft", g.Justify);
             Assert.Equal(300, g.X, 3);
-            Assert.Equal(13000 + PlanViewLayout.LabelTopGirder * Scale, g.Y, 3);
+            Assert.Equal(13000 + 21.0 * Scale, g.Y, 3);
             var s = t.Single(x => x.Text == "HT1");
-            Assert.Equal("Mechanical-AM_6", s.Layer);
-            Assert.Equal(3, s.PaperHeight);
-            Assert.Equal(13000 + PlanViewLayout.LabelTopStiffener * Scale, s.Y, 3);
+            Assert.Equal("Mechanical-AM_6", s.Layer); Assert.Equal(3, s.PaperHeight);
+            Assert.Equal(13000 + 25.2 * Scale, s.Y, 3);
+            Assert.Equal(13000 + 31.8 * Scale, t.Single(x => x.Text == "BS").Y, 3);
             Assert.All(t, x => Assert.Equal("Name", x.Category));
         }
 
-        [Fact] public void Names_LDirection_LeftColumn_MiddleLeft()
+        [Fact] public void Names_LDirection_Columns_7D17P()
         {
-            var t = LabelRules.Names(Input(M(1, "L3", "Web", 0, 4000, 16000, 4000)), Scale, 0, 0).Single();
-            Assert.Equal("MiddleLeft", t.Justify);
-            Assert.Equal(-PlanViewLayout.LabelLeft * Scale, t.X, 3);
-            Assert.Equal(4000, t.Y, 3);
-        }
-
-        [Fact] public void Names_StackBeyondDimensionChains()
-        {
-            // chuỗi kích thước trên cùng ở 38 mm ⇒ hàng HT ở 46, hàng T ở 66
-            var t = LabelRules.Names(Input(M(1, "T1", "Web", 300, 0, 300, 13000), M(2, "HT1", "HP", 1000, 0, 1000, 13000)), Scale, 38, 0);
-            Assert.Equal(13000 + 46 * Scale, t.Single(x => x.Text == "HT1").Y, 3);
-            Assert.Equal(13000 + 66 * Scale, t.Single(x => x.Text == "T1").Y, 3);
+            var t = LabelRules.Names(Input(M(1, "L3", "Web", 0, 4000, 16000, 4000), M(2, "HL1", "HP", 0, 200, 16000, 200)), Scale);
+            var g = t.Single(x => x.Text == "L3");
+            Assert.Equal("MiddleLeft", g.Justify);
+            Assert.Equal(-35.8 * Scale, g.X, 3);
+            Assert.Equal(4000, g.Y, 3);
+            Assert.Equal(-42.6 * Scale, t.Single(x => x.Text == "HL1").X, 3);
         }
 
         [Fact] public void Names_MergedLinesShareOneLabel()
-            => Assert.Single(LabelRules.Names(Input(M(1, "T3", "Web", 300, 0, 300, 6000), M(1, "T3", "Web", 300, 6100, 300, 13000)), Scale, 0, 0));
+            => Assert.Single(LabelRules.Names(Input(M(1, "T3", "Web", 300, 0, 300, 6000), M(1, "T3", "Web", 300, 6100, 300, 13000)), Scale));
 
         [Fact] public void Names_EveryBsLineGetsItsLabel()
-            => Assert.Equal(2, LabelRules.Names(Input(M(1, "BS", "FB", 0, 1000, 16000, 1000), M(2, "BS", "FB", 0, 2000, 16000, 2000)), Scale, 0, 0).Count);
+            => Assert.Equal(2, LabelRules.Names(Input(M(1, "BS", "FB", 0, 1000, 16000, 1000), M(2, "BS", "FB", 0, 2000, 16000, 2000)), Scale).Count);
 
         [Fact] public void Names_DeletedMemberHasNoLabel()
-            => Assert.Empty(LabelRules.Names(Input(M(1, "T1", "Web", 300, 0, 300, 13000, deleted: true)), Scale, 0, 0));
+            => Assert.Empty(LabelRules.Names(Input(M(1, "T1", "Web", 300, 0, 300, 13000, deleted: true)), Scale));
 
         [Fact] public void Names_FlangeAndUnnamed_NoLabel()
-            => Assert.Empty(LabelRules.Names(Input(M(1, "T1", "Flange", 300, 0, 300, 13000), M(2, "", "HP", 1000, 0, 1000, 13000)), Scale, 0, 0));
+            => Assert.Empty(LabelRules.Names(Input(M(1, "T1", "Flange", 300, 0, 300, 13000), M(2, "", "HP", 1000, 0, 1000, 13000)), Scale));
 
         [Fact] public void MemberList_7D17P()
         {

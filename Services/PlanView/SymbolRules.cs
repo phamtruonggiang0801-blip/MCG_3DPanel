@@ -7,26 +7,41 @@ namespace MCG_3DPanel.Services.PlanView
     // ⚠️ File THUẦN C# — KHÔNG using Autodesk.* (link sang tests/MCG_3DPanel.Tests).
 
     /// <summary>Ký hiệu trên mặt bằng (kỹ sư 2026-11-10): chữ B / S / Kind GE…·GB… / OB… tại điểm đánh dấu; CS_horl_up_right tại
-    /// mỗi chỗ 1 thanh (HP, FB, Web) chạy LIÊN TỤC xuyên web của thanh khác, đặt về phía chiều đổ kết cấu (Position).</summary>
+    /// mỗi chỗ 1 thanh (HP, FB, Web) chạy LIÊN TỤC xuyên web của thanh khác (kể cả girder qua girder), xoay theo thanh chạy liên tục,
+    /// KHÔNG lật (6/6 tờ mẫu: sx = 1).</summary>
     public static class SymbolRules
     {
         public const string LayerMarks = "Mechanical-AM_6";
         public const string LayerContinuous = "Mechanical-AM_0";
         public const string ContinuousBlock = "CS_horl_up_right";
-        private const double EndTol = 1.0;   // mm: giao điểm tính là "trên web" khi lệch đầu web ≤ 1
+        private const double EndTol = 1.0;   // mm: giao điểm tính là "trên web" khi lệch đầu web ≤ 1 + nửa dày thanh chạy qua
 
+        /// <summary>Chữ căn giữa điểm đánh dấu (MiddleLeft như tờ tay). Mã bracket đẩy ra ngoài bracket, về phía mép tấm gần nhất.</summary>
         public static List<PvText> Marks(PlanViewInput input, int scale)
-            => input.Marks.Select(m => new PvText
+        {
+            var tp = input.TopPlate;
+            double cx = (tp.MinX + tp.MaxX) / 2, cy = (tp.MinY + tp.MaxY) / 2, hw = (tp.MaxX - tp.MinX) / 2, hh = (tp.MaxY - tp.MinY) / 2;
+            return input.Marks.Select(m =>
             {
-                Space = PvSpace.Block, Text = m.Text, Layer = LayerMarks, PaperHeight = PlanViewLayout.TextStiffener,
-                Justify = "MiddleCenter", Category = "Symbol",
-                X = m.X + m.DirX * PlanViewLayout.MarkOffset * scale, Y = m.Y + m.DirY * PlanViewLayout.MarkOffset * scale,
+                double dx = m.DirX, dy = m.DirY, off = PlanViewLayout.MarkOffset;
+                if (m.IsBracket)
+                {
+                    // Phương ra mép gần nhất (so theo tỉ lệ nửa kích thước tấm), tờ 7D-17P: OB ở T1 sang trái, ở T2 sang phải, hàng dưới xuống.
+                    double ux = (m.X - cx) / hw, uy = (m.Y - cy) / hh;
+                    if (Math.Abs(ux) >= Math.Abs(uy)) { dx = Math.Sign(ux); dy = 0; } else { dx = 0; dy = Math.Sign(uy); }
+                    off = PlanViewLayout.BracketTextOut;
+                }
+                return new PvText
+                {
+                    Space = PvSpace.Block, Text = m.Text, Layer = LayerMarks, PaperHeight = PlanViewLayout.TextStiffener,
+                    Justify = "CenterMiddleLeft", Category = "Symbol",
+                    X = m.X + dx * off * scale, Y = m.Y + dy * off * scale,
+                };
             }).ToList();
+        }
 
         public static List<PvInsert> Continuous(PlanViewInput input)
         {
-            var tp = input.TopPlate;
-            double centreY = (tp.MinY + tp.MaxY) / 2;
             var live = input.Members.Where(m => !m.Deleted && m.Kind != "Flange").ToList();
             var webs = live.Where(m => m.Kind == "Web").ToList();
             var r = new List<PvInsert>();
@@ -55,17 +70,10 @@ namespace MCG_3DPanel.Services.PlanView
                     if (t * lenA <= pass || (1 - t) * lenA <= pass) continue;               // A dừng tại B
                     double px = a.X0 + t * ax, py = a.Y0 + t * ay;
                     if (!seen.Add((a.Line, (long)Math.Round(px), (long)Math.Round(py)))) continue;
-
-                    // Phía chiều đổ: web T (đứng) ⇒ +X; web L ⇒ Port −Y, Starboard +Y, Center về tâm panel.
-                    double wantX, wantY;
-                    if (b.Dir == "T") { wantX = 1; wantY = 0; }
-                    else { wantX = 0; wantY = input.Position == 1 ? -1 : input.Position == 2 ? 1 : (py <= centreY ? 1 : -1); }
-                    bool mirror = Math.Cos(rot) * wantX + Math.Sin(rot) * wantY < 0;
-
                     r.Add(new PvInsert
                     {
                         Space = PvSpace.Block, Block = ContinuousBlock, Layer = LayerContinuous,
-                        X = px, Y = py, Rotation = rot, Scale = 1, MirrorX = mirror,
+                        X = px, Y = py, Rotation = rot, Scale = 1,
                     });
                 }
             }

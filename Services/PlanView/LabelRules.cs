@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -8,19 +7,16 @@ namespace MCG_3DPanel.Services.PlanView
 {
     // ⚠️ File THUẦN C# — KHÔNG using Autodesk.* (link sang tests/MCG_3DPanel.Tests).
 
-    /// <summary>Nhãn tên (1 cái mỗi tuyến tab Naming) + member list MText. Vị trí: docs/.../2026-11-10-plan-view-placement.md.</summary>
+    /// <summary>Nhãn tên (1 cái mỗi tuyến tab Naming) + member list MText. Theo tờ mẫu 7D-17P: mọi nhãn MiddleLeft; phương T chữ căn giữa
+    /// đường tâm thanh (writer đo bề rộng chữ — Justify "CenterMiddleLeft"), phương L chữ bắt đầu tại cột trái tấm.</summary>
     public static class LabelRules
     {
         public const string LayerGirder = "Mechanical-AM_1";
         public const string LayerStiffener = "Mechanical-AM_6";
 
-        /// <param name="topOuter">Chuỗi kích thước xa nhất phía trên (mm giấy, 0 = trống) — hàng nhãn đẩy ra ngoài nó.</param>
-        /// <param name="leftOuter">Như trên, phía trái.</param>
-        public static List<PvText> Names(PlanViewInput input, int scale, double topOuter, double leftOuter)
+        public static List<PvText> Names(PlanViewInput input, int scale)
         {
             var tp = input.TopPlate;
-            var (rowStiff, rowGirder, colLeft) = Rows(topOuter, leftOuter);
-
             var r = new List<PvText>();
             foreach (var line in input.Members
                          .Where(m => !m.Deleted && !string.IsNullOrEmpty(m.Name) && m.Kind != "Flange")
@@ -29,9 +25,9 @@ namespace MCG_3DPanel.Services.PlanView
                 var first = line.First();
                 bool girder = first.Kind == "Web";
                 bool isT = first.Dir == "T";
-                // Đoạn chạm mép (T: lên cao nhất; L: sang trái nhất) — đặt nhãn trên đường tâm của nó.
-                var piece = isT ? line.OrderByDescending(m => Math.Max(m.Y0, m.Y1)).First()
-                                : line.OrderBy(m => Math.Min(m.X0, m.X1)).First();
+                // Đoạn chạm mép (T: lên cao nhất; L: sang trái nhất) — nhãn trên đường tâm của nó.
+                var piece = isT ? line.OrderByDescending(m => System.Math.Max(m.Y0, m.Y1)).First()
+                                : line.OrderBy(m => System.Math.Min(m.X0, m.X1)).First();
                 var t = new PvText
                 {
                     Space = PvSpace.Block, Text = first.Name, Category = "Name",
@@ -40,29 +36,20 @@ namespace MCG_3DPanel.Services.PlanView
                 };
                 if (isT)
                 {
-                    t.Justify = "BottomCenter";
+                    double row = girder ? PlanViewLayout.LabelTopGirder : first.Kind == "HP" ? PlanViewLayout.LabelTopHp : PlanViewLayout.LabelTopFb;
+                    t.Justify = "CenterMiddleLeft";
                     t.X = (piece.X0 + piece.X1) / 2;
-                    t.Y = tp.MaxY + (girder ? rowGirder : rowStiff) * scale;
+                    t.Y = tp.MaxY + row * scale;
                 }
                 else
                 {
                     t.Justify = "MiddleLeft";
-                    t.X = tp.MinX - colLeft * scale;
+                    t.X = tp.MinX - (girder ? PlanViewLayout.LabelLeftGirder : PlanViewLayout.LabelLeftStiffener) * scale;
                     t.Y = (piece.Y0 + piece.Y1) / 2;
                 }
                 r.Add(t);
             }
             return r;
-        }
-
-        /// <summary>Hàng nhãn (mm giấy từ mép Top Plate): nẹp phía trên, girder phía trên, cột trái — đẩy ra ngoài chuỗi kích thước
-        /// xa nhất (quy tắc xếp lớp, placement rule 1).</summary>
-        public static (double RowStiffener, double RowGirder, double ColumnLeft) Rows(double topOuter, double leftOuter)
-        {
-            double rowStiff = Math.Max(PlanViewLayout.LabelTopStiffener, topOuter > 0 ? topOuter + PlanViewLayout.LabelBeyondChain : 0);
-            double rowGirder = Math.Max(PlanViewLayout.LabelTopGirder, rowStiff + PlanViewLayout.LabelGirderBeyondStiffener);
-            double colLeft = Math.Max(PlanViewLayout.LabelLeft, leftOuter > 0 ? leftOuter + PlanViewLayout.LabelBeyondChain : 0);
-            return (rowStiff, rowGirder, colLeft);
         }
 
         /// <summary>MText quy cách: chiều dày tấm, quy cách nẹp HP, rồi mỗi quy cách girder T / L một dòng (tên theo thứ tự tự nhiên).</summary>

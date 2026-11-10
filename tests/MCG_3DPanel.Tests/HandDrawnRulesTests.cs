@@ -50,6 +50,17 @@ namespace MCG_3DPanel.Tests
         [InlineData("7D-17P_Top Plate")] [InlineData("7D-17P_Lashing Hole")]
         public void Replaceable_Blocks(string name) => Assert.True(R(new PvExisting { Type = "BlockRef", BlockName = name, InModelSpace = true }));
 
+        /// <summary>Tool vẽ đường chéo AM_7, khung AM_8 quanh member list, leader posb ⇒ bản vẽ tay của chúng cũng được Replace.</summary>
+        [Theory]
+        [InlineData("Line", "Mechanical-AM_7")] [InlineData("Polyline", "Mechanical-AM_7")]
+        [InlineData("Line", "Mechanical-AM_8")] [InlineData("Polyline", "Mechanical-AM_8")] [InlineData("Leader", "posb")]
+        public void Replaceable_DiagonalsFrameLeaders(string type, string layer)
+            => Assert.True(R(new PvExisting { Type = type, Layer = layer, InModelSpace = true }));
+
+        [Theory] [InlineData("Line", "Mechanical-AM_0")] [InlineData("Polyline", "0")] [InlineData("Leader", "Mechanical-AM_5")]
+        public void NotReplaceable_OtherLines(string type, string layer)
+            => Assert.False(R(new PvExisting { Type = type, Layer = layer, InModelSpace = true }));
+
         [Fact] public void OtherPanelsBlocks_False() => Assert.False(R(new PvExisting { Type = "BlockRef", BlockName = "7D-16P_X-X", InModelSpace = true }));
 
         [Fact] public void LashingPlanInsideAssy_False()

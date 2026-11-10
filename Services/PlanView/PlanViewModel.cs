@@ -43,6 +43,10 @@ namespace MCG_3DPanel.Services.PlanView
         public string DimStyle { get; set; } = "AM_ISO$0";
         /// <summary>null = giá trị đo ("&lt;&gt;").</summary>
         public string TextOverride { get; set; }
+        /// <summary>Override DIMTMOVE = 1 (tờ tay: có ở chuỗi chép từ nháp, không có ở kích thước ghi "&lt;&gt;").</summary>
+        public bool Tmove { get; set; } = true;
+        /// <summary>Mũi tên xiên (DIMBLK1/2 = _Oblique, DIMSAH) — kích thước đầu mút trên mặt cắt.</summary>
+        public bool Oblique { get; set; }
     }
 
     /// <summary>Chèn block. Scale = hệ số TRƯỚC khi nhân tỉ lệ tờ/50 (ký hiệu); ScaleIsAbsolute = dùng nguyên Scale.</summary>
@@ -58,6 +62,33 @@ namespace MCG_3DPanel.Services.PlanView
         /// <summary>Lật theo X (scale X âm) — ký hiệu đặt về phía ngược lại.</summary>
         public bool MirrorX { get; set; }
         public string Layer { get; set; }
+    }
+
+    /// <summary>Đường thẳng (đường chéo đo kiểm trên mặt bằng lỗ lashing…).</summary>
+    public sealed class PvLine
+    {
+        public PvSpace Space { get; set; }
+        public double X1 { get; set; }
+        public double Y1 { get; set; }
+        public double X2 { get; set; }
+        public double Y2 { get; set; }
+        public string Layer { get; set; }
+    }
+
+    /// <summary>Polyline kín (khung AM_8 quanh member list).</summary>
+    public sealed class PvPolyline
+    {
+        public PvSpace Space { get; set; }
+        public List<(double X, double Y)> Points { get; } = new List<(double X, double Y)>();
+        public string Layer { get; set; }
+    }
+
+    /// <summary>Leader (mũi tên tại điểm đầu) — layer posb, dim style AM_ISO.</summary>
+    public sealed class PvLeader
+    {
+        public PvSpace Space { get; set; }
+        public List<(double X, double Y)> Points { get; } = new List<(double X, double Y)>();
+        public string Layer { get; set; } = "posb";
     }
 
     public sealed class PvRect
@@ -90,6 +121,9 @@ namespace MCG_3DPanel.Services.PlanView
         public List<PvDim> Dims { get; } = new List<PvDim>();
         public List<PvInsert> Inserts { get; } = new List<PvInsert>();
         public List<PvSection> Sections { get; } = new List<PvSection>();
+        public List<PvLine> Lines { get; } = new List<PvLine>();
+        public List<PvPolyline> Polylines { get; } = new List<PvPolyline>();
+        public List<PvLeader> Leaders { get; } = new List<PvLeader>();
         /// <summary>Block phải có sẵn trong bản vẽ 2D (không tạo mới) — thiếu ⇒ dừng, không vẽ gì.</summary>
         public IReadOnlyList<string> RequiredBlocks => _required;
 

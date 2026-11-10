@@ -159,7 +159,7 @@ namespace MCG_3DPanel.Commands
             }
         }
 
-        private static void EnsureLayer(Transaction tr, Database db, string name)
+        internal static void EnsureLayer(Transaction tr, Database db, string name)
         {
             var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
             if (lt.Has(name)) return;

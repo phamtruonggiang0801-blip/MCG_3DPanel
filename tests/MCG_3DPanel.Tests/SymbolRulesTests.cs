@@ -67,40 +67,39 @@ namespace MCG_3DPanel.Tests
             Assert.Empty(SymbolRules.Continuous(i));
         }
 
-        [Fact] public void Side_Port_vs_Starboard_Flips()
+        /// <summary>6/6 tờ mẫu: mọi CS_horl_up_right có sx = 1, ở mọi vị trí panel.</summary>
+        [Theory] [InlineData(0)] [InlineData(1)] [InlineData(2)]
+        public void NeverMirrored_AnyPosition(int pos)
         {
-            PvInsert One(int pos)
-            {
-                var i = Input(pos);
-                i.Members.Add(M("Web", 0, 6000, 16000, 6000));
-                i.Members.Add(M("HP", 3000, 0, 3000, 13000));
-                return SymbolRules.Continuous(i).Single();
-            }
-            Assert.NotEqual(One(1).MirrorX, One(2).MirrorX);   // Port (−Y) ≠ Starboard (+Y)
-            Assert.False(One(2).MirrorX);                        // +Y = phía +x cục bộ của thanh đứng
-        }
-
-        [Fact] public void Side_Center_TowardPanelCentre()
-        {
-            var i = Input(0);
-            i.Members.Add(M("Web", 0, 2000, 16000, 2000));     // dưới tâm (6500) ⇒ về +Y
-            i.Members.Add(M("Web", 0, 11000, 16000, 11000));   // trên tâm ⇒ về −Y
+            var i = Input(pos);
+            i.Members.Add(M("Web", 0, 2000, 16000, 2000));
+            i.Members.Add(M("Web", 0, 11000, 16000, 11000));
             i.Members.Add(M("HP", 3000, 0, 3000, 13000));
-            var cs = SymbolRules.Continuous(i).OrderBy(c => c.Y).ToList();
-            Assert.False(cs[0].MirrorX);
-            Assert.True(cs[1].MirrorX);
+            Assert.All(SymbolRules.Continuous(i), c => Assert.False(c.MirrorX));
         }
 
         [Fact] public void Marks_TextLayerHeight_PushedAway()
         {
             var i = Input();
             i.Marks.Add(new PvMark { Text = "B", X = 1000, Y = 2000, DirX = 0, DirY = 1 });
-            i.Marks.Add(new PvMark { Text = "GE-HP", X = 3000, Y = 4000 });
+            i.Marks.Add(new PvMark { Text = "GE", X = 3000, Y = 4000 });
             var t = SymbolRules.Marks(i, Scale);
             Assert.Equal(2, t.Count);
-            Assert.All(t, x => { Assert.Equal("Mechanical-AM_6", x.Layer); Assert.Equal(3, x.PaperHeight); Assert.Equal("MiddleCenter", x.Justify); Assert.Equal("Symbol", x.Category); });
+            Assert.All(t, x => { Assert.Equal("Mechanical-AM_6", x.Layer); Assert.Equal(3, x.PaperHeight); Assert.Equal("CenterMiddleLeft", x.Justify); Assert.Equal("Symbol", x.Category); });
             Assert.Equal(2000 + PlanViewLayout.MarkOffset * Scale, t[0].Y, 3);
             Assert.Equal(4000, t[1].Y, 3);
+        }
+
+        /// <summary>Tờ 7D-17P: OB ở T1 (bên trái) nằm trái bracket, ở T2 nằm phải, hàng dưới nằm dưới.</summary>
+        [Fact] public void BracketCode_PushedTowardNearestEdge()
+        {
+            var i = Input();
+            i.Marks.Add(new PvMark { Text = "OB", X = 300, Y = 6500, IsBracket = true });
+            i.Marks.Add(new PvMark { Text = "OB", X = 15700, Y = 6500, IsBracket = true });
+            i.Marks.Add(new PvMark { Text = "OB1", X = 8000, Y = 200, IsBracket = true });
+            var t = SymbolRules.Marks(i, Scale);
+            double off = PlanViewLayout.BracketTextOut * Scale;
+            Assert.Equal(300 - off, t[0].X, 3); Assert.Equal(15700 + off, t[1].X, 3); Assert.Equal(200 - off, t[2].Y, 3);
         }
     }
 }

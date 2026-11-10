@@ -6,7 +6,7 @@ namespace MCG_3DPanel.Services.PlanView
 {
     // ⚠️ File THUẦN C# — KHÔNG using Autodesk.* (link sang tests/MCG_3DPanel.Tests).
 
-    /// <summary>1 đối tượng Model Space có sẵn trong khung tờ (writer đọc ra). Type "Text" | "MText" | "Dim" | "BlockRef".
+    /// <summary>1 đối tượng Model Space có sẵn trong khung tờ (writer đọc ra). Type "Text" | "MText" | "Dim" | "BlockRef" | "Line" | "Polyline" | "Leader".| "MText" | "Dim" | "BlockRef".
     /// Dim: (X1,Y1)-(X2,Y2) = 2 điểm đo, Rotation = hướng đo, Text = chuỗi ghi đè. InModelSpace = false với thứ nằm trong cây _Assy.</summary>
     public sealed class PvExisting
     {
@@ -63,6 +63,13 @@ namespace MCG_3DPanel.Services.PlanView
                     if (horiz && Math.Abs(hi - lo - (plate.MaxX - plate.MinX)) < Tol) return true;   // dài bao
                     if (vert && Math.Abs(hi - lo - (plate.MaxY - plate.MinY)) < Tol) return true;    // rộng bao
                     return false;
+
+                case "Line":
+                case "Polyline":
+                    return e.Layer == "Mechanical-AM_7" || e.Layer == "Mechanical-AM_8";   // đường chéo đo kiểm, khung member list
+
+                case "Leader":
+                    return e.Layer == "posb";                                              // leader M.D1/M.D2 → đường chéo
 
                 case "BlockRef":
                     string n = e.BlockName ?? "";

@@ -162,6 +162,7 @@ namespace MCG_3DPanel.Commands
         {
             var oldWdb = HostApplicationServices.WorkingDatabase;
             HostApplicationServices.WorkingDatabase = db;   // DBText.AdjustAlignment cần database đang làm việc
+            ObjectId oblique = ObliqueArrow(db);   // trước transaction ghi: có thể phải nạp block mũi tên
             try
             {
                 using (Transaction tr = db.TransactionManager.StartTransaction())
@@ -178,15 +179,38 @@ namespace MCG_3DPanel.Commands
 
                     void Add(Entity e) { ms.AppendEntity(e); tr.AddNewlyCreatedDBObject(e, true); e.XData = xd; }
 
-                    foreach (var t in m.Texts) Add(MakeText(t, x, s.Scale, style, db));
-                    foreach (var d in m.Dims) Add(MakeDim(d, x, s.Scale, ds));
+                    foreach (var l in m.Lines.Select(q => q.Layer).Concat(m.Polylines.Select(q => q.Layer)).Concat(m.Leaders.Select(q => q.Layer)).Distinct())
+                        PlanViewBlockSource.EnsureLayer(tr, db, l);   // AM_7 / AM_8 / posb thiếu ⇒ tạo theo CAS.dwt (lựa chọn (a))
+                    foreach (var t in m.Texts)
+                    {
+                        var e = MakeText(t, x, s.Scale, style, db);
+                        Add(e);
+                        if (t.Justify == "CenterMiddleLeft" && e is DBText dt) CentreMiddleLeft(dt, x.P(t.Space, t.X, t.Y), db);
+                    }
+                    foreach (var d in m.Dims) Add(MakeDim(d, x, s.Scale, ds, oblique));
+                    foreach (var l in m.Lines) Add(new Line(x.P(l.Space, l.X1, l.Y1), x.P(l.Space, l.X2, l.Y2)) { Layer = l.Layer });
+                    foreach (var pl in m.Polylines)
+                    {
+                        var poly = new Polyline { Closed = true, Layer = pl.Layer };
+                        for (int k = 0; k < pl.Points.Count; k++) { var q = x.P(pl.Space, pl.Points[k].X, pl.Points[k].Y); poly.AddVertexAt(k, new Point2d(q.X, q.Y), 0, 0, 0); }
+                        Add(poly);
+                    }
+                    foreach (var ld in m.Leaders)
+                    {
+                        var leader = new Leader { Layer = ld.Layer };
+                        foreach (var q in ld.Points) leader.AppendVertex(x.P(ld.Space, q.X, q.Y));
+                        if (ds.Has("AM_ISO")) leader.DimensionStyle = ds["AM_ISO"];
+                        leader.HasArrowHead = true;
+                        leader.Dimscale = s.Scale;
+                        Add(leader);
+                    }
                     foreach (var i in m.Inserts) InsertBlock(tr, bt, i, x, s.Scale, Add);
                     foreach (var sec in m.Sections)
                     {
                         ObjectId secBtr = DefineSection(tr, db, bt, sec);
                         Add(new BlockReference(new Point3d(sec.X, sec.Y, 0), secBtr) { Rotation = sec.Rotation, Layer = "Mechanical-AM_0" });
                         foreach (var k in sec.ThkSymbols) InsertBlock(tr, bt, k, x, s.Scale, Add);
-                        foreach (var d in sec.Dims) Add(MakeDim(d, x, s.Scale, ds));
+                        foreach (var d in sec.Dims) Add(MakeDim(d, x, s.Scale, ds, oblique));
                     }
                     tr.Commit();
                     return (m.Texts.Count(t => t.Category == "Name" || t.Category == "Symbol"), AllDims(m).Count());
@@ -219,11 +243,47 @@ namespace MCG_3DPanel.Commands
                     Width = t.PaperWidth * scale, Attachment = Attach(t.Justify), Rotation = x.R(t.Space, t.Rotation),
                 };
             var d = new DBText { TextString = t.Text, Height = h, TextStyleId = style, Layer = t.Layer, Rotation = x.R(t.Space, t.Rotation), Position = p };
-            if (t.Justify != "BaseLeft") { d.Justify = Attach(t.Justify); d.AlignmentPoint = p; d.AdjustAlignment(db); }
+            if (t.Justify != "BaseLeft") { d.Justify = Attach(t.Justify == "CenterMiddleLeft" ? "MiddleLeft" : t.Justify); d.AlignmentPoint = p; d.AdjustAlignment(db); }
             return d;
         }
 
-        private static Dimension MakeDim(PvDim d, Placer x, int scale, DimStyleTable ds)
+        /// <summary>Tờ tay: nhãn MiddleLeft nhưng chữ nằm GIỮA đường tâm thanh ⇒ đo bề rộng chữ thật rồi lùi điểm căn nửa bề rộng.</summary>
+        private static void CentreMiddleLeft(DBText t, Point3d centre, Database db)
+        {
+            try
+            {
+                var e = t.GeometricExtents;
+                double w = Math.Abs(Math.Cos(t.Rotation)) > 0.5 ? e.MaxPoint.X - e.MinPoint.X : e.MaxPoint.Y - e.MinPoint.Y;
+                var u = new Vector3d(Math.Cos(t.Rotation), Math.Sin(t.Rotation), 0);
+                t.AlignmentPoint = centre - u * (w / 2);
+                t.AdjustAlignment(db);
+            }
+            catch (Autodesk.AutoCAD.Runtime.Exception) { /* không đo được ⇒ giữ MiddleLeft tại tâm */ }
+        }
+
+        /// <summary>Block mũi tên "_OBLIQUE" (nạp vào bản vẽ nếu chưa có — đặt DIMBLK tạm rồi trả lại). Null ⇒ không dùng mũi tên xiên.</summary>
+        private static ObjectId ObliqueArrow(Database db)
+        {
+            using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
+            {
+                var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                if (bt.Has("_Oblique")) return bt["_Oblique"];
+            }
+            try
+            {
+                string old = Autodesk.AutoCAD.ApplicationServices.Application.GetSystemVariable("DIMBLK") as string;
+                Autodesk.AutoCAD.ApplicationServices.Application.SetSystemVariable("DIMBLK", "_OBLIQUE");
+                Autodesk.AutoCAD.ApplicationServices.Application.SetSystemVariable("DIMBLK", string.IsNullOrEmpty(old) ? "." : old);
+                using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
+                {
+                    var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                    return bt.Has("_Oblique") ? bt["_Oblique"] : ObjectId.Null;
+                }
+            }
+            catch { return ObjectId.Null; }
+        }
+
+        private static Dimension MakeDim(PvDim d, Placer x, int scale, DimStyleTable ds, ObjectId oblique)
         {
             ObjectId style = ds[d.DimStyle];
             string text = d.TextOverride ?? "";
@@ -237,8 +297,9 @@ namespace MCG_3DPanel.Commands
                 dim = new RotatedDimension(x.R(d.Space, d.Rotation), x.P(d.Space, d.X1, d.Y1), x.P(d.Space, d.X2, d.Y2),
                                            x.P(d.Space, d.LineX, d.LineY), text, style);
             dim.Layer = d.Layer;
-            dim.Dimscale = scale;   // override bắt buộc (spec): DIMSCALE = tỉ lệ tờ, DIMTMOVE = 1
-            dim.Dimtmove = 1;
+            dim.Dimscale = scale;   // override bắt buộc (spec): DIMSCALE = tỉ lệ tờ
+            if (d.Tmove) dim.Dimtmove = 1;   // tờ tay: có ở chuỗi chép từ nháp, không có ở kích thước "<>"
+            if (d.Oblique && !oblique.IsNull) { dim.Dimblk1 = oblique; dim.Dimblk2 = oblique; dim.Dimsah = true; }
             return dim;
         }
 
@@ -332,6 +393,12 @@ namespace MCG_3DPanel.Commands
                                             X2 = ad.XLine2Point.X, Y2 = ad.XLine2Point.Y,
                                             Rotation = Math.Atan2(ad.XLine2Point.Y - ad.XLine1Point.Y, ad.XLine2Point.X - ad.XLine1Point.X),
                                             HasOwnMark = own, InModelSpace = true };
+                case Line ln:
+                    at = ln.StartPoint; return new PvExisting { Type = "Line", Layer = ln.Layer, HasOwnMark = own, InModelSpace = true };
+                case Polyline pl:
+                    at = pl.GetPoint3dAt(0); return new PvExisting { Type = "Polyline", Layer = pl.Layer, HasOwnMark = own, InModelSpace = true };
+                case Leader ld:
+                    at = ld.VertexAt(0); return new PvExisting { Type = "Leader", Layer = ld.Layer, HasOwnMark = own, InModelSpace = true };
                 case BlockReference br:
                     at = br.Position; return new PvExisting { Type = "BlockRef", BlockName = BlockName(tr, br), HasOwnMark = own, InModelSpace = true };
             }
