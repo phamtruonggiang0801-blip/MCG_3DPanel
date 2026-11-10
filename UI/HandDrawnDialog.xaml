@@ -1,0 +1,29 @@
+<Window x:Class="MCG_3DPanel.UI.HandDrawnDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="MCG 3D Panel"
+        Width="400"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontSize="11">
+    <!-- Create Drawing gặp phần vẽ tay trên tờ của panel (kỹ sư 2026-11-10): Replace / Keep both / Cancel. Đóng cửa sổ = Cancel. -->
+    <Window.Resources>
+        <ResourceDictionary Source="PanelStyles.xaml"/>
+    </Window.Resources>
+
+    <Border Style="{StaticResource DialogBodyStyle}">
+        <StackPanel>
+            <TextBlock x:Name="TxtMessage" Style="{StaticResource DialogTextStyle}" TextWrapping="Wrap"/>
+            <StackPanel Style="{StaticResource DialogButtonRowStyle}">
+                <Button Content="Replace" IsDefault="True" Style="{StaticResource DialogPrimaryButtonStyle}" Click="BtnReplace_Click"
+                        ToolTip="Erase the hand-drawn names, symbols, dimensions and sections that the tool draws, then draw them from the 3D file. DETAIL titles, reference dimensions and chain totals are kept."/>
+                <Button Content="Keep both" Style="{StaticResource DialogButtonStyle}" Click="BtnKeep_Click"
+                        ToolTip="Leave the hand-drawn items and add the tool's items next to them. You will not be asked again for this panel."/>
+                <Button Content="Cancel" IsCancel="True" Style="{StaticResource DialogButtonStyle}"
+                        ToolTip="Draw nothing."/>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

@@ -357,7 +357,7 @@ namespace MCG_3DPanel.Commands
         }
 
         /// <summary>"Save and Update": lưu file 3D đang mở như lệnh Save (giữ .bak cũ sang tên có giờ, như Build). Trả lý do dừng (null = đã lưu). Không ném.</summary>
-        private static string SaveOpenTarget(Document open, string file)
+        internal static string SaveOpenTarget(Document open, string file)
         {
             try
             {
@@ -478,7 +478,7 @@ namespace MCG_3DPanel.Commands
         }
 
         /// <summary>Đưa document lên active, ném nếu không thành công. Sau đó KHÔNG dùng Editor của document cũ.</summary>
-        private static void Activate(Document doc)
+        internal static void Activate(Document doc)
         {
             Application.DocumentManager.MdiActiveDocument = doc;
             if (Application.DocumentManager.MdiActiveDocument != doc)
@@ -505,7 +505,7 @@ namespace MCG_3DPanel.Commands
 
         /// <summary>Bản trên đĩa khớp bản đang mở: đã đặt tên, là .dwg/.dwt, file còn đó, không có thay đổi chưa lưu.
         /// Dùng Document.Name, KHÔNG dùng Database.Filename: bản vẽ mới có Filename = file .dwt, sau autosave có thể là .sv$ trong %TEMP%.</summary>
-        private static bool IsSavedOnDisk(Document doc)
+        internal static bool IsSavedOnDisk(Document doc)
         {
             string file = doc.Name;
             if (!doc.IsNamedDrawing || string.IsNullOrEmpty(file) || !File.Exists(file)) return false;
@@ -538,7 +538,7 @@ namespace MCG_3DPanel.Commands
 
         private static bool IsTaken(string path) => File.Exists(path) || FindOpen(path) != null;
 
-        private static Document FindOpen(string path)
+        internal static Document FindOpen(string path)
         {
             foreach (Document d in Application.DocumentManager)
                 if (string.Equals(d.Name, path, System.StringComparison.OrdinalIgnoreCase)) return d;
