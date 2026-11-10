@@ -326,7 +326,13 @@ namespace MCG_3DPanel.Commands
             if (open != null)
             {
                 Activate(open);   // DBMOD đọc theo document active
-                if (!IsSavedOnDisk(open)) return $"Save or close {file} first, then Update.";
+                if (!IsSavedOnDisk(open))
+                {
+                    // Hỏi ngay thay vì từ chối (kỹ sư 2026-11-10): lưu ⇒ thay đổi chưa lưu được mang sang bản Update.
+                    if (!MCG_3DPanel.UI.UnsavedFileDialog.AskSave(file)) return $"{file} was skipped: it has unsaved changes.";
+                    string saveError = SaveOpenTarget(open, file);
+                    if (saveError != null) return saveError;
+                }
             }
 
             try { carry = Panel3DFile.ReadOld(job.Target); }
@@ -348,6 +354,25 @@ namespace MCG_3DPanel.Commands
                 closed = true;
             }
             return null;
+        }
+
+        /// <summary>"Save and Update": lưu file 3D đang mở như lệnh Save (giữ .bak cũ sang tên có giờ, như Build). Trả lý do dừng (null = đã lưu). Không ném.</summary>
+        private static string SaveOpenTarget(Document open, string file)
+        {
+            try
+            {
+                using (open.LockDocument())
+                {
+                    string keptBak = Panel3DFile.MoveOldBakAside(open.Name);
+                    if (keptBak != null) Say($"\n{LOG_PREFIX} The existing .bak of {file} was kept as {keptBak}.\n");
+                    Panel3DFile.Save(open);   // DBMOD chưa về 0 không sao: file sắp được đóng không lưu, bản trên đĩa đã đủ
+                }
+                return null;
+            }
+            catch (System.Exception ex)
+            {
+                return $"Could not save {file}: {ex.Message}. The file was not updated and is still open with its changes.";
+            }
         }
 
         /// <summary>Lỗi sau khi đã thay file: đóng không lưu, xoá file của lần này, trả file cũ về tên cũ. Trả true nếu file cũ đã về đúng tên. Không ném.</summary>

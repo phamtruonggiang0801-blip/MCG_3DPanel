@@ -31,8 +31,10 @@ build normally under Update, Open and New copy.
 
 For each panel under Update:
 
-1. **Target must be free to replace.** If it is open with unsaved changes, that panel stops with
-   `Save or close {file} first, then Update.` If it is open with nothing unsaved, it is closed first.
+1. **Target must be free to replace.** If it is open with unsaved changes, a box asks `{file} has unsaved changes.`
+   with `Save and Update` (saves the file, then goes on, so the changes are carried) and `Skip this panel` (that panel
+   stops with `{file} was skipped: it has unsaved changes.`) (engineer 2026-11-10; replaces the earlier refusal
+   `Save or close {file} first, then Update.`). It is then closed before the swap.
 2. **Read the old file** from disk into a side database: its `MCG3D_PANEL`, and the 2D block's `MCG3D_CORRECTIONS` and
    `MCG3D_NAMES`. An old file without `MCG3D_PANEL` stops that panel with `{file} has no panel data; use New copy.`
 3. **Match the panel.** The old file's stored 2D reference handle must equal the selected reference. Otherwise that panel

@@ -1,0 +1,27 @@
+<Window x:Class="MCG_3DPanel.UI.UnsavedFileDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="MCG 3D Panel"
+        Width="380"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontSize="11">
+    <!-- Update gặp file 3D đang mở có thay đổi chưa lưu (kỹ sư 2026-11-10): hỏi lưu rồi Update, hoặc bỏ qua panel này. Đóng cửa sổ = bỏ qua. -->
+    <Window.Resources>
+        <ResourceDictionary Source="PanelStyles.xaml"/>
+    </Window.Resources>
+
+    <Border Style="{StaticResource DialogBodyStyle}">
+        <StackPanel>
+            <TextBlock x:Name="TxtMessage" Style="{StaticResource DialogTextStyle}" TextWrapping="Wrap"/>
+            <StackPanel Style="{StaticResource DialogButtonRowStyle}">
+                <Button Content="Save and Update" IsDefault="True" Style="{StaticResource DialogPrimaryButtonStyle}" Click="BtnSave_Click"
+                        ToolTip="Save this file with its changes, then update it from the saved 2D drawing. The changes are kept."/>
+                <Button Content="Skip this panel" IsCancel="True" Style="{StaticResource DialogButtonStyle}"
+                        ToolTip="Leave this file open and unchanged. The other panels still build."/>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>
