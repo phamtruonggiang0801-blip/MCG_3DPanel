@@ -454,6 +454,20 @@ namespace MCG_3DPanel.UI
         /// <summary>Vùng chọn chụp lúc NHẤN CHUỘT lên control trong 1 dòng đang chọn (xem GridResult_PreviewMouseDown).</summary>
         private List<ResultRow> _clickSnapshot;
 
+        /// <summary>Double Click vào dòng ⇒ Zoom (kỹ sư 2026-11-09). Bấm trên ô nhập / nút / dropdown giữ nguyên thao tác của control đó.</summary>
+        private void GridResult_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            var src = e.OriginalSource as DependencyObject;
+            if (!(Up<DataGridRow>(src)?.Item is ResultRow row)) return;
+            if (Up<TextBox>(src) != null || Up<ComboBox>(src) != null || Up<System.Windows.Controls.Primitives.ButtonBase>(src) != null) return;
+            try
+            {
+                var sel = Selected;
+                Show(sel.Contains(row) ? sel : new List<ResultRow> { row }, zoom: true);
+            }
+            catch (System.Exception ex) { SetStatus("Could not zoom: " + ex.Message, error: true); }
+        }
+
         /// <summary>Nhấn chuột lên ComboBox / nút / ô nhập trong 1 dòng THUỘC vùng chọn (≥ 2 dòng) ⇒ chụp vùng chọn TRƯỚC khi WPF
         /// có thể thu nó về 1 dòng (ComboBox không nhận focus khi mở) — sửa hàng loạt vẫn áp đúng cả vùng chọn (review).
         /// Nhấn vào ô thường ⇒ bỏ ảnh chụp. Nhấn trong danh sách dropdown (Popup, ngoài cây visual grid) ⇒ giữ.</summary>

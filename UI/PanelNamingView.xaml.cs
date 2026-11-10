@@ -440,6 +440,20 @@ namespace MCG_3DPanel.UI
 
         private List<NamingRow> _clickSnapshot;
 
+        /// <summary>Double Click vào dòng ⇒ Zoom (kỹ sư 2026-11-09). Bấm trên ô nhập / nút / dropdown giữ nguyên thao tác của control đó.</summary>
+        private void GridNaming_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            var src = e.OriginalSource as DependencyObject;
+            if (!(Up<DataGridRow>(src)?.Item is NamingRow row)) return;
+            if (Up<TextBox>(src) != null || Up<ComboBox>(src) != null || Up<System.Windows.Controls.Primitives.ButtonBase>(src) != null) return;
+            try
+            {
+                var sel = Selected;
+                Show(sel.Contains(row) ? sel : new List<NamingRow> { row }, zoom: true);
+            }
+            catch (System.Exception ex) { SetStatus("Could not zoom: " + ex.Message, error: true); }
+        }
+
         /// <summary>Nhấn chuột vào ô Name của 1 dòng thuộc vùng chọn (≥ 2 dòng) ⇒ chụp vùng chọn trước khi WPF thu về 1 dòng.</summary>
         private void GridNaming_PreviewMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {

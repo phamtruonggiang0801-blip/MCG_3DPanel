@@ -61,7 +61,7 @@
         </WrapPanel>
 
         <TextBlock Grid.Row="1" Style="{StaticResource HelperTextStyle}" Margin="2,2,2,6"
-                   Text="Select rows like in Excel (Shift / Ctrl + click, drag, Ctrl+A) to highlight them. Changing Kind (Web / Closed Plate), Tripping, Collar, FB height, ⇄ or Sniped End on a selected row applies it to every selected row; the panel rebuilds automatically. Right-click for Delete / Restore; Ctrl+C copies the selection. Pick finds rows from the drawing; Esc clears the selection."/>
+                   Text="Select rows like in Excel (Shift / Ctrl + click, drag, Ctrl+A) to highlight them; double-click a row to zoom. Changing Kind (Web / Closed Plate), Tripping, Collar, FB height, ⇄ or Sniped End on a selected row applies it to every selected row; the panel rebuilds automatically. Right-click for Delete / Restore; Ctrl+C copies the selection. Pick finds rows from the drawing; Esc clears the selection."/>
 
         <!-- ===== Row 2: Bảng kết quả ===== -->
         <DataGrid x:Name="GridResult" Grid.Row="2" Style="{StaticResource PanelDataGridStyle}"
@@ -71,6 +71,7 @@
                   SelectionMode="Extended"
                   SelectionChanged="GridResult_SelectionChanged"
                   PreviewMouseLeftButtonDown="GridResult_PreviewMouseDown"
+                  MouseDoubleClick="GridResult_MouseDoubleClick"
                   PreviewKeyDown="Grid_PreviewKeyDown">
             <!-- Ctrl+C: copy các dòng ĐANG CHỌN (kèm header) để dán Excel. -->
             <DataGrid.CommandBindings>
