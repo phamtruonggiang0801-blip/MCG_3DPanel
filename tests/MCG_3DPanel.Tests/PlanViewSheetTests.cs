@@ -34,6 +34,11 @@ namespace MCG_3DPanel.Tests
             Assert.Equal(2010, p.Y, 6);
         }
 
+        [Fact] public void IsUnrotated_MovedOnly_True() => Assert.True(SheetGeometry.IsUnrotated(new[] { 1.0, 0, 0, 1, 5000, 9000 }));
+        [Fact] public void IsUnrotated_Rotated90_False() => Assert.False(SheetGeometry.IsUnrotated(new[] { 0.0, -1, 1, 0, 0, 0 }));
+        [Fact] public void IsUnrotated_MirroredX_False() => Assert.False(SheetGeometry.IsUnrotated(new[] { -1.0, 0, 0, 1, 0, 0 }));
+        [Fact] public void IsUnrotated_Rotated180_False() => Assert.False(SheetGeometry.IsUnrotated(new[] { -1.0, 0, 0, -1, 0, 0 }));
+
         [Fact] public void ModelHeight_5mm_at_75_is_375() => Assert.Equal(375, SheetGeometry.ModelHeight(5, 75));
 
         [Fact] public void Model_RequiredBlocks_Distinct()

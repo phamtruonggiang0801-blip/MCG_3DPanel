@@ -32,5 +32,10 @@ namespace MCG_3DPanel.Services.PlanView
             => (t[0] * bx + t[1] * by + t[4], t[2] * bx + t[3] * by + t[5]);
 
         public static double ModelHeight(double paperMm, int scale) => paperMm * scale;
+
+        /// <summary>Reference _Assy chỉ dời (không xoay, không lật, scale dương): mặt cắt, mặt bằng lỗ lashing và tiêu đề được đặt
+        /// theo trục tờ nên chỉ đúng khi điều này thoả (review 2026-11-10 — dừng thay vì vẽ sai).</summary>
+        public static bool IsUnrotated(double[] t)
+            => Math.Abs(t[1]) < 1e-6 && Math.Abs(t[2]) < 1e-6 && t[0] > 0 && t[3] > 0;
     }
 }

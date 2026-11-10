@@ -44,6 +44,8 @@ namespace MCG_3DPanel.Commands
                 if (k == null) { reason = $"No sheet frame (A1) around {input.Panel}."; return null; }
                 var fr = frames[k.Value];
                 var t = new[] { m[0, 0], m[0, 1], m[1, 0], m[1, 1], m[0, 3], m[1, 3] };
+                if (!SheetGeometry.IsUnrotated(t))
+                { reason = $"The {input.Panel} block is rotated or mirrored; Plan View supports unrotated blocks only. Nothing was drawn."; return null; }
                 var tp = input.TopPlate;
                 var c = new[] { (tp.MinX, tp.MinY), (tp.MaxX, tp.MinY), (tp.MaxX, tp.MaxY), (tp.MinX, tp.MaxY) }
                     .Select(p => SheetGeometry.ToSheet(p.Item1, p.Item2, t)).ToList();

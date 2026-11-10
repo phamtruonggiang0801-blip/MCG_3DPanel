@@ -163,9 +163,11 @@ Work on COPIES of a finished sheet (e.g. `CAS-0062242.dwg`, 7D-17P) and of its `
 | J4 | Run Plan View again (no change in 3D). | No dialog. Exactly one set of tool output (no duplicates). |
 | J5 | On a fresh copy press **Keep both**, then run again. | First run: hand items stay, tool items added. Second run: no dialog, still one tool set. |
 | J6 | In 3D delete a Tripping Bracket and toggle a Sniped End, save, run Plan View. | The `B` at that bracket is gone; `S` appears/disappears at that end. The section X-X / Y-Y drops a member deleted in 3D. |
-| J7 | Move and rotate the `_Assy` reference in the 2D file, save, run. | Labels, symbols and dims follow the plan (sections stay aligned with the plan's extents). |
+| J7 | Move (only) the `_Assy` reference in the 2D file, save, run. Then rotate it 90° (or mirror it), save, run. | Moved: labels, symbols, dims and sections follow the plan. Rotated/mirrored: `The 7D-17P block is rotated or mirrored; Plan View supports unrotated blocks only. Nothing was drawn.` |
 | J8 | Rename block `HP120x6` in the 2D file, run. | Stops with `Plan View stopped; the 2D drawing is missing: block HP120x6. Nothing was drawn.` |
 | J9 | Make the 2D file read-only (file properties), run. | `… is read-only or in use.` Nothing written. |
 | J10 | Move the 2D file to another folder, run. | A file dialog `Select the 2D drawing of 7D-17P_Assy` opens. Picking a wrong drawing ⇒ `… does not contain the 2D block …`. Picking the right one works and is remembered (next run does not ask). |
 | J11 | Look at `CS_horl_up_right` on Center, Port and Starboard panels. | Symbols sit at every HP/girder passing through a web, on the build-direction side. If ALL are on the wrong side, report it: one flag flips them (ledger Task 6). |
 | J12 | `MCG_DumpDrawing` of the result vs the reference dump. | Counts per layer (AM_1 / AM_4 / AM_5 / AM_6 texts and dims) within about ±10 % of the hand sheet. |
+| J13 | After a run, press Undo once (U). | The whole Plan View run disappears in ONE step (command name `MCG_PlanView`); hand items erased by Replace come back. |
+| J14 | Lock layer `Mechanical-AM_6` in the 2D file, run with Replace. | The run fails with a message; the sheet is exactly as before (hand items and previous tool output still there). Unlock and run again: it works. |

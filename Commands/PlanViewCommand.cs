@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Autodesk.AutoCAD.ApplicationServices;
+using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Runtime;
 using MCG_3DPanel.Services;
 using MCG_3DPanel.Services.PlanView;
@@ -65,7 +67,8 @@ namespace MCG_3DPanel.Commands
             PanelCommands.Activate(doc2D);
             var db = doc2D.Database;
 
-            using (doc2D.LockDocument())
+            // 1 khoá mang tên lệnh ⇒ Undo gỡ cả lần chạy trong 1 bước (review 2026-11-10).
+            using (doc2D.LockDocument(DocumentLockMode.Write, "MCG_PlanView", "MCG_PlanView", false))
             {
                 // 5–6. Tờ + mô hình + tài nguyên có sẵn.
                 SheetContext sheet = PlanViewWriter.Sheet(db, refH, input, out var assyRef, out string sheetErr) ?? throw new StopException(sheetErr);
@@ -74,24 +77,30 @@ namespace MCG_3DPanel.Commands
                 if (missing.Count > 0)
                     throw new StopException($"Plan View stopped; the 2D drawing is missing: {string.Join(", ", missing)}. Nothing was drawn.");
 
-                // 8. Phần vẽ tay (trước khi xoá phần cũ của tool: Cancel thì giữ nguyên tờ).
+                // 8. Phần vẽ tay — chỉ HỎI ở đây, chưa ghi gì (Cancel thì giữ nguyên tờ).
+                var choice = HandDrawnChoice.Cancel;
+                List<ObjectId> hand = null;
                 if (!PlanViewWriter.HasKeepMarker(db, btrH))
                 {
-                    var hand = PlanViewWriter.FindHandDrawn(db, input.Panel, assyRef, sheet, model, btrH);
+                    hand = PlanViewWriter.FindHandDrawn(db, input.Panel, assyRef, sheet, model, btrH);
                     if (hand.Count > 0)
                     {
-                        switch (HandDrawnDialog.Ask(hand.Count, input.Panel))
-                        {
-                            case HandDrawnChoice.Cancel: throw new StopException("Create Drawing cancelled. Nothing was drawn.");
-                            case HandDrawnChoice.Replace: PlanViewWriter.EraseAll(db, hand); break;
-                            case HandDrawnChoice.KeepBoth: PlanViewWriter.SetKeepMarker(db, btrH, true); break;
-                        }
+                        choice = HandDrawnDialog.Ask(hand.Count, input.Panel);
+                        if (choice == HandDrawnChoice.Cancel) throw new StopException("Create Drawing cancelled. Nothing was drawn.");
                     }
                 }
 
-                // 7, 9. Xoá phần tool vẽ lần trước, vẽ lại.
-                PlanViewWriter.EraseOwn(db, btrH);
-                var (labels, dims) = PlanViewWriter.Write(db, model, sheet, btrH);
+                // 7, 9. Xoá phần vẽ tay (Replace) + phần tool vẽ lần trước, rồi vẽ lại — TẤT CẢ trong 1 transaction ngoài:
+                // lỗi ở bất kỳ bước nào ⇒ huỷ hết, tờ giữ nguyên như trước khi chạy (review 2026-11-10).
+                int labels, dims;
+                using (Transaction outer = db.TransactionManager.StartTransaction())
+                {
+                    if (choice == HandDrawnChoice.Replace) PlanViewWriter.EraseAll(db, hand);
+                    if (choice == HandDrawnChoice.KeepBoth) PlanViewWriter.SetKeepMarker(db, btrH, true);
+                    PlanViewWriter.EraseOwn(db, btrH);
+                    (labels, dims) = PlanViewWriter.Write(db, model, sheet, btrH);
+                    outer.Commit();
+                }
                 Application.UpdateScreen();
                 return $"Plan View: {labels} labels, {dims} dimensions, sections X-X / Y-Y. {Path.GetFileName(path)} is not saved.";
             }
