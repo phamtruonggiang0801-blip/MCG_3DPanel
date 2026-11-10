@@ -187,7 +187,8 @@ namespace MCG_3DPanel.Commands
                         Add(e);
                         if (t.Justify == "CenterMiddleLeft" && e is DBText dt) CentreMiddleLeft(dt, x.P(t.Space, t.X, t.Y), db);
                     }
-                    foreach (var d in m.Dims) Add(MakeDim(d, x, s.Scale, ds, oblique));
+                    void AddDim(PvDim d) { var dim = MakeDim(d, x, ds); Add(dim); Overrides(dim, d, s.Scale, oblique); }
+                    foreach (var d in m.Dims) AddDim(d);
                     foreach (var l in m.Lines) Add(new Line(x.P(l.Space, l.X1, l.Y1), x.P(l.Space, l.X2, l.Y2)) { Layer = l.Layer });
                     foreach (var pl in m.Polylines)
                     {
@@ -201,8 +202,8 @@ namespace MCG_3DPanel.Commands
                         foreach (var q in ld.Points) leader.AppendVertex(x.P(ld.Space, q.X, q.Y));
                         if (ds.Has("AM_ISO")) leader.DimensionStyle = ds["AM_ISO"];
                         leader.HasArrowHead = true;
-                        leader.Dimscale = s.Scale;
                         Add(leader);
+                        leader.Dimscale = s.Scale;   // override SAU khi vào bản vẽ (như kích thước)
                     }
                     foreach (var i in m.Inserts) InsertBlock(tr, bt, i, x, s.Scale, Add);
                     foreach (var sec in m.Sections)
@@ -210,7 +211,7 @@ namespace MCG_3DPanel.Commands
                         ObjectId secBtr = DefineSection(tr, db, bt, sec);
                         Add(new BlockReference(new Point3d(sec.X, sec.Y, 0), secBtr) { Rotation = sec.Rotation, Layer = "Mechanical-AM_0" });
                         foreach (var k in sec.ThkSymbols) InsertBlock(tr, bt, k, x, s.Scale, Add);
-                        foreach (var d in sec.Dims) Add(MakeDim(d, x, s.Scale, ds, oblique));
+                        foreach (var d in sec.Dims) AddDim(d);
                     }
                     tr.Commit();
                     return (m.Texts.Count(t => t.Category == "Name" || t.Category == "Symbol"), AllDims(m).Count());
@@ -283,7 +284,7 @@ namespace MCG_3DPanel.Commands
             catch { return ObjectId.Null; }
         }
 
-        private static Dimension MakeDim(PvDim d, Placer x, int scale, DimStyleTable ds, ObjectId oblique)
+        private static Dimension MakeDim(PvDim d, Placer x, DimStyleTable ds)
         {
             ObjectId style = ds[d.DimStyle];
             string text = d.TextOverride ?? "";
@@ -297,10 +298,16 @@ namespace MCG_3DPanel.Commands
                 dim = new RotatedDimension(x.R(d.Space, d.Rotation), x.P(d.Space, d.X1, d.Y1), x.P(d.Space, d.X2, d.Y2),
                                            x.P(d.Space, d.LineX, d.LineY), text, style);
             dim.Layer = d.Layer;
+            return dim;
+        }
+
+        /// <summary>Override kích thước — gọi SAU khi kích thước đã nằm trong bản vẽ: DIMBLK1/2 đổi ObjectId mũi tên sang tên block
+        /// qua database của đối tượng (trước đó chưa có ⇒ eKeyNotFound, lỗi 2026-11-10).</summary>
+        private static void Overrides(Dimension dim, PvDim d, int scale, ObjectId oblique)
+        {
             dim.Dimscale = scale;   // override bắt buộc (spec): DIMSCALE = tỉ lệ tờ
             if (d.Tmove) dim.Dimtmove = 1;   // tờ tay: có ở chuỗi chép từ nháp, không có ở kích thước "<>"
             if (d.Oblique && !oblique.IsNull) { dim.Dimblk1 = oblique; dim.Dimblk2 = oblique; dim.Dimsah = true; }
-            return dim;
         }
 
         private static void InsertBlock(Transaction tr, BlockTable bt, PvInsert i, Placer x, int scale, Action<Entity> add)

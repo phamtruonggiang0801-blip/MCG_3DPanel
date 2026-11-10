@@ -37,7 +37,12 @@ namespace MCG_3DPanel.Commands
             if (doc3D == null) return;
             try { Finish(Create(doc3D), false); }
             catch (StopException stop) { Finish(stop.Message, true); }
-            catch (System.Exception ex) { Finish("Plan View failed: " + ex.Message, true); }
+            catch (System.Exception ex)
+            {
+                // Lỗi lập trình: stack trace đầy đủ (kèm số dòng — bản Debug có pdb) ra dòng lệnh để báo lại; status chỉ dòng ngắn.
+                try { Application.DocumentManager.MdiActiveDocument?.Editor?.WriteMessage("\n[MCG_3DPanel] Plan View error detail:\n" + ex + "\n"); } catch { }
+                Finish("Plan View failed: " + ex.Message + " (details on the command line)", true);
+            }
         }
 
         /// <summary>Trả thông báo trạng thái; lỗi người dùng cần biết ⇒ ném <see cref="StopException"/>.</summary>
