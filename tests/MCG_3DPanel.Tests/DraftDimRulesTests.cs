@@ -82,6 +82,46 @@ namespace MCG_3DPanel.Tests
             Assert.Equal(-359.06 - PlanViewLayout.LashChainLeft * Scale, chain.LineX, 3);
         }
 
+        /// <summary>Tờ 7D-17P: điểm đặt chuỗi NGANG (trên) dời lên lỗ trên cùng của cột (709.9 → y −79); chuỗi DỌC (trái) dời sang lỗ
+        /// ngoài cùng trái của hàng (hàng −12751.4 → x 709.9); điểm ở mép tấm dời ra mép tấm cùng hàng (y 61 → x 0).</summary>
+        [Fact] public void Lashing_ChainPoints_SnapToOuterHoles()
+        {
+            var h = new PvDraft { Source = "LashingHole", X1 = 709.9, Y1 = -6974.5, X2 = 1349.9, Y2 = -6974.5, Rotation = 0 };
+            var v1 = V(7549.9, -12354.0, -12751.4);
+            var v2 = V(7549.9, -79, 61);   // tới mép trên tấm
+            var i = Input(h, v1, v2);
+            i.Lashing = new PvLashing { Diameter = 55 };
+            foreach (var p in new[] { (709.9, -79.0), (709.9, -6974.5), (1349.9, -79.0), (1349.9, -6974.5), (7549.9, -6974.5),
+                                      (139.9, -12354.0), (7549.9, -12354.0), (709.9, -12751.4), (7549.9, -12751.4), (7549.9, -79.0) })
+                i.Lashing.Holes.Add(p);
+            var dims = DraftDimRules.Lashing(i, Scale, (0, 0)).Where(d => d.Kind == "Rotated" && d.TextOverride != "(<>)").ToList();
+            var hd = dims.Single(d => Math.Abs(d.Rotation) < 1e-9);
+            Assert.Equal(-79, hd.Y1, 3); Assert.Equal(-79, hd.Y2, 3);                         // tờ tay: (24540.8, 22397.7)
+            var vd = dims.Single(d => Math.Abs(Math.Abs(d.Y2 - d.Y1) - 397.4) < 0.1);
+            Assert.Equal(139.9, vd.X1, 3); Assert.Equal(709.9, vd.X2, 3);                     // tờ tay: x 23970.8 / 24540.8
+            var edge = dims.Single(d => Math.Abs(Math.Abs(d.Y2 - d.Y1) - 140) < 0.1);
+            Assert.Equal(709.9, edge.X1, 3); Assert.Equal(0, edge.X2, 3);                     // tờ tay: (24540.8,22397.7)–(23830.9,22537.7)
+        }
+
+        /// <summary>Đường bao thật 7D-17P: góc trên-trái khuyết (tấm ở y 61 bắt đầu từ x 264.85) ⇒ tờ tay đo tới mép trái chính x 0;
+        /// góc dưới có tai x −359 ⇒ đo tới −359.</summary>
+        [Fact] public void Lashing_EdgePoint_MainLeftEdgeOrTab()
+        {
+            var i = new PlanViewInput { Panel = "7D-17P", TopPlate = (-359.04, -12891.26, 15939.84, 464.93), PlateThickness = 6 };
+            i.PlateOutline.AddRange(new List<(double, double)>
+            {
+                (-359.04, -12891.26), (15939.84, -12891.26), (15939.84, 61), (829.96, 61), (799.96, 91), (799.96, 464.93), (264.85, 464.93),
+                (264.85, 29.87), (234.85, -0.13), (0, -0.13), (-0.18, -12270.34), (-30.18, -12300.34), (-359.03, -12300.34),
+            });
+            i.Lashing = new PvLashing { Diameter = 55 };
+            foreach (var p in new[] { (709.9, -79.0), (709.9, -12751.4), (7549.9, -79.0), (7549.9, -12751.4) }) i.Lashing.Holes.Add(p);
+            i.Drafts.Add(V(7549.9, -79, 61));
+            i.Drafts.Add(V(7549.9, -12751.4, -12891.5));
+            var dims = DraftDimRules.Lashing(i, Scale, (0, 0)).Where(d => d.Kind == "Rotated").ToList();
+            Assert.Contains(dims, d => Math.Abs(d.X2 - 0) < 0.5 && Math.Abs(d.Y2 - 61) < 0.5);          // tờ tay (23830.9, 22537.7)
+            Assert.Contains(dims, d => Math.Abs(d.X2 + 359.04) < 0.5 && Math.Abs(d.Y2 + 12891.5) < 0.5); // tờ tay (23471.9, 9585.4)
+        }
+
         /// <summary>Tờ 7D-17P: chuỗi ngang dừng ở lỗ 15649.9 ⇒ thêm 290 "(&lt;&gt;)" tới mép phải tấm (15939.8), cùng chuỗi trên.</summary>
         [Fact] public void Lashing_ChainShortOfEdge_AddsReferenceClosingDim()
         {

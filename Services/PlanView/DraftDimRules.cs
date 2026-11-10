@@ -68,6 +68,26 @@ namespace MCG_3DPanel.Services.PlanView
             }
 
             var chainH = new List<PvDraft>(); var chainV = new List<PvDraft>();
+            var dimOf = new Dictionary<PvDraft, PvDim>();
+            // Điểm đặt chuỗi như tờ tay 7D-17P: ngang (chuỗi trên) ⇒ lỗ TRÊN CÙNG của cột lỗ; dọc (chuỗi trái) ⇒ lỗ NGOÀI CÙNG TRÁI của
+            // hàng lỗ; điểm không có lỗ (mép tấm) ⇒ ra mép tấm ngay hàng/cột đó (cắt đường bao lùi 1 mm vào trong).
+            (double X, double Y) Snap(double x, double y, bool horiz)
+            {
+                var hs = input.Lashing?.Holes;
+                if (hs == null || hs.Count == 0) return (x, y);   // không biết vị trí lỗ ⇒ giữ điểm của nháp
+                if (horiz)
+                {
+                    var col = hs?.Where(p => Math.Abs(p.X - x) < Touch).ToList();
+                    if (col != null && col.Count > 0) return (x, col.Max(p => p.Y));
+                    return (x, PlateGeometry.Cut(o, 'Y', x + (x < cx ? Touch : -Touch), tp).Hi);
+                }
+                var row = hs?.Where(p => Math.Abs(p.Y - y) < Touch).ToList();
+                if (row != null && row.Count > 0) return (row.Min(p => p.X), y);
+                // mép trái: mép thật ở hàng đó hoặc mép trái CHÍNH (đường cắt giữa panel), lấy cái ra ngoài hơn — tờ 7D-17P đo tới
+                // x 0 ở góc trên (bỏ qua vết khuyết 264.85) và tới tai x −359 ở góc dưới.
+                double rowEdge = PlateGeometry.Cut(o, 'X', y + (y < cy ? Touch : -Touch), tp).Lo, mainEdge = PlateGeometry.Cut(o, 'X', cy, tp).Lo;
+                return (Math.Min(rowEdge, mainEdge), y);
+            }
             foreach (var d in lash)
             {
                 bool horiz = Math.Abs(Math.Sin(d.Rotation)) < 0.01, vert = Math.Abs(Math.Cos(d.Rotation)) < 0.01;
@@ -86,7 +106,8 @@ namespace MCG_3DPanel.Services.PlanView
                 }
                 bool edge = PlateGeometry.OnOutline(o, d.X1, d.Y1) || PlateGeometry.OnOutline(o, d.X2, d.Y2);
                 (horiz ? chainH : chainV).Add(d);
-                Add(d.X1, d.Y1, d.X2, d.Y2, horiz ? d.X2 : lineLeft, horiz ? lineTop : d.Y2, horiz,
+                var a = Snap(d.X1, d.Y1, horiz); var b = Snap(d.X2, d.Y2, horiz);
+                dimOf[d] = Add(a.X, a.Y, b.X, b.Y, horiz ? d.X2 : lineLeft, horiz ? lineTop : d.Y2, horiz,
                     edge ? LayerStructure : LayerLashing, string.IsNullOrEmpty(d.Text) ? null : d.Text, d.Tmove, d.Oblique);
             }
 
@@ -99,15 +120,14 @@ namespace MCG_3DPanel.Services.PlanView
                 var ends = chain.SelectMany(d => horiz ? new[] { d.X1, d.X2 } : new[] { d.Y1, d.Y2 }).ToList();
                 double lo = ends.Min(), hi = ends.Max();
                 var (edgeLo, edgeHi) = PlateGeometry.Cut(o, horiz ? 'X' : 'Y', row, tp);
-                var dims = r.Where(x => x.Kind == "Rotated" && chain.Any(d => Math.Abs(d.X1 + shift.dx - x.X1) < 1e-6 && Math.Abs(d.Y1 + shift.dy - x.Y1) < 1e-6
-                                                                          && Math.Abs(d.X2 + shift.dx - x.X2) < 1e-6 && Math.Abs(d.Y2 + shift.dy - x.Y2) < 1e-6)).ToList();
+                var dims = chain.Select(d => dimOf[d]).ToList();
                 double lineX = horiz ? 0 : lineLeft, lineY = horiz ? lineTop : 0;
                 // phía "cuối": phải (ngang) / dưới (dọc)
                 if (horiz ? hi < edgeHi - Touch : lo > edgeLo + Touch)
                 {
                     double from = horiz ? hi : lo, to = horiz ? edgeHi : edgeLo;
-                    Add(horiz ? from : row, horiz ? row : from, horiz ? to : row, horiz ? 0 : to,
-                        horiz ? to : lineX, horiz ? lineY : to, horiz, LayerStructure, "(<>)", false);
+                    var a = Snap(horiz ? from : row, horiz ? row : from, horiz); var b = Snap(horiz ? to : row, horiz ? row : to, horiz);
+                    Add(a.X, a.Y, b.X, b.Y, horiz ? to : lineX, horiz ? lineY : to, horiz, LayerStructure, "(<>)", false);
                 }
                 else
                 {
