@@ -150,3 +150,22 @@ built in a second drawing.
 | I22 | Update a file that has no panel data, or a file built from another block of the same name. | That panel stops with `... has no panel data; use New copy.` or `... was built from another 2D block; use New copy.` and the old file is not changed. If it was open, it stays open. Two references of one block selected together: one updates, the other is refused, and the updated file stays open and active. |
 | I23 | In the same dialog press Open, then repeat with New copy. Also Update a selection where one panel has no 3D file. | Open and New copy behave as in I6 and I7. The panel with no 3D file builds normally with the Input tab values. |
 | I24 | Result and Naming: double-click a row on plain text. Then double-click inside the Name box, a Kind / Tripping dropdown and a button. | Plain text zooms to the row (all selected rows if it is one of them). The Name box selects text as usual; dropdowns and buttons do not zoom. |
+
+## J. Create Drawing › Plan View (2026-11-10)
+
+Work on COPIES of a finished sheet (e.g. `CAS-0062242.dwg`, 7D-17P) and of its `_3D.dwg`. Spec: `docs/superpowers/specs/2026-11-10-create-drawing-plan-view-design.md`.
+
+| # | Steps | Expected |
+|---|---|---|
+| J1 | Result tab in a 2D drawing (no 3D panel): open Create Drawing ▾. | Plan View is greyed; its tooltip says `Open a 3D panel file first`. In a 3D file it is enabled. |
+| J2 | In the 3D file run Plan View on the hand-drawn sheet. | The 2D drawing opens and becomes active. The dialog says `{n} hand-drawn items found on the 7D-17P sheet.` with Replace / Keep both / Cancel. Cancel ⇒ nothing changes. |
+| J3 | Repeat J2, press **Replace**. Before and after, run `MCG_DumpDrawing` and compare the handles inside `7D-17P_Structure`. | Hand labels, symbols, sections X-X / Y-Y and the hand lashing plan are gone; the tool's ones are drawn. `DETAIL…`, `1A-1A`, `REF. DIM`, `(<>)` dimensions and chain totals are untouched. Handles inside `_Assy` are identical. The 2D drawing has a `*` (not saved). |
+| J4 | Run Plan View again (no change in 3D). | No dialog. Exactly one set of tool output (no duplicates). |
+| J5 | On a fresh copy press **Keep both**, then run again. | First run: hand items stay, tool items added. Second run: no dialog, still one tool set. |
+| J6 | In 3D delete a Tripping Bracket and toggle a Sniped End, save, run Plan View. | The `B` at that bracket is gone; `S` appears/disappears at that end. The section X-X / Y-Y drops a member deleted in 3D. |
+| J7 | Move and rotate the `_Assy` reference in the 2D file, save, run. | Labels, symbols and dims follow the plan (sections stay aligned with the plan's extents). |
+| J8 | Rename block `HP120x6` in the 2D file, run. | Stops with `Plan View stopped; the 2D drawing is missing: block HP120x6. Nothing was drawn.` |
+| J9 | Make the 2D file read-only (file properties), run. | `… is read-only or in use.` Nothing written. |
+| J10 | Move the 2D file to another folder, run. | A file dialog `Select the 2D drawing of 7D-17P_Assy` opens. Picking a wrong drawing ⇒ `… does not contain the 2D block …`. Picking the right one works and is remembered (next run does not ask). |
+| J11 | Look at `CS_horl_up_right` on Center, Port and Starboard panels. | Symbols sit at every HP/girder passing through a web, on the build-direction side. If ALL are on the wrong side, report it: one flag flips them (ledger Task 6). |
+| J12 | `MCG_DumpDrawing` of the result vs the reference dump. | Counts per layer (AM_1 / AM_4 / AM_5 / AM_6 texts and dims) within about ±10 % of the hand sheet. |

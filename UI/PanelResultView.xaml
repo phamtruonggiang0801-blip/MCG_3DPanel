@@ -54,6 +54,17 @@
                     </ContextMenu>
                 </Button.ContextMenu>
             </Button>
+            <!-- Create Drawing (spec 2026-11-10): ghi Plan View vào bản vẽ 2D đã dựng ra panel. -->
+            <Button x:Name="BtnCreateDrawing" Content="Create Drawing ▾" Style="{StaticResource ToolbarPrimaryButtonStyle}"
+                    Click="BtnCreateDrawing_Click" ToolTip="Write names, symbols, dimensions and sections into the 2D drawing">
+                <Button.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem x:Name="MnuPlanView" Header="Plan View" Click="MnuPlanView_Click"
+                                  ToolTipService.ShowOnDisabled="True"
+                                  ToolTip="Write the Plan View sheet of this panel into the 2D drawing it was built from"/>
+                    </ContextMenu>
+                </Button.ContextMenu>
+            </Button>
             <Button x:Name="BtnCopy" Content="Copy" Style="{StaticResource ToolbarButtonStyle}"
                     Click="BtnCopy_Click" ToolTip="Copy the table to the clipboard (paste straight into Excel)"/>
             <Button x:Name="BtnPick" Content="Pick" Style="{StaticResource ToolbarButtonStyle}"

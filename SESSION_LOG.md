@@ -1,5 +1,14 @@
 # SESSION LOG — MCG_3DPanel
 
+## Session 2026-11-10 — Create Drawing › Plan View (nhánh `feat/create-drawing-plan-view`)
+
+- Nút **Create Drawing ▾ › Plan View** trên tab Result (chỉ bật trong file 3D): lệnh `MCG_PlanView` đọc panel từ file 3D, tìm bản vẽ 2D (đường dẫn lưu trong PanelMeta `SourcePath`, không có/không khớp ⇒ hỏi chọn file), mở và chuyển sang nó, KHÔNG lưu.
+- Ghi: nhãn T/L (AM_1) + HT/HL/BS (AM_6), ký hiệu B / S / GE·GB (cột Kind) / OB, `CS_horl_up_right` tại mỗi chỗ thanh chạy liên tục qua web, kích thước = bản sao nháp AM_9 (AM_4 lashing, AM_5 kết cấu) + bao Top Plate ±4 + Ø lỗ lashing, mặt cắt điển hình `<panel>_X-X_MCG` / `_Y-Y_MCG`, mặt bằng lỗ lashing + M.D1/M.D2, member list, ghi chú dung sai, tiêu đề. Mọi entity mang XData `MCG3D_PLANVIEW` = handle block 2D; chạy lại ⇒ xoá phần cũ của tool rồi vẽ lại.
+- Phần vẽ tay ⇒ Replace / Keep both / Cancel; Keep both ghi dấu trong NOD để không hỏi lại. Thiếu layer/dim style/block ⇒ dừng, liệt kê, không vẽ gì. Không đụng cây block `_Assy`.
+- Vị trí đo từ 6 tờ mẫu (`tools/DumpAnalyzer/placement.cs`, `docs/superpowers/specs/2026-11-10-plan-view-placement.md`).
+- Build: sửa lỗi crash 0xC0000005 (IDE build nền ghi đè `obj\Debug\UI\*.g.cs`) — chỉ build bằng `deploy.bat`.
+- **CHƯA chạy trong AutoCAD** — cần kỹ sư chạy J1–J12 của `docs/ux-checklist.md`.
+
 ## Session 2026-11-09 — Update file 3D từ 2D đã sửa (nhánh `fix/3d-file-paper-space`)
 
 - Hộp thoại file có sẵn: `Update` (mặc định), `Open`, `New copy`, `Cancel`. Update lấy 2D đã lưu, mang correction + tên của file 3D cũ sang (`Panel3DFile.ReadOld`, `Create(..., carry)`), dựng bằng Input/Position đã lưu trong file cũ, giữ nguyên tên file.

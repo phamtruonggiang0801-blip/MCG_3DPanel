@@ -22,6 +22,7 @@ namespace MCG_3DPanel.UI
         {
             InitializeComponent();
             StepExport.Finished += (msg, err) => SetStatus(msg, err);
+            PlanViewCommand.Finished += (msg, err) => SetStatus(msg, err);
             Loaded += (s, e) =>
             {
                 // STEPOUT chỉ có khi chạy AutoCAD Mechanical — không có thì nút mờ + tooltip giải thích.
@@ -644,6 +645,24 @@ namespace MCG_3DPanel.UI
             cm.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
             cm.IsOpen = true;
         }
+
+        // ─── Create Drawing ▸ Plan View (spec 2026-11-10) ─────────────────
+
+        /// <summary>Mở menu Create Drawing dưới nút. Plan View chỉ bật trong file 3D có panel (đọc lại mỗi lần mở menu).</summary>
+        private void BtnCreateDrawing_Click(object sender, RoutedEventArgs e)
+        {
+            var db = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument?.Database;
+            bool has3D = db != null && PanelSession.For(db, out _).Any(b => b.Kept && !b.BlockRefId.IsNull);
+            MnuPlanView.IsEnabled = has3D;
+            MnuPlanView.ToolTip = has3D ? "Write the Plan View sheet of this panel into the 2D drawing it was built from"
+                                        : "Open a 3D panel file first";
+            var cm = BtnCreateDrawing.ContextMenu;
+            cm.PlacementTarget = BtnCreateDrawing;
+            cm.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            cm.IsOpen = true;
+        }
+
+        private void MnuPlanView_Click(object sender, RoutedEventArgs e) => PlanViewCommand.Request();
 
         // ─── Export STEP (mỗi panel 1 file) ───────────────────────────────
 
