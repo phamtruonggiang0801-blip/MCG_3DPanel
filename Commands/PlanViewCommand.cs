@@ -101,10 +101,15 @@ namespace MCG_3DPanel.Commands
                 // 7, 9. Xoá phần vẽ tay (Replace) + phần tool vẽ lần trước, rồi vẽ lại — TẤT CẢ trong 1 transaction ngoài:
                 // lỗi ở bất kỳ bước nào ⇒ huỷ hết, tờ giữ nguyên như trước khi chạy (review 2026-11-10).
                 int labels, dims;
-                List<string> addedTables;
+                // Bổ sung block TRƯỚC, commit riêng: trong transaction ngoài, 1 lần chạy lỗi sẽ rollback block vừa chép thành bản ghi
+                // "đã xoá" vẫn giữ tên ⇒ lần sau tưởng đã có / chép không được (lỗi 'Rec. for tolerance' 2026-11-10). Undo vẫn gỡ được.
+                List<string> addedTables = PlanViewBlockSource.Apply(db, blocks);
+                var stillMissing = PlanViewBlockSource.NotLive(db, model.RequiredBlocks);
+                if (stillMissing.Count > 0)
+                    throw new StopException("Plan View stopped; these blocks could not be added: " + string.Join(", ", stillMissing.Select(b => b + Origin(blocks, b)))
+                        + ". Close the 2D drawing without saving, reopen it and run again. Nothing was drawn.");
                 using (Transaction outer = db.TransactionManager.StartTransaction())
                 {
-                    addedTables = PlanViewBlockSource.Apply(db, blocks);
                     if (choice == HandDrawnChoice.Replace) PlanViewWriter.EraseAll(db, hand);
                     if (choice == HandDrawnChoice.KeepBoth) PlanViewWriter.SetKeepMarker(db, btrH, true);
                     PlanViewWriter.EraseOwn(db, btrH);
@@ -119,6 +124,10 @@ namespace MCG_3DPanel.Commands
                 return $"Plan View: {labels} labels, {dims} dimensions, sections X-X / Y-Y.{added} {Path.GetFileName(path)} is not saved.";
             }
         }
+
+        /// <summary>Nguồn định lấy block (cho thông báo lỗi): template / tự vẽ / đã có trong bản vẽ.</summary>
+        private static string Origin(PlanViewBlockSource.Plan plan, string block)
+            => plan.FromTemplate.Contains(block) ? " (from CAS.dwt)" : plan.Drawn.Contains(block) ? " (drawn by the tool)" : " (was in the drawing)";
 
         private static void Finish(string msg, bool error)
         {

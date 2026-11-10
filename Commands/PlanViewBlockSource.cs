@@ -109,6 +109,21 @@ namespace MCG_3DPanel.Commands
             return after.Where(n => !before.Contains(n)).OrderBy(n => n).ToList();
         }
 
+        /// <summary>Block trong <paramref name="names"/> chưa có bản ghi còn sống trong bản vẽ (kèm "[erased name]" nếu tên đang bị
+        /// bản ghi đã xoá giữ) — kiểm tra ngay sau <see cref="Apply"/>.</summary>
+        public static List<string> NotLive(Database db, IEnumerable<string> names)
+        {
+            var r = new List<string>();
+            using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
+            {
+                var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                foreach (var n in names)
+                    if (!SymbolTables.HasLive(bt, n)) r.Add(bt.Has(n) ? n + " [erased name]" : n);
+                tr.Commit();
+            }
+            return r;
+        }
+
         private static bool CanDraw(string name)
         {
             if (SymbolBlockShapes.Has(name)) return true;
