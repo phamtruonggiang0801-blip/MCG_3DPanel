@@ -48,10 +48,25 @@ namespace MCG_3DPanel.Services.PlanView
             var tp = input.TopPlate;
             var o = Outline(input);
             var r = new List<PvDim>();
-            foreach (var d in input.Drafts.Where(x => x.Source == "LashingHole"))
+            var lash = input.Drafts.Where(x => x.Source == "LashingHole").ToList();
+            foreach (var d in lash)
             {
                 bool horiz = Math.Abs(Math.Sin(d.Rotation)) < 0.01, vert = Math.Abs(Math.Cos(d.Rotation)) < 0.01;
                 if (!horiz && !vert) continue;
+                // Nháp "cục bộ": chồng lên 1 nháp DÀI hơn cùng trục (tờ 7D-17P: 480, 395.5, 470) ⇒ tờ tay giữ đường kích thước của
+                // chính nó (trong tấm), layer AM_5, chữ "<>".
+                var iv = Interval(d, horiz);
+                bool local = lash.Any(e => e != d && SameAxis(e, horiz) && Overlap(iv, Interval(e, horiz)) > Touch && Len(e) > Len(d) + Touch);
+                if (local)
+                {
+                    r.Add(new PvDim
+                    {
+                        Space = PvSpace.Block, X1 = d.X1 + shift.dx, Y1 = d.Y1 + shift.dy, X2 = d.X2 + shift.dx, Y2 = d.Y2 + shift.dy,
+                        LineX = d.LineX + shift.dx, LineY = d.LineY + shift.dy, Rotation = horiz ? 0 : Math.PI / 2,
+                        Layer = LayerStructure, TextOverride = "<>", Tmove = false,
+                    });
+                    continue;
+                }
                 bool edge = PlateGeometry.OnOutline(o, d.X1, d.Y1) || PlateGeometry.OnOutline(o, d.X2, d.Y2);
                 r.Add(new PvDim
                 {
@@ -76,6 +91,14 @@ namespace MCG_3DPanel.Services.PlanView
             }
             return r;
         }
+
+        private const double Touch = 1.0;
+        private static (double Lo, double Hi) Interval(PvDraft d, bool horiz)
+            => horiz ? (Math.Min(d.X1, d.X2), Math.Max(d.X1, d.X2)) : (Math.Min(d.Y1, d.Y2), Math.Max(d.Y1, d.Y2));
+        private static bool SameAxis(PvDraft e, bool horiz)
+            => horiz ? Math.Abs(Math.Sin(e.Rotation)) < 0.01 : Math.Abs(Math.Cos(e.Rotation)) < 0.01;
+        private static double Overlap((double Lo, double Hi) a, (double Lo, double Hi) b) => Math.Min(a.Hi, b.Hi) - Math.Max(a.Lo, b.Lo);
+        private static double Len(PvDraft d) => Math.Sqrt((d.X2 - d.X1) * (d.X2 - d.X1) + (d.Y2 - d.Y1) * (d.Y2 - d.Y1));
 
         internal static IReadOnlyList<(double X, double Y)> Outline(PlanViewInput input)
         {

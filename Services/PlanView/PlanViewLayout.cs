@@ -43,6 +43,10 @@ namespace MCG_3DPanel.Services.PlanView
         // ─── Ký hiệu chữ B / S / GE / GB / OB ───
         public const double MarkOffset = 4;
         public const double BracketTextOut = 8.5;      // OB/OB1: chữ đẩy ra ngoài bracket (phía mép tấm)
+        public const double HpBAlong = 4.25, HpBSide = 3.1; // chữ B: dọc HP về phía bracket / sang trái HP
+        public const double GirderCrossMin = 1000;     // mm thật: girder × girder chỉ ký hiệu liên tục khi cách đầu mút cả 2 tuyến ≥ giá trị này
+        public const double FrameTop = 3.3, FrameBottom = 7.9, FrameInset = 0.26, FrameRuleGap = 0.25; // khung AM_8 quanh member list
+        public const double LineSpacingFactor = 5.0 / 3.0; // khoảng dòng MText mặc định = 5/3 × cao chữ
 
         // ─── Cỡ chữ (mm giấy) ───
         public const double TextGirder = 5, TextStiffener = 3, TextMemberList = 3.5, TextTitle = 5;

@@ -53,24 +53,35 @@ namespace MCG_3DPanel.Services.PlanView
         }
 
         /// <summary>MText quy cách: chiều dày tấm, quy cách nẹp HP, rồi mỗi quy cách girder T / L một dòng (tên theo thứ tự tự nhiên).</summary>
-        public static PvText MemberList(PlanViewInput input, double frameX, double frameY, int scale)
+        /// <summary>Dòng của member list: nhóm chiều dày tấm / nẹp / girder T / girder L, giữa các nhóm 1 dòng trống
+        /// (tờ tay 7D-17P: vạch ngăn 3 nét của khung AM_8 nằm giữa các dòng trống này).</summary>
+        public static List<string> MemberListLines(PlanViewInput input)
         {
             var inv = CultureInfo.InvariantCulture;
-            var lines = new List<string> { "TOP PLATE THICKNESS: " + input.PlateThickness.ToString("0.0", inv), "" };
+            var groups = new List<List<string>> { new List<string> { "TOP PLATE THICKNESS: " + input.PlateThickness.ToString("0.0", inv) } };
             var live = input.Members.Where(m => !m.Deleted && !string.IsNullOrEmpty(m.Name)).ToList();
             var hp = live.Where(m => m.Kind == "HP" && !string.IsNullOrEmpty(m.Spec)).Select(m => m.Spec).Distinct().ToList();
-            if (hp.Count > 0) { lines.Add("STIFFENERS (HL & HT): " + string.Join(", ", hp)); lines.Add(""); }
+            if (hp.Count > 0) groups.Add(new List<string> { "STIFFENERS (HL & HT): " + string.Join(", ", hp) });
             foreach (var (dir, title) in new[] { ("T", "TRANSVERSAL GIRDERS"), ("L", "LONGITUDINAL GIRDERS") })
             {
                 var webs = live.Where(m => m.Kind == "Web" && m.Dir == dir && !string.IsNullOrEmpty(m.Spec))
                                .GroupBy(m => m.Line).Select(g => g.First()).ToList();
-                foreach (var spec in webs.GroupBy(m => m.Spec).OrderBy(g => g.Select(m => m.Name).OrderBy(n => n, Natural).First(), Natural))
+                var g = new List<string>();
+                foreach (var spec in webs.GroupBy(m => m.Spec).OrderBy(x => x.Select(m => m.Name).OrderBy(n => n, Natural).First(), Natural))
                 {
                     var names = spec.Select(m => m.Name).Distinct().OrderBy(n => n, Natural);
-                    lines.Add($"{title} {string.Join(",", names)} : {spec.Key}");
+                    g.Add($"{title} {string.Join(",", names)} : {spec.Key}");
                 }
+                if (g.Count > 0) groups.Add(g);
             }
-            while (lines.Count > 0 && lines[lines.Count - 1] == "") lines.RemoveAt(lines.Count - 1);
+            var lines = new List<string>();
+            foreach (var g in groups) { if (lines.Count > 0) lines.Add(""); lines.AddRange(g); }
+            return lines;
+        }
+
+        public static PvText MemberList(PlanViewInput input, double frameX, double frameY, int scale)
+        {
+            var lines = MemberListLines(input);
             return new PvText
             {
                 Space = PvSpace.Sheet, IsMText = true, Category = "MemberList", Justify = "TopLeft",

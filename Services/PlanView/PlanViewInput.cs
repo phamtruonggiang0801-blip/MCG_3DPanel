@@ -42,6 +42,9 @@ namespace MCG_3DPanel.Services.PlanView
         public string Text { get; set; } = "";
         public bool Tmove { get; set; } = true;
         public bool Oblique { get; set; }
+        /// <summary>Điểm đường kích thước của nháp (hệ block) — kích thước "cục bộ" (chồng lên nháp dài hơn cùng trục) giữ nguyên chỗ này.</summary>
+        public double LineX { get; set; }
+        public double LineY { get; set; }
     }
 
     /// <summary>Ký hiệu chữ (B, S, GE…, GB…, OB…) tại điểm đánh dấu. (DirX, DirY) = hướng đẩy chữ ra khỏi thanh (đơn vị; 0,0 = không đẩy).</summary>
@@ -54,6 +57,11 @@ namespace MCG_3DPanel.Services.PlanView
         public double DirY { get; set; }
         /// <summary>Mã bracket (OB, OB1…): chữ đẩy ra ngoài bracket về phía mép tấm.</summary>
         public bool IsBracket { get; set; }
+        /// <summary>Chữ B neo tại HP (giao điểm HP × web của tripping, hoặc đầu HP của bracket đầu HP): chữ lệch (Dir × 4.25 mm) về phía
+        /// bracket dọc HP + (Perp × 3.1 mm) sang bên HP — như tờ tay 7D-17P.</summary>
+        public bool AtHp { get; set; }
+        public double PerpX { get; set; }
+        public double PerpY { get; set; }
     }
 
     /// <summary>1 lỗ lashing đại diện — để ghi kích thước đường kính.</summary>

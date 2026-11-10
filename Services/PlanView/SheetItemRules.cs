@@ -111,24 +111,35 @@ namespace MCG_3DPanel.Services.PlanView
             return Title(TitleLashing, x0, x1, bottom, s.Scale, PlanViewLayout.TitleWidthLashing);
         }
 
-        /// <summary>Khung 3 lớp AM_8 chứa member list + 3 vạch ngăn 3 nét (toạ độ tờ 7D-17P, mm giấy từ gốc khung).</summary>
-        public static List<PvPolyline> MemberFramePolylines(double frameX, double frameY, int scale)
+        /// <summary>Khung 3 lớp AM_8 bao member list, cao theo SỐ DÒNG; vạch ngăn 3 nét nằm giữa mỗi dòng trống (giữa các nhóm).
+        /// Bề ngang và lề lấy theo tờ 7D-17P (x 172.738…328.4 mm giấy từ gốc khung; trên +3.3 mm, dưới −7.9 mm từ dòng cuối).</summary>
+        public static (List<PvPolyline> Frames, List<PvLine> Rules) MemberFrame(double frameX, double frameY, int scale, IReadOnlyList<string> lines)
         {
-            var r = new List<PvPolyline>();
-            foreach (var (x0, y0, x1, y1) in new[] { (172.738, 22.082, 328.400, 83.508), (172.998, 22.342, 328.140, 83.248), (173.258, 22.602, 327.880, 82.988) })
+            double h = PlanViewLayout.TextMemberList, sp = h * PlanViewLayout.LineSpacingFactor;   // mm giấy
+            double top = PlanViewLayout.MemberListY;
+            double Baseline(int k) => top - h - k * sp;
+            double x0 = 172.738, x1 = 328.400, y1 = top + PlanViewLayout.FrameTop, y0 = Baseline(Math.Max(lines.Count - 1, 0)) - PlanViewLayout.FrameBottom;
+            var frames = new List<PvPolyline>();
+            for (int i = 0; i < 3; i++)
             {
+                double d = i * PlanViewLayout.FrameInset;
                 var p = new PvPolyline { Space = PvSpace.Sheet, Layer = "Mechanical-AM_8" };
-                foreach (var (x, y) in new[] { (x0, y0), (x1, y0), (x1, y1), (x0, y1) }) p.Points.Add((frameX + x * scale, frameY + y * scale));
-                r.Add(p);
+                foreach (var (x, y) in new[] { (x0 + d, y0 + d), (x1 - d, y0 + d), (x1 - d, y1 - d), (x0 + d, y1 - d) })
+                    p.Points.Add((frameX + x * scale, frameY + y * scale));
+                frames.Add(p);
             }
-            return r;
+            var rules = new List<PvLine>();
+            for (int k = 0; k < lines.Count; k++)
+            {
+                if (lines[k] != "") continue;
+                double yc = Baseline(k) + h / 2;
+                foreach (var dy in new[] { -PlanViewLayout.FrameRuleGap, 0, PlanViewLayout.FrameRuleGap })
+                    rules.Add(new PvLine { Space = PvSpace.Sheet, Layer = "Mechanical-AM_8",
+                                           X1 = frameX + (x0 + 0.5) * scale, X2 = frameX + (x1 - 0.5) * scale,
+                                           Y1 = frameY + (yc + dy) * scale, Y2 = frameY + (yc + dy) * scale });
+            }
+            return (frames, rules);
         }
-
-        public static List<PvLine> MemberFrameLines(double frameX, double frameY, int scale)
-            => new[] { 71.832, 72.082, 72.332, 60.832, 61.082, 61.332, 48.334, 48.584, 48.834 }
-                .Select(y => new PvLine { Space = PvSpace.Sheet, Layer = "Mechanical-AM_8",
-                                          X1 = frameX + 173.238 * scale, X2 = frameX + 327.900 * scale, Y1 = frameY + y * scale, Y2 = frameY + y * scale })
-                .ToList();
 
         /// <summary>1 khung "Rec. for tolerance" giữa đường mỗi kích thước bao (kích thước phải đo kiểm sau chế tạo), xoay theo kích thước.</summary>
         public static List<PvInsert> ToleranceBoxes(IReadOnlyList<PvDim> overall, int scale)

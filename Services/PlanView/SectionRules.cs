@@ -23,6 +23,7 @@ namespace MCG_3DPanel.Services.PlanView
             public double X;          // cục bộ dọc mặt cắt
             public bool IsWeb;
             public bool Mirror;
+            public bool IsFb;
         }
 
         public static PvSection Build(PlanViewInput input, char which, SheetContext s)
@@ -75,7 +76,7 @@ namespace MCG_3DPanel.Services.PlanView
                 bool mirror = belly < -0.5;
                 double ins = mirror ? Pos(p) + p.Thickness / 2 : Pos(p) - p.Thickness / 2;   // mặt lưng
                 sec.Profiles.Add(new PvInsert { Space = PvSpace.Block, Block = p.ProfileBlock, X = ins, Y = line, Scale = 1, ScaleIsAbsolute = true, MirrorX = mirror, Layer = "0" });
-                pts.Add(new Pt { X = ins, Mirror = mirror });
+                pts.Add(new Pt { X = ins, Mirror = mirror, IsFb = p.Kind == "FB" });
             }
             pts = pts.OrderBy(p => p.X).ToList();
 
@@ -100,32 +101,66 @@ namespace MCG_3DPanel.Services.PlanView
                                          Rotation = sec.Rotation, Layer = Layer, Oblique = oblique, Tmove = tmove, TextOverride = text });
             }
 
+            // Tờ tay 7D-17P: chữ "<>" + không DIMTMOVE cho kích thước kỹ sư tự ghi; "" + DIMTMOVE cho phần tử lặp của chuỗi.
+            const string V = "<>";
             if (pts.Count > 0)
             {
-                Dim(0, pts[0].X, lvEnds, true, false);
-                Dim(pts[pts.Count - 1].X, len, lvEnds, true, true);
+                Dim(0, pts[0].X, lvEnds, true, false, V);                    // đầu tấm → thanh đầu (60)
+                Dim(pts[pts.Count - 1].X, len, lvEnds, true, true, V);        // thanh cuối → cuối tấm (59.9)
             }
-            var webCentres = webs.Select(w => (c: Pos(w), half: w.Thickness / 2 + 2)).ToList();
-            bool OnWeb(double x) => webCentres.Any(w => Math.Abs(x - w.c) <= w.half);
+            var webPts = pts.Where(p => p.IsWeb).Select(p => p.X).ToList();
+            double wFirst = webPts.Count > 0 ? webPts[0] : double.NaN, wLast = webPts.Count > 0 ? webPts[webPts.Count - 1] : double.NaN;
+
+            var profilesHere = pts.Where(p => !p.IsWeb).ToList();
+            bool hpSection = profilesHere.Count > 0 && profilesHere.Count(p => !p.IsFb) * 2 >= profilesHere.Count;
             bool girderDraft = false;
-            foreach (var d in input.Drafts.Where(d => d.Source == "Structure"))
+            if (hpSection && webPts.Count >= 2)
             {
-                bool along = isX ? Math.Abs(Math.Sin(d.Rotation)) < 0.01 : Math.Abs(Math.Cos(d.Rotation)) < 0.01;
-                if (!along) continue;
-                double a = (isX ? d.X1 : d.Y1) - lo, b = (isX ? d.X2 : d.Y2) - lo;
-                if (Math.Min(a, b) < -1 || Math.Max(a, b) > len + 1) continue;
-                bool girder = OnWeb(a) && OnWeb(b);
-                girderDraft |= girder;
-                Dim(a, b, girder ? lvGirder : lvPitch, d.Oblique, d.Tmove, string.IsNullOrEmpty(d.Text) ? null : d.Text);
+                // Nẹp HP: chuỗi bước tự sinh giữa 2 girder ngoài cùng — tờ tay X-X: 500, 775…, 660.5 (không dùng nháp).
+                var chain = new List<double> { wFirst };
+                chain.AddRange(pts.Where(p => !p.IsFb && p.X > wFirst + 1e-6 && p.X < wLast - 1e-6).Select(p => p.X));
+                chain.Add(wLast);
+                for (int k = 1; k < chain.Count; k++) Dim(chain[k - 1], chain[k], lvPitch, false, k > 1, k > 1 ? null : V);
+                // FB giữa 2 girder: tới mặt girder gần nhất, mức đầu mút (tờ tay: 310.5).
+                foreach (var fb in pts.Where(p => p.IsFb && p.X > wFirst && p.X < wLast))
+                {
+                    double w = webPts.OrderBy(x => Math.Abs(x - fb.X)).First();
+                    Dim(w, fb.X, lvEnds, true, true, V);
+                }
             }
-            if (!girderDraft)
+            else
             {
+                // Nẹp FB: chép nháp Structure dọc mặt cắt (tờ tay Y-Y: 500, 2045), bỏ nháp đo bề rộng flange.
+                var webCentres = webs.Select(w => (c: Pos(w), half: w.Thickness / 2 + 2)).ToList();
+                bool OnWeb(double x) => webCentres.Any(w => Math.Abs(x - w.c) <= w.half);
+                var flangeSpans = flanges.Select(f => (lo: f.r.X0, hi: f.r.X1)).ToList();
+                foreach (var d in input.Drafts.Where(d => d.Source == "Structure"))
+                {
+                    bool along = isX ? Math.Abs(Math.Sin(d.Rotation)) < 0.01 : Math.Abs(Math.Cos(d.Rotation)) < 0.01;
+                    if (!along) continue;
+                    double a = (isX ? d.X1 : d.Y1) - lo, b = (isX ? d.X2 : d.Y2) - lo;
+                    if (Math.Min(a, b) < -1 || Math.Max(a, b) > len + 1) continue;
+                    if (flangeSpans.Any(f => Math.Abs(Math.Min(a, b) - f.lo) < 1 && Math.Abs(Math.Max(a, b) - f.hi) < 1)) continue;   // bề rộng flange
+                    bool girder = OnWeb(a) && OnWeb(b);
+                    girderDraft |= girder;
+                    if (girder) Dim(a, b, lvGirder, d.Oblique, d.Tmove, string.IsNullOrEmpty(d.Text) ? null : d.Text);
+                    else Dim(a, b, lvPitch, d.Oblique, false, V);
+                }
+                // Nẹp nằm ngoài girder biên: tới mặt girder biên, mức girder (tờ tay Y-Y: 350.2).
+                if (girderDraft && webPts.Count > 0)
+                    foreach (var p in pts.Where(p => !p.IsWeb && (p.X < wFirst || p.X > wLast)))
+                        Dim(p.X < wFirst ? wFirst : wLast, p.X, lvGirder, false, false, V);
+            }
+            if (!girderDraft && webPts.Count > 0)
+            {
+                // Chuỗi girder tự sinh từ đầu tấm (tờ tay X-X: 290, 15110.5).
                 var chain = new List<double> { 0 };
-                chain.AddRange(pts.Where(p => p.IsWeb).Select(p => p.X));
-                for (int k = 1; k < chain.Count; k++) Dim(chain[k - 1], chain[k], lvGirder, false, k > 1);
+                chain.AddRange(webPts);
+                for (int k = 1; k < chain.Count; k++) Dim(chain[k - 1], chain[k], lvGirder, false, k > 1, k > 1 ? null : V);
             }
 
             // Chiều cao mặt cắt: X-X bên trái đầu tấm (tới đáy flange girder đầu); Y-Y phía trên cuối tấm (tới đáy flange girder cuối).
+            // + thk_sym ở 2 đầu kích thước này (tờ tay: X-X xoay 90°, lật ở đầu mặt tấm; Y-Y xoay 0°, lật ở đầu đáy flange).
             var fl = flanges.OrderBy(f => (f.r.X0 + f.r.X1) / 2).ToList();
             if (fl.Count > 0)
             {
@@ -133,7 +168,12 @@ namespace MCG_3DPanel.Services.PlanView
                 double ax = isX ? 0 : len, bx = isX ? r.X0 : r.X1, lx = isX ? -PlanViewLayout.SecXHeightLeft * sc : len + PlanViewLayout.SecYHeightAbove * sc;
                 var p1 = ToSheet(sec, ax, plateTop); var p2 = ToSheet(sec, bx, r.Y0); var ln = ToSheet(sec, lx, plateTop);
                 sec.Dims.Add(new PvDim { Space = PvSpace.Sheet, X1 = p1.X, Y1 = p1.Y, X2 = p2.X, Y2 = p2.Y, LineX = ln.X, LineY = ln.Y,
-                                         Rotation = sec.Rotation + Math.PI / 2, Layer = Layer, Tmove = false });
+                                         Rotation = sec.Rotation + Math.PI / 2, Layer = Layer, Tmove = false, TextOverride = V });
+                double outward = (isX ? -2.4 : 2.0) * sc;   // ra ngoài đầu tấm (X-X: trái, Y-Y: lên)
+                var e1 = ToSheet(sec, ax + outward, plateTop); var e2 = ToSheet(sec, ax + outward, r.Y0);
+                double rot = isX ? Math.PI / 2 : 0;
+                sec.ThkSymbols.Add(new PvInsert { Space = PvSpace.Sheet, Block = ThkBlock, X = e1.X, Y = e1.Y, Rotation = rot, Scale = 1, MirrorX = isX, Layer = "Mechanical-AM_0" });
+                sec.ThkSymbols.Add(new PvInsert { Space = PvSpace.Sheet, Block = ThkBlock, X = e2.X, Y = e2.Y, Rotation = rot, Scale = 1, MirrorX = !isX, Layer = "Mechanical-AM_0" });
             }
             return sec;
         }

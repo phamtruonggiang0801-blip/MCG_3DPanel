@@ -64,6 +64,21 @@ namespace MCG_3DPanel.Tests
             Assert.Equal("Mechanical-AM_5", DraftDimRules.Lashing(Input(h), Scale, (0, 0)).Single().Layer);
         }
 
+        /// <summary>Tờ 7D-17P: 480 (chồng lên 695.5 cùng trục) giữ đường của chính nó trong tấm, AM_5, "&lt;&gt;".</summary>
+        [Fact] public void Lashing_OverlappingShorterDraft_IsLocal_AM5_OwnLine()
+        {
+            var longD = V(139.9, -774.4, -79); var shortD = V(139.9, -774.4, -294.4);
+            shortD.LineX = 498.8; shortD.LineY = -774.4;
+            var dims = DraftDimRules.Lashing(Input(longD, shortD), Scale, (0, 0));
+            var local = dims.Single(d => Math.Abs(Math.Abs(d.Y2 - d.Y1) - 480) < 0.01);
+            Assert.Equal("Mechanical-AM_5", local.Layer);
+            Assert.Equal(498.8, local.LineX, 3);
+            Assert.Equal("<>", local.TextOverride);
+            Assert.False(local.Tmove);
+            var chain = dims.Single(d => Math.Abs(Math.Abs(d.Y2 - d.Y1) - 695.4) < 0.01);
+            Assert.Equal(-359.06 - PlanViewLayout.LashChainLeft * Scale, chain.LineX, 3);
+        }
+
         [Fact] public void Lashing_KeepsTextTmoveOblique()
         {
             var v = V(139.9, -12891.26, -12751.4); v.Text = "(<>)"; v.Tmove = false;

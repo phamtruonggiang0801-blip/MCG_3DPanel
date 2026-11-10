@@ -97,15 +97,16 @@ namespace MCG_3DPanel.Tests
         [Fact] public void ThkSym_OnePerMember_OnPlateLine()
         {
             var s = X();
-            Assert.Equal(21 + 2, s.ThkSymbols.Count);
-            Assert.All(s.ThkSymbols, t => { Assert.Equal("thk_sym", t.Block); Assert.Equal(PvSpace.Sheet, t.Space); Assert.Equal(s.Y, t.Y, 3); });
+            Assert.Equal(21 + 2 + 2, s.ThkSymbols.Count);   // mỗi thanh + 2 đầu kích thước chiều cao
+            Assert.All(s.ThkSymbols, t => { Assert.Equal("thk_sym", t.Block); Assert.Equal(PvSpace.Sheet, t.Space); });
+            Assert.Equal(23, s.ThkSymbols.Count(t => Math.Abs(t.Y - s.Y) < 1e-6));
             Assert.True(s.ThkSymbols.OrderBy(t => t.X).First().MirrorX);         // tờ tay: (5079.8, sx −1)
         }
 
         [Fact] public void Dims_PitchDraftAtLevel_EndsOblique_GirderChainGenerated()
         {
             var s = X();
-            var pitch = s.Dims.Single(d => Math.Abs(Math.Abs(d.X2 - d.X1) - 775) < 0.01 && Math.Abs(d.Rotation) < 1e-9);
+            var pitch = s.Dims.Where(d => Math.Abs(Math.Abs(d.X2 - d.X1) - 775) < 0.01 && Math.Abs(d.Rotation) < 1e-9).OrderBy(d => Math.Min(d.X1, d.X2)).First();
             Assert.Equal(s.Y + PlanViewLayout.SecXPitch * Scale, pitch.LineY, 2);  // tờ tay: 25579.3
             Assert.Equal(5809.76, pitch.X1, 2);                                     // tờ tay: 5809.7
             var ends = s.Dims.Where(d => d.Oblique).ToList();
@@ -115,6 +116,38 @@ namespace MCG_3DPanel.Tests
             Assert.Equal(new[] { 290.0, 15110.4 }, girder);                         // tờ tay: 290.0, 15110.5
             var h = s.Dims.Single(d => Math.Abs(d.Rotation - Math.PI / 2) < 1e-9);
             Assert.Equal(400, Math.Abs(h.Y2 - h.Y1), 3);                            // tờ tay: 400.0
+        }
+
+        /// <summary>X-X nẹp HP: chuỗi bước tự sinh từ mặt T1 tới mặt T2 qua các HP (tờ tay: 500 "&lt;&gt;", rồi 775 "" + DIMTMOVE).</summary>
+        [Fact] public void X_PitchChain_Generated_FromGirderFaceToGirderFace()
+        {
+            var s = X();
+            var pitch = s.Dims.Where(d => Math.Abs(d.LineY - (s.Y + PlanViewLayout.SecXPitch * Scale)) < 0.01).OrderBy(d => Math.Min(d.X1, d.X2)).ToList();
+            Assert.Equal(20, pitch.Count);                                          // tờ tay: 500 + 18 × 775 + 660.5
+            Assert.Equal(660.4, Math.Abs(pitch[19].X2 - pitch[19].X1), 1);          // HP cuối trong T2 → mặt T2 (tờ tay 660.5)
+            Assert.Equal(500, Math.Abs(pitch[0].X2 - pitch[0].X1), 3);              // tờ tay: 500.0 (mặt T1 → HP2)
+            Assert.Equal("<>", pitch[0].TextOverride); Assert.False(pitch[0].Tmove);
+            Assert.Null(pitch[1].TextOverride); Assert.True(pitch[1].Tmove);
+        }
+
+        [Fact] public void X_FlatBarBetweenGirders_DimToNearestGirderFace()
+        {
+            var i = Panel7D17P();
+            i.Members.Add(M("FB", 15096, -12800, 15096, 0, 6, 80, "BS 80x6"));
+            var s = SectionRules.Build(i, 'X', Sheet());
+            var fb = s.Dims.Where(d => d.Oblique).Select(d => Math.Round(Math.Abs(d.X2 - d.X1), 1)).ToList();
+            Assert.Contains(307.4, fb);                                             // mặt FB (15093) → mặt T2 (15400.4)
+        }
+
+        [Fact] public void Y_SkipsFlangeWidthDrafts_AddsOutboardStiffener()
+        {
+            var i = Panel7D17P();
+            i.Drafts.Add(new PvDraft { Source = "Structure", X1 = 7000, Y1 = -12607, X2 = 7000, Y2 = -12357, Rotation = Math.PI / 2 });   // bề rộng flange L1 (250)
+            i.Members.Add(M("HP", 0, -12831, 15939, -12831, 6, 120, "HP120x6", bellyY: -1));                                             // HL1 ngoài L1
+            foreach (var y in new[] { -11982.0, -10937.0, -9937.0 }) i.Members.Add(M("FB", 0, y, 15939, y, 6, 80, "BS 80x6"));                // Y-Y nẹp chủ yếu là BS
+            var s = SectionRules.Build(i, 'Y', Sheet());
+            Assert.DoesNotContain(s.Dims, d => Math.Abs(Math.Abs(d.Y2 - d.Y1) - 250) < 0.01);
+            Assert.Contains(s.Dims, d => Math.Abs(d.LineX - (s.X - PlanViewLayout.SecYGirder * Scale)) < 0.01 && Math.Abs(Math.Abs(d.Y2 - d.Y1) - 349) < 0.01);   // mặt trong L1 (412.26) → mặt lưng HL1 lật (63.26)
         }
 
         [Fact] public void Y_GirderDraft_GoesToGirderLevel()

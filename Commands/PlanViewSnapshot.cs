@@ -118,9 +118,9 @@ namespace MCG_3DPanel.Commands
                     var ent = tr.GetObject(eid, OpenMode.ForRead) as Entity;
                     if (ent is Dimension dim && dim.Layer == DraftLayer)
                     {
-                        Point3d a, b; double rot;
-                        if (dim is RotatedDimension rd) { a = rd.XLine1Point; b = rd.XLine2Point; rot = rd.Rotation; }
-                        else if (dim is AlignedDimension ad) { a = ad.XLine1Point; b = ad.XLine2Point; rot = Math.Atan2(b.Y - a.Y, b.X - a.X); }
+                        Point3d a, b, ln; double rot;
+                        if (dim is RotatedDimension rd) { a = rd.XLine1Point; b = rd.XLine2Point; ln = rd.DimLinePoint; rot = rd.Rotation; }
+                        else if (dim is AlignedDimension ad) { a = ad.XLine1Point; b = ad.XLine2Point; ln = ad.DimLinePoint; rot = Math.Atan2(b.Y - a.Y, b.X - a.X); }
                         else continue;
                         Point3d pa = a.TransformBy(xf), pb = b.TransformBy(xf);
                         Vector3d u = new Vector3d(Math.Cos(rot), Math.Sin(rot), 0).TransformBy(xf);
@@ -129,6 +129,7 @@ namespace MCG_3DPanel.Commands
                         input.Drafts.Add(new PvDraft
                         {
                             Source = source, X1 = pa.X, Y1 = pa.Y, X2 = pb.X, Y2 = pb.Y, Rotation = Math.Atan2(u.Y, u.X),
+                            LineX = ln.TransformBy(xf).X, LineY = ln.TransformBy(xf).Y,
                             Text = dim.DimensionText == "<>" ? "" : dim.DimensionText ?? "", Tmove = dim.Dimtmove == 1,
                             Oblique = blk1.Equals("_Oblique", StringComparison.OrdinalIgnoreCase) && blk2.Equals("_Oblique", StringComparison.OrdinalIgnoreCase),
                         });
@@ -152,7 +153,8 @@ namespace MCG_3DPanel.Commands
                     s.MergedCodes, p?.EndTouchKinds, p?.GeAvailable ?? false, p?.GbAvailable ?? false);
                 string kind = ResultCatalog.ShortKind(d.Kind) ?? "";
 
-                if (p == null && (s.Type == "TrippingBracket" || s.Type == "HpEndBracketB")) AddAt(input, "B", Centre(s.Bounds, toBlock));   // tờ tay: B = tripping + bracket đầu HP
+                if (p == null && (s.Type == "TrippingBracket" || s.Type == "HpEndBracketB"))   // tờ tay: B = tripping + bracket đầu HP, neo tại HP
+                    input.Marks.Add(BAtHp(build, s, toBlock) ?? new PvMark { Text = "B", X = Centre(s.Bounds, toBlock).X, Y = Centre(s.Bounds, toBlock).Y });
                 else if (kind.StartsWith("GE", StringComparison.Ordinal) || kind.StartsWith("GB", StringComparison.Ordinal))
                     AddAt(input, kind, Centre(s.Bounds, toBlock));
                 else if (p != null && p.Type == PartType.Bracket && !string.IsNullOrEmpty(p.Code))
@@ -170,6 +172,59 @@ namespace MCG_3DPanel.Commands
                     if (p.SnipHi) input.Marks.Add(new PvMark { Text = "S", X = hi.X, Y = hi.Y, DirX = dir.X, DirY = dir.Y });
                 }
             }
+        }
+
+        /// <summary>Chữ B neo tại HP như tờ tay 7D-17P. Tripping (khoá "TrippingBracket:{web}~{hp}"): giao điểm HP × web, đẩy về phía
+        /// bracket dọc HP. Bracket đầu HP (khoá "HpEndBracketB:{hp}@lo|hi"): đầu HP đó, đẩy vào trong dọc HP. Không tìm được ⇒ null.</summary>
+        private static PvMark BAtHp(BuildResult build, BuiltSolid s, Matrix3d toBlock)
+        {
+            string key = s.DeleteKey ?? "";
+            PanelPart Find(string k) => build.ClassifiedParts.FirstOrDefault(x => x.SourceKey == k);
+            (Point3d a, Point3d b) Ends(PanelPart part)
+            {
+                var (a, b) = Services.Classify.ClassifyUtil.Endpoints(part);
+                return (a.TransformBy(toBlock), b.TransformBy(toBlock));
+            }
+            PvMark Mark(Point3d anchor, Vector3d along)
+            {
+                bool vertical = Math.Abs(along.Y) >= Math.Abs(along.X);
+                return new PvMark { Text = "B", X = anchor.X, Y = anchor.Y, AtHp = true, DirX = along.X, DirY = along.Y,
+                                    PerpX = vertical ? -1 : 0, PerpY = vertical ? 0 : -1 };
+            }
+            try
+            {
+                if (key.StartsWith("TrippingBracket:", StringComparison.Ordinal))
+                {
+                    var ks = key.Substring("TrippingBracket:".Length).Split('~');
+                    if (ks.Length != 2) return null;
+                    PanelPart web = Find(ks[0]), hp = Find(ks[1]);
+                    if (web == null || hp == null) return null;
+                    var (h0, h1) = Ends(hp); var (w0, w1) = Ends(web);
+                    Vector3d u = (h1 - h0).GetNormal(), v = (w1 - w0).GetNormal();
+                    double cross = u.X * v.Y - u.Y * v.X;
+                    if (Math.Abs(cross) < 1e-6) return null;
+                    double t = ((w0.X - h0.X) * v.Y - (w0.Y - h0.Y) * v.X) / cross;
+                    Point3d c = h0 + u * t;
+                    Point3d centre = Centre(s.Bounds, toBlock);
+                    return Mark(c, (centre - c).DotProduct(u) >= 0 ? u : -u);
+                }
+                if (key.StartsWith("HpEndBracketB:", StringComparison.Ordinal))
+                {
+                    string rest = key.Substring("HpEndBracketB:".Length);
+                    int at = rest.LastIndexOf('@');
+                    if (at < 0) return null;
+                    PanelPart hp = Find(rest.Substring(0, at));
+                    if (hp == null) return null;
+                    var (a, b) = Ends(hp);
+                    bool horiz = Math.Abs(b.X - a.X) >= Math.Abs(b.Y - a.Y);
+                    bool aIsLo = horiz ? a.X <= b.X : a.Y <= b.Y;
+                    Point3d lo = aIsLo ? a : b, hi = aIsLo ? b : a;
+                    bool atLo = rest.Substring(at + 1) == "lo";
+                    return Mark(atLo ? lo : hi, ((atLo ? hi : lo) - (atLo ? lo : hi)).GetNormal());
+                }
+            }
+            catch (Autodesk.AutoCAD.Runtime.Exception) { }
+            return null;
         }
 
         private static string NameOf(Transaction tr, ObjectId id)

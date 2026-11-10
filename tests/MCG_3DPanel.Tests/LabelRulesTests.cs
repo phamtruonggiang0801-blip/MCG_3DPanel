@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using MCG_3DPanel.Services.PlanView;
 using Xunit;
@@ -77,10 +78,35 @@ namespace MCG_3DPanel.Tests
             Assert.Equal(
                 "TOP PLATE THICKNESS: 6.0\\P\\P" +
                 "STIFFENERS (HL & HT): HP 120x6.0\\P\\P" +
-                "TRANSVERSAL GIRDERS T1,T2 : WEB 374x6.0/FLANGE 380x20.0\\P" +
+                "TRANSVERSAL GIRDERS T1,T2 : WEB 374x6.0/FLANGE 380x20.0\\P\\P" +
                 "LONGITUDINAL GIRDERS L1,L7 : WEB 374x6.0/FLANGE 250x20.0\\P" +
                 "LONGITUDINAL GIRDERS L2,L3,L5,L6 : WEB 374x6.0/FLANGE 170x20.0\\P" +
                 "LONGITUDINAL GIRDERS L4 : WEB 374x6.0/FLANGE 150x20.0", t.Text);
+        }
+
+        /// <summary>Khung AM_8 theo số dòng (tờ 7D-17P: 9 dòng ⇒ trên 83.5, dưới 22.1; vạch ngăn ở 72.08 / 61.08 / 48.58 mm giấy).</summary>
+        [Fact] public void MemberFrame_FollowsLines_7D17P()
+        {
+            var lines = new[] { "TOP PLATE THICKNESS: 6.0", "", "STIFFENERS", "", "TRANSVERSAL", "", "L1,L7", "L2..", "L4" };
+            var (frames, rules) = SheetItemRules.MemberFrame(0, 0, Scale, lines);
+            Assert.Equal(3, frames.Count);
+            var outer = frames[0].Points;
+            Assert.Equal(83.5, outer.Max(p => p.Y) / Scale, 1);
+            Assert.Equal(22.1, outer.Min(p => p.Y) / Scale, 1);
+            var ys = rules.Select(r => r.Y1 / Scale).OrderByDescending(y => y).ToList();
+            var mids = Enumerable.Range(0, ys.Count / 3).Select(k => ys.Skip(k * 3).Take(3).Average()).ToList();   // 3 nét mỗi vạch
+            Assert.Equal(3, mids.Count);
+            Assert.InRange(mids[0], 72.08 - 0.8, 72.08 + 0.8);
+            Assert.InRange(mids[1], 61.08 - 0.8, 61.08 + 0.8);
+            Assert.InRange(mids[2], 48.58 - 0.8, 48.58 + 0.8);
+            Assert.Equal(9, rules.Count);
+        }
+
+        [Fact] public void MemberFrame_GrowsWithMoreLines()
+        {
+            var a = SheetItemRules.MemberFrame(0, 0, Scale, new[] { "a", "", "b" }).Frames[0].Points.Min(p => p.Y);
+            var b = SheetItemRules.MemberFrame(0, 0, Scale, new[] { "a", "", "b", "c", "d" }).Frames[0].Points.Min(p => p.Y);
+            Assert.True(b < a);
         }
 
         [Fact] public void MemberList_NaturalOrder_T10AfterT2()

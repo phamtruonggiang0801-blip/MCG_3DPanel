@@ -23,6 +23,14 @@ namespace MCG_3DPanel.Services.PlanView
             double cx = (tp.MinX + tp.MaxX) / 2, cy = (tp.MinY + tp.MaxY) / 2, hw = (tp.MaxX - tp.MinX) / 2, hh = (tp.MaxY - tp.MinY) / 2;
             return input.Marks.Select(m =>
             {
+                if (m.AtHp)
+                    return new PvText
+                    {
+                        Space = PvSpace.Block, Text = m.Text, Layer = LayerMarks, PaperHeight = PlanViewLayout.TextStiffener,
+                        Justify = "CenterMiddleLeft", Category = "Symbol",
+                        X = m.X + (m.DirX * PlanViewLayout.HpBAlong + m.PerpX * PlanViewLayout.HpBSide) * scale,
+                        Y = m.Y + (m.DirY * PlanViewLayout.HpBAlong + m.PerpY * PlanViewLayout.HpBSide) * scale,
+                    };
                 double dx = m.DirX, dy = m.DirY, off = PlanViewLayout.MarkOffset;
                 if (m.IsBracket)
                 {
@@ -44,6 +52,18 @@ namespace MCG_3DPanel.Services.PlanView
         {
             var live = input.Members.Where(m => !m.Deleted && m.Kind != "Flange").ToList();
             var webs = live.Where(m => m.Kind == "Web").ToList();
+            // Phạm vi cả TUYẾN (mọi đoạn cùng Line) theo trục tuyến — girder × girder chỉ ký hiệu ở đoạn giữa (kỹ sư 2026-11-10).
+            var span = live.GroupBy(m => m.Line).ToDictionary(g => g.Key, g =>
+            {
+                var f = g.First(); double ux = f.X1 - f.X0, uy = f.Y1 - f.Y0, l = Math.Sqrt(ux * ux + uy * uy); ux /= l; uy /= l;
+                var ps = g.SelectMany(p => new[] { p.X0 * ux + p.Y0 * uy, p.X1 * ux + p.Y1 * uy }).ToList();
+                return (ux, uy, min: ps.Min(), max: ps.Max());
+            });
+            bool Inner(int line, double px, double py)
+            {
+                var s = span[line]; double p = px * s.ux + py * s.uy;
+                return p - s.min >= PlanViewLayout.GirderCrossMin && s.max - p >= PlanViewLayout.GirderCrossMin;
+            }
             var r = new List<PvInsert>();
             var seen = new HashSet<(int, long, long)>();
 
@@ -69,6 +89,7 @@ namespace MCG_3DPanel.Services.PlanView
                     double pass = Math.Max(b.Thickness, EndTol);
                     if (t * lenA <= pass || (1 - t) * lenA <= pass) continue;               // A dừng tại B
                     double px = a.X0 + t * ax, py = a.Y0 + t * ay;
+                    if (a.Kind == "Web" && !(Inner(a.Line, px, py) && Inner(b.Line, px, py))) continue;   // girder × girder ở đầu mút: không ký hiệu
                     if (!seen.Add((a.Line, (long)Math.Round(px), (long)Math.Round(py)))) continue;
                     r.Add(new PvInsert
                     {

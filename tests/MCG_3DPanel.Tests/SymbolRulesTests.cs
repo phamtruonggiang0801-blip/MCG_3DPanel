@@ -67,6 +67,33 @@ namespace MCG_3DPanel.Tests
             Assert.Empty(SymbolRules.Continuous(i));
         }
 
+        /// <summary>Tờ 7D-17P: T1 (x 287) giao các web L ở đầu mút tuyến L ⇒ không ký hiệu (kỹ sư 2026-11-10).</summary>
+        [Fact] public void GirderCrossing_AtGirderEnd_None()
+        {
+            var i = Input();
+            i.Members.Add(M("Web", 287, 0, 287, 13000));
+            i.Members.Add(M("Web", 0, 6000, 16000, 6000));
+            Assert.Empty(SymbolRules.Continuous(i));
+        }
+
+        [Fact] public void GirderCrossing_NearOtherGirderEnd_None()
+        {
+            var i = Input();
+            i.Members.Add(M("Web", 8000, 0, 8000, 13000));
+            i.Members.Add(M("Web", 0, 400, 16000, 400));          // giao cách đầu mút tuyến T 400 < 1000
+            Assert.Empty(SymbolRules.Continuous(i));
+        }
+
+        [Fact] public void Marks_BAtHp_SideAndAlong()
+        {
+            var i = Input();
+            i.Marks.Add(new PvMark { Text = "B", X = 6587.7, Y = 20223.3, AtHp = true, DirX = 0, DirY = 1, PerpX = -1, PerpY = 0 });
+            var t = SymbolRules.Marks(i, Scale).Single();
+            Assert.Equal(6587.7 - PlanViewLayout.HpBSide * Scale, t.X, 3);
+            Assert.Equal(20223.3 + PlanViewLayout.HpBAlong * Scale, t.Y, 3);
+            Assert.Equal("CenterMiddleLeft", t.Justify);
+        }
+
         /// <summary>6/6 tờ mẫu: mọi CS_horl_up_right có sx = 1, ở mọi vị trí panel.</summary>
         [Theory] [InlineData(0)] [InlineData(1)] [InlineData(2)]
         public void NeverMirrored_AnyPosition(int pos)

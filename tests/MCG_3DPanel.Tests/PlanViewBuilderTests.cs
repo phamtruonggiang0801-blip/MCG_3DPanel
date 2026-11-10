@@ -42,8 +42,8 @@ namespace MCG_3DPanel.Tests
             var m = PlanViewBuilder.Build(Panel7D17P(), Sheet(50));
             Assert.Equal(9, m.Texts.Count(t => t.Category == "Name" && t.Layer == "Mechanical-AM_1"));
             Assert.Equal(20, m.Texts.Count(t => t.Category == "Name" && t.Layer == "Mechanical-AM_6"));   // 19 HT + 1 BS
-            // 19 HT qua 5 web L trong (95) + T1, T2 qua 7 web L (14) + BS qua T1, T2 (2)
-            Assert.Equal(95 + 14 + 2, m.Inserts.Count(x => x.Block == "CS_horl_up_right"));
+            // 19 HT qua 5 web L trong (95) + BS qua T1, T2 (2); T1/T2 × L ở đầu mút girder ⇒ không (kỹ sư 2026-11-10, tờ 7D-17P)
+            Assert.Equal(95 + 2, m.Inserts.Count(x => x.Block == "CS_horl_up_right"));
             Assert.Equal(2, m.Sections.Count);
             foreach (var b in new[] { "M.D1", "M.D2", "Measurements_Tolerances vFuture" }) Assert.Single(m.Inserts, x => x.Block == b);
             Assert.Equal(2, m.Inserts.Count(x => x.Block == "Rec. for tolerance"));

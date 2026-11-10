@@ -36,8 +36,9 @@ namespace MCG_3DPanel.Services.PlanView
 
             // 4. Member list + khung AM_8, ghi chú dung sai, tiêu đề mặt bằng.
             m.Texts.Add(LabelRules.MemberList(input, s.FrameX, s.FrameY, sc));
-            m.Polylines.AddRange(SheetItemRules.MemberFramePolylines(s.FrameX, s.FrameY, sc));
-            m.Lines.AddRange(SheetItemRules.MemberFrameLines(s.FrameX, s.FrameY, sc));
+            var (frames, rules) = SheetItemRules.MemberFrame(s.FrameX, s.FrameY, sc, LabelRules.MemberListLines(input));
+            m.Polylines.AddRange(frames);
+            m.Lines.AddRange(rules);
             foreach (var f in SheetItemRules.Fixed(s.FrameX, s.FrameY, sc)) { m.Inserts.Add(f); m.Require(f.Block); }
             m.Texts.Add(SheetItemRules.Title(SheetItemRules.TitlePlan, s.PlanMinX, s.PlanMaxX, s.PlanMinY, sc, PlanViewLayout.TitleWidthPlan));
 
