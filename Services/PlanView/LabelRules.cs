@@ -19,9 +19,7 @@ namespace MCG_3DPanel.Services.PlanView
         public static List<PvText> Names(PlanViewInput input, int scale, double topOuter, double leftOuter)
         {
             var tp = input.TopPlate;
-            double rowStiff = Math.Max(PlanViewLayout.LabelTopStiffener, topOuter > 0 ? topOuter + PlanViewLayout.LabelBeyondChain : 0);
-            double rowGirder = Math.Max(PlanViewLayout.LabelTopGirder, rowStiff + PlanViewLayout.LabelGirderBeyondStiffener);
-            double colLeft = Math.Max(PlanViewLayout.LabelLeft, leftOuter > 0 ? leftOuter + PlanViewLayout.LabelBeyondChain : 0);
+            var (rowStiff, rowGirder, colLeft) = Rows(topOuter, leftOuter);
 
             var r = new List<PvText>();
             foreach (var line in input.Members
@@ -55,6 +53,16 @@ namespace MCG_3DPanel.Services.PlanView
                 r.Add(t);
             }
             return r;
+        }
+
+        /// <summary>Hàng nhãn (mm giấy từ mép Top Plate): nẹp phía trên, girder phía trên, cột trái — đẩy ra ngoài chuỗi kích thước
+        /// xa nhất (quy tắc xếp lớp, placement rule 1).</summary>
+        public static (double RowStiffener, double RowGirder, double ColumnLeft) Rows(double topOuter, double leftOuter)
+        {
+            double rowStiff = Math.Max(PlanViewLayout.LabelTopStiffener, topOuter > 0 ? topOuter + PlanViewLayout.LabelBeyondChain : 0);
+            double rowGirder = Math.Max(PlanViewLayout.LabelTopGirder, rowStiff + PlanViewLayout.LabelGirderBeyondStiffener);
+            double colLeft = Math.Max(PlanViewLayout.LabelLeft, leftOuter > 0 ? leftOuter + PlanViewLayout.LabelBeyondChain : 0);
+            return (rowStiff, rowGirder, colLeft);
         }
 
         /// <summary>MText quy cách: chiều dày tấm, quy cách nẹp HP, rồi mỗi quy cách girder T / L một dòng (tên theo thứ tự tự nhiên).</summary>

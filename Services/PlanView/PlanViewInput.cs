@@ -67,5 +67,7 @@ namespace MCG_3DPanel.Services.PlanView
         public List<PvDraft> Drafts { get; } = new List<PvDraft>();
         public List<PvMark> Marks { get; } = new List<PvMark>();
         public PvLashing Lashing { get; set; }
+        /// <summary>Bản vẽ có block &lt;panel&gt;_Lashing Hole ⇒ vẽ mặt bằng lỗ lashing + M.D1/M.D2 + tiêu đề của nó.</summary>
+        public bool HasLashingHoleBlock { get; set; }
     }
 }
