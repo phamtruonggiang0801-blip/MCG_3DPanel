@@ -34,14 +34,14 @@ namespace MCG_3DPanel.Tests
 
         [Fact] public void Overall_Width_ToTopVertexNearLeftEdge()
         {
-            var (p1, p2) = PlateGeometry.OverallWidth(Plate);
+            var (p1, p2) = PlateGeometry.OverallWidth(Plate, false);
             Assert.Equal((-359.06, -12891.26), p1);
             Assert.Equal(464.9, p2.Item2, 3);   // không phải 500.84 (khung bao)
         }
 
         [Fact] public void Overall_Length_BottomCorners()
         {
-            var (p1, p2) = PlateGeometry.OverallLength(Plate);
+            var (p1, p2) = PlateGeometry.OverallLength(Plate, false);
             Assert.Equal((-359.06, -12891.26), p1);
             Assert.Equal((15939.84, -12891.26), p2);
         }

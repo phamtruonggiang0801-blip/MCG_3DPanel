@@ -13,35 +13,37 @@ namespace MCG_3DPanel.Services.PlanView
     /// • nháp Structure ghi trên mặt cắt — xem <see cref="SectionRules"/>.</summary>
     public static class DraftDimRules
     {
-        public const string LayerLashing = "Mechanical-AM_4";
+        public const string LayerLashing = "Mechanical-AM_5";   // chuẩn công ty = tờ 7D-17C (17P dùng AM_4)
         public const string LayerStructure = "Mechanical-AM_5";
         public const string OverallText = "<>{}{\\H0.71x;\\C3;%%p4}{{}}TOP PLATE";
         public const string LashingText = "<>-LASHING HOLES";
 
-        /// <summary>Kích thước bao trên mặt bằng chính (hệ block). Đường bao rỗng ⇒ góc khung bao.</summary>
+        /// <summary>Kích thước bao trên mặt bằng chính (hệ block), phía theo cạnh thẳng chính (<see cref="PlateGeometry.Edges"/>).
+        /// Đường bao rỗng ⇒ góc khung bao.</summary>
         public static List<PvDim> Overall(PlanViewInput input, int scale)
         {
             var tp = input.TopPlate;
             var o = Outline(input);
-            var (l1, l2) = PlateGeometry.OverallLength(o);
-            var (w1, w2) = PlateGeometry.OverallWidth(o);
+            var e = PlateGeometry.MainEdges(o, tp);
+            bool top = e.LengthOnTop, right = e.WidthOnRight;
+            var (l1, l2) = PlateGeometry.OverallLength(o, top);
+            var (w1, w2) = PlateGeometry.OverallWidth(o, right);
             return new List<PvDim>
             {
                 new PvDim
                 {
                     Space = PvSpace.Block, X1 = l1.Item1, Y1 = l1.Item2, X2 = l2.Item1, Y2 = l2.Item2,
-                    LineX = l2.Item1, LineY = tp.MinY - PlanViewLayout.OverallBelow * scale,
+                    LineX = l2.Item1, LineY = top ? tp.MaxY + PlanViewLayout.OverallGapH * scale : tp.MinY - PlanViewLayout.OverallGapH * scale,
                     Rotation = 0, Layer = LayerStructure, TextOverride = OverallText, Tmove = false,
                 },
                 new PvDim
                 {
                     Space = PvSpace.Block, X1 = w1.Item1, Y1 = w1.Item2, X2 = w2.Item1, Y2 = w2.Item2,
-                    LineX = tp.MinX - PlanViewLayout.OverallLeft * scale, LineY = w2.Item2,
+                    LineX = right ? tp.MaxX + PlanViewLayout.OverallGapV * scale : tp.MinX - PlanViewLayout.OverallGapV * scale, LineY = w2.Item2,
                     Rotation = Math.PI / 2, Layer = LayerStructure, TextOverride = OverallText, Tmove = false,
                 },
             };
         }
-
         /// <summary>Kích thước mặt bằng lỗ lashing (hệ block, dời <paramref name="shift"/> = độ lệch giữa lần chèn thứ 2 và _Assy).</summary>
         public static List<PvDim> Lashing(PlanViewInput input, int scale, (double dx, double dy) shift)
         {
@@ -49,7 +51,10 @@ namespace MCG_3DPanel.Services.PlanView
             var o = Outline(input);
             var r = new List<PvDim>();
             var lash = input.Drafts.Where(x => x.Source == "LashingHole").ToList();
-            double lineTop = tp.MaxY + PlanViewLayout.LashChainTop * scale, lineLeft = tp.MinX - PlanViewLayout.LashChainLeft * scale;
+            var edges = PlateGeometry.MainEdges(o, tp);
+            bool right = edges.WidthOnRight;   // chuỗi dọc phía cạnh thẳng (tờ 17C: phải; 17P: trái)
+            double lineTop = tp.MaxY + PlanViewLayout.LashChainTop * scale,
+                   lineLeft = right ? tp.MaxX + PlanViewLayout.LashChainSide * scale : tp.MinX - PlanViewLayout.LashChainSide * scale;
             double cx = (tp.MinX + tp.MaxX) / 2, cy = (tp.MinY + tp.MaxY) / 2;
             // Cột / hàng lỗ (để đặt kích thước cục bộ giữa 2 cột/hàng): từ tâm lỗ, không có thì từ đầu mút nháp.
             var holes = input.Lashing?.Holes.Count > 0 ? input.Lashing.Holes.ToList()
@@ -82,11 +87,11 @@ namespace MCG_3DPanel.Services.PlanView
                     return (x, PlateGeometry.Cut(o, 'Y', x + (x < cx ? Touch : -Touch), tp).Hi);
                 }
                 var row = hs?.Where(p => Math.Abs(p.Y - y) < Touch).ToList();
-                if (row != null && row.Count > 0) return (row.Min(p => p.X), y);
+                if (row != null && row.Count > 0) return (right ? row.Max(p => p.X) : row.Min(p => p.X), y);
                 // mép trái: mép thật ở hàng đó hoặc mép trái CHÍNH (đường cắt giữa panel), lấy cái ra ngoài hơn — tờ 7D-17P đo tới
                 // x 0 ở góc trên (bỏ qua vết khuyết 264.85) và tới tai x −359 ở góc dưới.
-                double rowEdge = PlateGeometry.Cut(o, 'X', y + (y < cy ? Touch : -Touch), tp).Lo, mainEdge = PlateGeometry.Cut(o, 'X', cy, tp).Lo;
-                return (Math.Min(rowEdge, mainEdge), y);
+                var rowCut = PlateGeometry.Cut(o, 'X', y + (y < cy ? Touch : -Touch), tp); var mainCut = PlateGeometry.Cut(o, 'X', cy, tp);
+                return (right ? Math.Max(rowCut.Hi, mainCut.Hi) : Math.Min(rowCut.Lo, mainCut.Lo), y);
             }
             foreach (var d in lash)
             {
@@ -101,7 +106,7 @@ namespace MCG_3DPanel.Services.PlanView
                     double at = horiz ? d.Y1 : d.X1, inward = horiz ? Math.Sign(cy - at) : Math.Sign(cx - at);
                     var next = (horiz ? rows : cols).Where(v => (v - at) * inward > Touch).OrderBy(v => Math.Abs(v - at)).ToList();
                     double mid = next.Count > 0 ? (at + next[0]) / 2 : (horiz ? d.LineY : d.LineX);
-                    Add(d.X1, d.Y1, d.X2, d.Y2, horiz ? d.X2 : mid, horiz ? mid : d.Y2, horiz, LayerStructure, "<>", false);
+                    Add(d.X1, d.Y1, d.X2, d.Y2, horiz ? d.X2 : mid, horiz ? mid : d.Y2, horiz, LayerStructure, string.IsNullOrEmpty(d.Text) ? null : d.Text, d.Tmove);   // giữ chữ nháp (tờ 17C)
                     continue;
                 }
                 bool edge = PlateGeometry.OnOutline(o, d.X1, d.Y1) || PlateGeometry.OnOutline(o, d.X2, d.Y2);
@@ -111,39 +116,46 @@ namespace MCG_3DPanel.Services.PlanView
                     edge ? LayerStructure : LayerLashing, string.IsNullOrEmpty(d.Text) ? null : d.Text, d.Tmove, d.Oblique);
             }
 
-            // Chuỗi chưa tới mép tấm ⇒ kích thước THAM KHẢO "(<>)" từ lỗ cuối tới mép (tờ 7D-17P: 290 bên phải chuỗi ngang).
-            // Đoạn cuối chuỗi tới mép phải / mép dưới ghi "(<>)" (tờ tay: 290, 139.9).
+            // Đầu chuỗi chưa tới CẠNH CHÍNH của tấm ⇒ kích thước THAM KHẢO "(<>)" từ lỗ ngoài cùng tới cạnh, xét cả 2 đầu
+            // (tờ 7D-17C: 694.9 đầu trái chuỗi ngang, 172.9 đầu dưới chuỗi dọc — tới cạnh chính 181.9, bỏ vấu 176.4).
             void Close(List<PvDraft> chain, bool horiz)
             {
                 if (chain.Count == 0) return;
                 double row = horiz ? chain[0].Y1 : chain[0].X1;
                 var ends = chain.SelectMany(d => horiz ? new[] { d.X1, d.X2 } : new[] { d.Y1, d.Y2 }).ToList();
                 double lo = ends.Min(), hi = ends.Max();
-                var (edgeLo, edgeHi) = PlateGeometry.Cut(o, horiz ? 'X' : 'Y', row, tp);
-                var dims = chain.Select(d => dimOf[d]).ToList();
+                double edgeLo = horiz ? edges.Left.At : edges.Bottom.At, edgeHi = horiz ? edges.Right.At : edges.Top.At;
                 double lineX = horiz ? 0 : lineLeft, lineY = horiz ? lineTop : 0;
-                // phía "cuối": phải (ngang) / dưới (dọc)
-                if (horiz ? hi < edgeHi - Touch : lo > edgeLo + Touch)
+                void Ref(double from, double to)
                 {
-                    double from = horiz ? hi : lo, to = horiz ? edgeHi : edgeLo;
                     var a = Snap(horiz ? from : row, horiz ? row : from, horiz); var b = Snap(horiz ? to : row, horiz ? row : to, horiz);
                     Add(a.X, a.Y, b.X, b.Y, horiz ? to : lineX, horiz ? lineY : to, horiz, LayerStructure, "(<>)", false);
                 }
-                else
+                // Hở ≤ 1 mm giấy (nháp dừng sát cạnh — tờ 17C: 172.3 + 5.6 ⇒ "(<>)" 172.9): kéo đoạn cuối tới cạnh, ghi "(<>)".
+                void End(double at, double edge)
                 {
-                    double endV = horiz ? hi : lo;
-                    var last = dims.FirstOrDefault(x => Math.Abs((horiz ? Math.Max(x.X1, x.X2) : Math.Min(x.Y1, x.Y2)) - (endV + (horiz ? shift.dx : shift.dy))) < Touch);
-                    if (last != null && last.Layer == LayerStructure) { last.TextOverride = "(<>)"; last.Tmove = false; }
+                    if (Math.Abs(at - edge) <= Touch) return;
+                    if (Math.Abs(at - edge) > scale) { Ref(at, edge); return; }
+                    double sh = horiz ? shift.dx : shift.dy;
+                    var last = chain.Select(d => dimOf[d]).FirstOrDefault(x => Math.Abs((horiz ? x.X1 : x.Y1) - (at + sh)) < Touch || Math.Abs((horiz ? x.X2 : x.Y2) - (at + sh)) < Touch);
+                    if (last == null) { Ref(at, edge); return; }
+                    var p = Snap(horiz ? edge : row, horiz ? row : edge, horiz);
+                    if (Math.Abs((horiz ? last.X1 : last.Y1) - (at + sh)) < Touch) { last.X1 = p.X + shift.dx; last.Y1 = p.Y + shift.dy; }
+                    else { last.X2 = p.X + shift.dx; last.Y2 = p.Y + shift.dy; }
+                    last.TextOverride = "(<>)"; last.Tmove = false;
                 }
+                End(lo, edgeLo);
+                End(hi, edgeHi);
             }
             Close(chainH, true);
             Close(chainV, false);
 
-            // COG: đo từ góc tham chiếu (mép phải tấm, y 0 của block) tới vòng tròn COG — dọc bên phải, ngang ở chuỗi ngoài phía trên.
+            // COG: đo từ góc tham chiếu (mép phải tấm, y 0 của block) tới vòng tròn COG — dọc bên phải (ngoài chuỗi dọc nếu chuỗi ở
+            // bên phải — tờ 17C 28.5), ngang ở chuỗi ngoài phía trên.
             if (input.Cog is (double gx, double gy, double gr))
             {
-                Add(tp.MaxX, 0, gx + gr, gy, tp.MaxX + PlanViewLayout.LashCogRight * scale, gy, false, LayerStructure, "<>", false);
-                Add(tp.MaxX, 0, gx, gy + gr, gx, tp.MaxY + PlanViewLayout.LashCogTop * scale, true, LayerStructure, null, false);
+                Add(tp.MaxX, 0, gx + gr, gy, tp.MaxX + (right ? PlanViewLayout.LashCogSide : PlanViewLayout.LashCogSideNear) * scale, gy, false, LayerStructure, "<>", false);
+                Add(tp.MaxX, 0, gx, gy + gr, gx, tp.MaxY + PlanViewLayout.LashCogTop * scale, true, LayerStructure, "<>", false);
             }
 
             if (input.Lashing != null)

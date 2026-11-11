@@ -104,15 +104,16 @@ namespace MCG_3DPanel.Commands
         private static void ReadDrafts(Transaction tr, ObjectId assyBtrId, PlanViewInput input)
         {
             var assy = (BlockTableRecord)tr.GetObject(assyBtrId, OpenMode.ForRead);
+            Point3d? topAt = null, lashAt = null;
             foreach (ObjectId id in assy)
             {
                 if (!(tr.GetObject(id, OpenMode.ForRead) is BlockReference br)) continue;
                 var btr = (BlockTableRecord)tr.GetObject(br.BlockTableRecord, OpenMode.ForRead);
-                if (btr.Name.EndsWith("_Top Plate", StringComparison.Ordinal) && input.Cog == null) ReadCog(tr, btr, br.BlockTransform, input);
+                if (btr.Name.EndsWith("_Top Plate", StringComparison.Ordinal)) { topAt = topAt ?? br.Position; if (input.Cog == null) ReadCog(tr, btr, br.BlockTransform, input); }
                 string source = btr.Name.EndsWith("_Structure", StringComparison.Ordinal) ? "Structure"
                               : btr.Name.EndsWith("_Lashing Hole", StringComparison.Ordinal) ? "LashingHole" : null;
                 if (source == null) continue;
-                if (source == "LashingHole") input.HasLashingHoleBlock = true;
+                if (source == "LashingHole") { input.HasLashingHoleBlock = true; lashAt = lashAt ?? br.Position; }
                 Matrix3d xf = br.BlockTransform;
                 foreach (ObjectId eid in btr)
                 {
@@ -143,6 +144,10 @@ namespace MCG_3DPanel.Commands
                     }
                 }
             }
+            // Lashing Hole lồng trong _Assy có điểm chèn riêng (tờ 7D-17C: 3170.4, −10522.7 so với Top Plate) — mặt bằng lỗ lashing chèn
+            // lại cả 2 block phải giữ đúng độ lệch này.
+            if (topAt.HasValue && lashAt.HasValue)
+                input.LashingBlockOffset = (lashAt.Value.X - topAt.Value.X, lashAt.Value.Y - topAt.Value.Y);
         }
 
         // ─── Ký hiệu: B (Tripping), S (Sniped End), Kind GE/GB (cột Kind tab Result), mã bracket OB… ───

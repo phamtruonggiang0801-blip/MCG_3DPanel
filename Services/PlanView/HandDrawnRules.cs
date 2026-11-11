@@ -27,7 +27,7 @@ namespace MCG_3DPanel.Services.PlanView
     /// REF. DIM, kích thước tham khảo "(&lt;&gt;)", kích thước tổng, kích thước vẽ tay trên mặt cắt.</summary>
     public static class HandDrawnRules
     {
-        private static readonly Regex Label = new Regex(@"^((T|L|HT|HL)\d+[a-z]?|BS|B|S|GB|(OB|GE|GB)\w*)$", RegexOptions.CultureInvariant);
+        private static readonly Regex Label = new Regex(@"^((T|L|HT|HL)\d+[a-z]?|BS|B|S|CG|GB|(OB|GE|GB)\w*)$", RegexOptions.CultureInvariant);
         private static readonly string[] SymbolBlocks =
             { "CS_horl_up_right", "CS_symbol", "thk_sym", "M.D1", "M.D2", "Rec. for tolerance", "Measurements_Tolerances vFuture" };
         private const double Tol = 1.0;

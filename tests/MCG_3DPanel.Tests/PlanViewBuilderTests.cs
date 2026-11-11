@@ -43,7 +43,7 @@ namespace MCG_3DPanel.Tests
             Assert.Equal(9, m.Texts.Count(t => t.Category == "Name" && t.Layer == "Mechanical-AM_1"));
             Assert.Equal(20, m.Texts.Count(t => t.Category == "Name" && t.Layer == "Mechanical-AM_6"));   // 19 HT + 1 BS
             // 19 HT qua 5 web L trong (95) + BS qua T1, T2 (2); T1/T2 × L ở đầu mút girder ⇒ không (kỹ sư 2026-11-10, tờ 7D-17P)
-            Assert.Equal(95 + 2, m.Inserts.Count(x => x.Block == "CS_horl_up_right"));
+            Assert.Equal(95 + 2, m.Inserts.Count(x => x.Block == "CS_symbol"));
             Assert.Equal(2, m.Sections.Count);
             foreach (var b in new[] { "M.D1", "M.D2", "Measurements_Tolerances vFuture" }) Assert.Single(m.Inserts, x => x.Block == b);
             Assert.Equal(2, m.Inserts.Count(x => x.Block == "Rec. for tolerance"));
@@ -52,11 +52,12 @@ namespace MCG_3DPanel.Tests
             Assert.Single(m.Texts, t => t.Category == "MemberList");
             Assert.Equal(2, m.Texts.Count(t => t.Category == "Title"));
             Assert.Single(m.Texts, t => t.Category == "Symbol" && t.Text == "B");
-            foreach (var b in new[] { "CS_horl_up_right", "thk_sym", "HP120x6", "BS 80x6", "M.D1", "M.D2", "Rec. for tolerance", "Measurements_Tolerances vFuture", "7D-17P_Top Plate", "7D-17P_Lashing Hole" })
+            foreach (var b in new[] { "CS_symbol", "thk_sym", "HP120x6", "BS 80x6", "M.D1", "M.D2", "Rec. for tolerance", "Measurements_Tolerances vFuture", "7D-17P_Top Plate", "7D-17P_Lashing Hole" })
                 Assert.Contains(b, m.RequiredBlocks);
-            Assert.Equal(1, m.Dims.Count(d => d.Layer == "Mechanical-AM_4"));   // nháp lashing CHỈ trên mặt bằng lỗ lashing (tờ 7D-17P)
+            Assert.Equal(0, m.Dims.Count(d => d.Layer == "Mechanical-AM_4"));   // chuẩn 17C: kích thước lỗ lashing trên AM_5
             Assert.Equal(2, m.Dims.Count(d => d.TextOverride == DraftDimRules.OverallText));   // mặt bằng chính: chỉ 2 kích thước bao
-            Assert.All(m.Inserts.Where(x => x.Block == "CS_horl_up_right"), x => Assert.False(x.MirrorX));
+            Assert.All(m.Inserts.Where(x => x.Block == "CS_symbol"), x => Assert.False(x.MirrorX));
+            Assert.DoesNotContain(m.Texts, t => t.Text == "CG");   // 17P: girder × girder chỉ ở đầu mút
             Assert.Equal(2, m.Lines.Count(l => l.Layer == "Mechanical-AM_7"));   // 2 đường chéo đo kiểm
             Assert.Equal(2, m.Leaders.Count);
             Assert.Equal(3, m.Polylines.Count(p => p.Layer == "Mechanical-AM_8"));   // khung 3 lớp quanh member list
@@ -72,7 +73,8 @@ namespace MCG_3DPanel.Tests
             Assert.Equal(PvSpace.Sheet, n.Space);
         }
 
-        /// <summary>Tờ 7D-17P: tấm rộng 16298.9 ⇒ mép trái tấm lashing tại 841 − 45.6 − 326.0 = 469.4 mm (tờ tay: chèn 23830.9);
+        /// <summary>Chuẩn 7D-17C: mép trái tấm lashing = mép phải mặt bằng chính + 40.2 mm (17P: 419.2 + 40.2 = 459.4 ⇒ chèn 23328.7;
+        /// tờ tay 17P chèn 23830.9 — lệch 10.0 mm chấp nhận theo chuẩn công ty);
         /// M.D1 28133.5 / M.D2 34764.1 / Y 20462.0 trên tờ tay.</summary>
         [Fact] public void LashingPlan_7D17P_MatchesManualWithin5()
         {
@@ -81,9 +83,9 @@ namespace MCG_3DPanel.Tests
                                        AssyTransform = new[] { 1.0, 0, 0, 1, 5019.76, 22476.66 } };
             var ins = SheetItemRules.LashingPlan(i, s);
             var tp = ins.Single(x => x.Block == "7D-17P_Top Plate");
-            Assert.InRange(tp.X, 23830.9 - 3, 23830.9 + 3); Assert.Equal(22476.66, tp.Y, 2);
+            Assert.InRange(tp.X, 23328.66 - 1, 23328.66 + 1); Assert.Equal(22476.66, tp.Y, 2);
             var md1 = ins.Single(x => x.Block == "M.D1"); var md2 = ins.Single(x => x.Block == "M.D2");
-            Assert.InRange(md1.X, 28133.5 - 5, 28133.5 + 5); Assert.InRange(md2.X, 34764.1 - 7, 34764.1 + 7); Assert.InRange(md1.Y, 20462 - 2, 20462 + 2);
+            Assert.InRange(md1.X - tp.X, 4302.6 - 5, 4302.6 + 5); Assert.InRange(md2.X - tp.X, 10933.2 - 7, 10933.2 + 7); Assert.InRange(md1.Y, 20462 - 2, 20462 + 2);   // X so với tấm (tờ tay 17P)
         }
 
         [Fact] public void NoLashingBlock_NoLashingPlan()

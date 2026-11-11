@@ -29,12 +29,14 @@ namespace MCG_3DPanel.Services.PlanView
         public const string ToleranceBox = "Rec. for tolerance";
         private const double MdWidth = 1125, MdHeight = 750;   // block M.D1/M.D2 ở tỉ lệ 1:50
 
-        /// <summary>Điểm chèn lần 2 của Top Plate + Lashing Hole: mép trái tấm cách gốc khung 513 mm giấy, hoặc dời trái để chừa lề
-        /// phải 45.6 mm (tấm rộng — 7D-17P); cùng cao độ với reference _Assy.</summary>
+        /// <summary>Điểm chèn lần 2 của Top Plate: mép trái tấm cách thứ ngoài cùng bên phải của mặt bằng chính (mép tấm, hoặc kích thước
+        /// rộng nếu nó ở bên phải) 36.5 mm giấy (tờ 7D-17C: 462.9), nhưng chừa lề phải 45.6 mm của khung; cùng cao độ với reference _Assy.</summary>
         public static (double X, double Y) LashingInsertion(PlanViewInput input, SheetContext s)
         {
             double w = (input.TopPlate.MaxX - input.TopPlate.MinX) / s.Scale;
-            double left = Math.Min(PlanViewLayout.LashLeftFromFrame, 841 - PlanViewLayout.LashRightMargin - w);
+            bool right = PlateGeometry.MainEdges(DraftDimRules.Outline(input), input.TopPlate).WidthOnRight;
+            double planRight = (s.PlanMaxX - s.FrameX) / s.Scale + (right ? PlanViewLayout.OverallGapV : 0);
+            double left = Math.Min(planRight + PlanViewLayout.LashGapAfterPlan, 841 - PlanViewLayout.LashRightMargin - w);
             return (s.FrameX + left * s.Scale - input.TopPlate.MinX, s.AssyTransform[5]);
         }
 
@@ -52,7 +54,9 @@ namespace MCG_3DPanel.Services.PlanView
             return new List<PvInsert>
             {
                 new PvInsert { Space = PvSpace.Sheet, Block = input.Panel + "_Top Plate", X = x, Y = y, Scale = 1, ScaleIsAbsolute = true, Layer = "Mechanical-AM_0" },
-                new PvInsert { Space = PvSpace.Sheet, Block = input.Panel + "_Lashing Hole", X = x, Y = y, Scale = 1, ScaleIsAbsolute = true, Layer = "Mechanical-AM_0" },
+                // Lashing Hole lồng trong _Assy tại độ lệch riêng so với Top Plate (tờ 7D-17C: 3170.4, −10522.7; 17P: 0, 0).
+                new PvInsert { Space = PvSpace.Sheet, Block = input.Panel + "_Lashing Hole", X = x + input.LashingBlockOffset.X, Y = y + input.LashingBlockOffset.Y,
+                               Scale = 1, ScaleIsAbsolute = true, Layer = "Mechanical-AM_0" },
                 new PvInsert { Space = PvSpace.Sheet, Block = "M.D1", X = md1, Y = mdY, Scale = 1, Layer = "Mechanical-AM_0" },
                 new PvInsert { Space = PvSpace.Sheet, Block = "M.D2", X = md2, Y = mdY, Scale = 1, Layer = "Mechanical-AM_0" },
             };
@@ -66,14 +70,14 @@ namespace MCG_3DPanel.Services.PlanView
             return (md1, md1 + PlanViewLayout.MdSpacing * w, top - PlanViewLayout.MdBelowTop * s.Scale);
         }
 
-        /// <summary>2 đường chéo đo kiểm (AM_7) qua các góc tấm trên 2 đường cắt giữa panel + 2 leader (posb) từ M.D1/M.D2 tới chúng.</summary>
+        /// <summary>2 đường chéo đo kiểm (AM_7) qua 4 góc hình chữ nhật cạnh thẳng chính (tờ 7D-17C) + 2 leader (posb) từ M.D1/M.D2 tới chúng.</summary>
         public static (List<PvLine> Lines, List<PvLeader> Leaders) Diagonals(PlanViewInput input, SheetContext s)
         {
             var (ix, iy) = LashingInsertion(input, s);
             var tp = input.TopPlate;
             var o = DraftDimRules.Outline(input);
-            var (xl, xh) = PlateGeometry.Cut(o, 'X', (tp.MinY + tp.MaxY) / 2, tp);
-            var (yl, yh) = PlateGeometry.Cut(o, 'Y', (tp.MinX + tp.MaxX) / 2, tp);
+            var e = PlateGeometry.MainEdges(o, tp);
+            double xl = e.Left.At, xh = e.Right.At, yl = e.Bottom.At, yh = e.Top.At;
             var d1 = new PvLine { Space = PvSpace.Sheet, X1 = ix + xl, Y1 = iy + yh, X2 = ix + xh, Y2 = iy + yl, Layer = "Mechanical-AM_7" };
             var d2 = new PvLine { Space = PvSpace.Sheet, X1 = ix + xl, Y1 = iy + yl, X2 = ix + xh, Y2 = iy + yh, Layer = "Mechanical-AM_7" };
 
@@ -96,19 +100,27 @@ namespace MCG_3DPanel.Services.PlanView
                            X = frameX + PlanViewLayout.ToleranceNoteX * scale, Y = frameY + PlanViewLayout.ToleranceNoteY * scale },
         };
 
-        /// <summary>Tiêu đề MText TopCenter (định dạng y như tờ tay), căn giữa dưới tấm của hình chiếu.</summary>
-        public static PvText Title(string text, double plateMinX, double plateMaxX, double plateMinY, int scale, double paperWidth)
+        /// <summary>Tiêu đề MText TopCenter (định dạng y như tờ tay), căn giữa dưới tấm của hình chiếu, cách mép dưới <paramref name="below"/> mm giấy.</summary>
+        public static PvText Title(string text, double plateMinX, double plateMaxX, double plateMinY, int scale, double paperWidth, double below)
             => new PvText
             {
                 Space = PvSpace.Sheet, IsMText = true, Category = "Title", Justify = "TopCenter", Text = text,
                 Layer = "Mechanical-AM_1", PaperHeight = PlanViewLayout.TextTitle, PaperWidth = paperWidth,
-                X = (plateMinX + plateMaxX) / 2, Y = plateMinY - PlanViewLayout.TitleBelow * scale,
+                X = (plateMinX + plateMaxX) / 2, Y = plateMinY - below * scale,
             };
+
+        /// <summary>Tiêu đề mặt bằng chính: 36.1 mm dưới tấm (tờ 7D-17C), hoặc 26 mm dưới kích thước dài khi nó nằm phía dưới.</summary>
+        public static PvText PlanTitle(PlanViewInput input, SheetContext s)
+        {
+            bool top = PlateGeometry.MainEdges(DraftDimRules.Outline(input), input.TopPlate).LengthOnTop;
+            double below = top ? PlanViewLayout.TitleBelowPlan : PlanViewLayout.OverallGapH + PlanViewLayout.TitleBelowDim;
+            return Title(TitlePlan, s.PlanMinX, s.PlanMaxX, s.PlanMinY, s.Scale, PlanViewLayout.TitleWidthPlan, below);
+        }
 
         public static PvText LashingTitle(PlanViewInput input, SheetContext s)
         {
             var (x0, x1, _, bottom) = LashPlate(input, s);
-            return Title(TitleLashing, x0, x1, bottom, s.Scale, PlanViewLayout.TitleWidthLashing);
+            return Title(TitleLashing, x0, x1, bottom, s.Scale, PlanViewLayout.TitleWidthLashing, PlanViewLayout.TitleBelowLashing);
         }
 
         /// <summary>Khung 3 lớp AM_8 bao member list, cao theo SỐ DÒNG; vạch ngăn 3 nét nằm giữa mỗi dòng trống (giữa các nhóm).

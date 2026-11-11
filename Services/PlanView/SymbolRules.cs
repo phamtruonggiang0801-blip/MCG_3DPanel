@@ -6,15 +6,17 @@ namespace MCG_3DPanel.Services.PlanView
 {
     // ⚠️ File THUẦN C# — KHÔNG using Autodesk.* (link sang tests/MCG_3DPanel.Tests).
 
-    /// <summary>Ký hiệu trên mặt bằng (kỹ sư 2026-11-10): chữ B / S / Kind GE…·GB… / OB… tại điểm đánh dấu; CS_horl_up_right tại
-    /// mỗi chỗ 1 thanh (HP, FB, Web) chạy LIÊN TỤC xuyên web của thanh khác (kể cả girder qua girder), xoay theo thanh chạy liên tục,
-    /// KHÔNG lật (6/6 tờ mẫu: sx = 1).</summary>
+    /// <summary>Ký hiệu trên mặt bằng (kỹ sư 2026-11-10): chữ B / S / Kind GE…·GB… / OB… tại điểm đánh dấu; CS_symbol (chuẩn tờ 7D-17C,
+    /// AM_6) tại mỗi chỗ 1 thanh (HP, FB, Web) chạy LIÊN TỤC xuyên web của thanh khác (kể cả girder qua girder, chỉ đoạn giữa), xoay theo
+    /// thanh chạy liên tục (0° / 90°), KHÔNG lật; + chữ CG (Continue Girder) cạnh mỗi chỗ girder liên tục qua girder.</summary>
     public static class SymbolRules
     {
         public const string LayerMarks = "Mechanical-AM_6";
-        public const string LayerContinuous = "Mechanical-AM_0";
-        public const string ContinuousBlock = "CS_horl_up_right";
+        public const string LayerContinuous = "Mechanical-AM_6";
+        public const string ContinuousBlock = "CS_symbol";
+        public const string ContinueGirderText = "CG";
         private const double EndTol = 1.0;   // mm: giao điểm tính là "trên web" khi lệch đầu web ≤ 1 + nửa dày thanh chạy qua
+        private const double SameCross = 50;   // mm: 2 giao điểm cùng tuyến gần hơn ⇒ 1
 
         /// <summary>Chữ căn giữa điểm đánh dấu (MiddleLeft như tờ tay). Mã bracket đẩy ra ngoài bracket, về phía mép tấm gần nhất.</summary>
         public static List<PvText> Marks(PlanViewInput input, int scale)
@@ -49,6 +51,40 @@ namespace MCG_3DPanel.Services.PlanView
         }
 
         public static List<PvInsert> Continuous(PlanViewInput input)
+            => Crossings(input).Select(c => new PvInsert
+            {
+                Space = PvSpace.Block, Block = ContinuousBlock, Layer = LayerContinuous, X = c.X, Y = c.Y, Rotation = c.Rot, Scale = 1,
+            }).ToList();
+
+        /// <summary>Chữ CG cạnh mỗi chỗ girder liên tục cắt qua girder khác (kỹ sư 2026-11-10). Tờ 7D-17C: dịch 0.9 mm dọc girder, lệch
+        /// 3.2 mm (giữa chữ) về phía girder SONG SONG gần nhất — L2 ghi phía trên, L3 phía dưới.</summary>
+        public static List<PvText> ContinueGirder(PlanViewInput input, int scale)
+        {
+            var webs = input.Members.Where(m => !m.Deleted && m.Kind == "Web").ToList();
+            var r = new List<PvText>();
+            foreach (var c in Crossings(input).Where(c => c.Girder))
+            {
+                double ux = Math.Cos(c.Rot), uy = Math.Sin(c.Rot), nx = -uy, ny = ux;   // dọc / pháp tuyến girder liên tục
+                double side = 1, best = double.MaxValue;
+                foreach (var w in webs.Where(w => w.Line != c.Line))
+                {
+                    double wx = w.X1 - w.X0, wy = w.Y1 - w.Y0, l = Math.Sqrt(wx * wx + wy * wy);
+                    if (l < 1e-6 || Math.Abs(wx * uy - wy * ux) / l > 0.02) continue;   // không song song
+                    double d = (w.X0 - c.X) * nx + (w.Y0 - c.Y) * ny;
+                    if (Math.Abs(d) > 1 && Math.Abs(d) < best) { best = Math.Abs(d); side = Math.Sign(d); }
+                }
+                double off = PlanViewLayout.CgSide * scale * side, along = PlanViewLayout.CgAlong * scale;
+                r.Add(new PvText
+                {
+                    Space = PvSpace.Block, Text = ContinueGirderText, Layer = LayerMarks, PaperHeight = PlanViewLayout.TextStiffener,
+                    Justify = "MiddleLeft", Category = "Symbol",
+                    X = c.X + ux * along + nx * off, Y = c.Y + uy * along + ny * off,
+                });
+            }
+            return r;
+        }
+
+        private static List<(int Line, double X, double Y, double Rot, bool Girder)> Crossings(PlanViewInput input)
         {
             var live = input.Members.Where(m => !m.Deleted && m.Kind != "Flange").ToList();
             var webs = live.Where(m => m.Kind == "Web").ToList();
@@ -64,8 +100,19 @@ namespace MCG_3DPanel.Services.PlanView
                 var s = span[line]; double p = px * s.ux + py * s.uy;
                 return p - s.min >= PlanViewLayout.GirderCrossMin && s.max - p >= PlanViewLayout.GirderCrossMin;
             }
-            var r = new List<PvInsert>();
-            var seen = new HashSet<(int, long, long)>();
+            var r = new List<(int Line, double X, double Y, double Rot, bool Girder)>();
+
+            // Web tuyến A bị tách đoạn TẠI web B (tờ 17C: L2 tách ở T4) vẫn là liên tục khi FLANGE cùng tuyến chạy suốt qua giao điểm
+            // (web 2 tuyến đều tách thì không phân biệt được — flange quyết định).
+            var flanges = input.Members.Where(m => !m.Deleted && m.Kind == "Flange").ToList();
+            bool FlangeThrough(PvMember a, double px, double py, double bThk)
+            {
+                double ax = a.X1 - a.X0, ay = a.Y1 - a.Y0, l = Math.Sqrt(ax * ax + ay * ay); ax /= l; ay /= l;
+                double need = bThk + 20, p = px * ax + py * ay;
+                return flanges.Any(c => c.Line == a.Line
+                    && Math.Abs(-(c.X0 - px) * ay + (c.Y0 - py) * ax) <= 20 && Math.Abs(-(c.X1 - px) * ay + (c.Y1 - py) * ax) <= 20
+                    && Math.Min(c.X0 * ax + c.Y0 * ay, c.X1 * ax + c.Y1 * ay) <= p - need && Math.Max(c.X0 * ax + c.Y0 * ay, c.X1 * ax + c.Y1 * ay) >= p + need);
+            }
 
             foreach (var a in live)
             {
@@ -87,15 +134,11 @@ namespace MCG_3DPanel.Services.PlanView
                     double reach = EndTol + a.Thickness / 2;                                 // B dừng ở MẶT của A, không ở tâm
                     if (u * lenB < -reach || (1 - u) * lenB < -reach) continue;              // không cắt web B
                     double pass = Math.Max(b.Thickness, EndTol);
-                    if (t * lenA <= pass || (1 - t) * lenA <= pass) continue;               // A dừng tại B
+                    if ((t * lenA <= pass || (1 - t) * lenA <= pass) && !(a.Kind == "Web" && FlangeThrough(a, a.X0 + t * ax, a.Y0 + t * ay, b.Thickness))) continue;   // A dừng tại B (trừ khi flange A chạy suốt qua)
                     double px = a.X0 + t * ax, py = a.Y0 + t * ay;
                     if (a.Kind == "Web" && !(Inner(a.Line, px, py) && Inner(b.Line, px, py))) continue;   // girder × girder ở đầu mút: không ký hiệu
-                    if (!seen.Add((a.Line, (long)Math.Round(px), (long)Math.Round(py)))) continue;
-                    r.Add(new PvInsert
-                    {
-                        Space = PvSpace.Block, Block = ContinuousBlock, Layer = LayerContinuous,
-                        X = px, Y = py, Rotation = rot, Scale = 1,
-                    });
+                    if (r.Any(q => q.Line == a.Line && (q.X - px) * (q.X - px) + (q.Y - py) * (q.Y - py) < SameCross * SameCross)) continue;   // tờ 17C: web tách đoạn lệch 7.5 mm ⇒ 1 ký hiệu
+                    r.Add((a.Line, px, py, rot, a.Kind == "Web" && b.Kind == "Web"));
                 }
             }
             return r;

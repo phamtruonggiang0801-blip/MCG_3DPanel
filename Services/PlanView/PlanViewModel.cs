@@ -47,6 +47,9 @@ namespace MCG_3DPanel.Services.PlanView
         public bool Tmove { get; set; } = true;
         /// <summary>Mũi tên xiên (DIMBLK1/2 = _Oblique, DIMSAH) — kích thước đầu mút trên mặt cắt.</summary>
         public bool Oblique { get; set; }
+        /// <summary>Vị trí chữ (cùng hệ toạ độ với Space) khi chữ không lọt giữa 2 đường gióng — <see cref="DimTextLayout"/>; null = AutoCAD tự đặt.</summary>
+        public double? TextX { get; set; }
+        public double? TextY { get; set; }
     }
 
     /// <summary>Chèn block. Scale = hệ số TRƯỚC khi nhân tỉ lệ tờ/50 (ký hiệu); ScaleIsAbsolute = dùng nguyên Scale.</summary>
@@ -126,6 +129,9 @@ namespace MCG_3DPanel.Services.PlanView
         public List<PvLeader> Leaders { get; } = new List<PvLeader>();
         /// <summary>Block phải có sẵn trong bản vẽ 2D (không tạo mới) — thiếu ⇒ dừng, không vẽ gì.</summary>
         public IReadOnlyList<string> RequiredBlocks => _required;
+        /// <summary>Bộ khoảng cách đã dùng (<see cref="LayoutProfile"/>) và phần lọt khỏi khung trong (mm giấy; ≤ 0 = trọn trong khung).</summary>
+        public string Layout { get; set; }
+        public double Overflow { get; set; }
 
         public void Require(string block)
         {

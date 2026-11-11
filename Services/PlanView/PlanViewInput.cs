@@ -90,6 +90,8 @@ namespace MCG_3DPanel.Services.PlanView
         public PvLashing Lashing { get; set; }
         /// <summary>Bản vẽ có block &lt;panel&gt;_Lashing Hole ⇒ vẽ mặt bằng lỗ lashing + M.D1/M.D2 + tiêu đề của nó.</summary>
         public bool HasLashingHoleBlock { get; set; }
+        /// <summary>Điểm chèn của &lt;panel&gt;_Lashing Hole trừ điểm chèn &lt;panel&gt;_Top Plate trong _Assy (tờ 7D-17C: 3170.4, −10522.7).</summary>
+        public (double X, double Y) LashingBlockOffset { get; set; }
         /// <summary>Block COG trong &lt;panel&gt;_Top Plate (tâm + bán kính vòng tròn, hệ block); null = không có.</summary>
         public (double X, double Y, double R)? Cog { get; set; }
     }

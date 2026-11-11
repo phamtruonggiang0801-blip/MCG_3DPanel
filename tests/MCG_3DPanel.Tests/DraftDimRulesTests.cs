@@ -33,20 +33,20 @@ namespace MCG_3DPanel.Tests
             var o = DraftDimRules.Overall(Input(), Scale);
             var len = o.Single(d => d.Rotation == 0);
             Assert.Equal(16298.9, len.X2 - len.X1, 1);
-            Assert.Equal(-12891.26 - PlanViewLayout.OverallBelow * Scale, len.LineY, 3);
+            Assert.Equal(-12891.26 - PlanViewLayout.OverallGapH * Scale, len.LineY, 3);
             var wid = o.Single(d => d.Rotation != 0);
             Assert.Equal(13356.16, wid.Y2 - wid.Y1, 2);                 // tờ tay: 13356.2 (không phải khung bao 13392.1)
-            Assert.Equal(-359.06 - PlanViewLayout.OverallLeft * Scale, wid.LineX, 3);
+            Assert.Equal(-359.06 - PlanViewLayout.OverallGapV * Scale, wid.LineX, 3);
             Assert.All(o, d => { Assert.Equal(DraftDimRules.OverallText, d.TextOverride); Assert.Equal("Mechanical-AM_5", d.Layer); Assert.False(d.Tmove); });
         }
 
         /// <summary>Nháp dọc 450 của 7D-17P (lỗ x = 139.9): giữ điểm tại lỗ, đường cách mép trái tấm 8.3 mm giấy.</summary>
-        [Fact] public void Lashing_KeepsDraftPoints_LeftChain_AM4()
+        [Fact] public void Lashing_KeepsDraftPoints_LeftChain_AM5()
         {
             var d = DraftDimRules.Lashing(Input(V(139.9, -12354.1, -11904.1)), Scale, (0, 0)).Single(x => x.TextOverride != "(<>)");   // + đóng chuỗi tới mép
-            Assert.Equal("Mechanical-AM_4", d.Layer);
+            Assert.Equal("Mechanical-AM_5", d.Layer);   // chuẩn 17C (17P dùng AM_4)
             Assert.Equal(139.9, d.X1, 3); Assert.Equal(-12354.1, d.Y1, 3); Assert.Equal(-11904.1, d.Y2, 3);
-            Assert.Equal(-359.06 - PlanViewLayout.LashChainLeft * Scale, d.LineX, 3);
+            Assert.Equal(-359.06 - PlanViewLayout.LashChainSide * Scale, d.LineX, 3);
             Assert.Equal(Math.PI / 2, d.Rotation, 6);
         }
 
@@ -76,10 +76,10 @@ namespace MCG_3DPanel.Tests
             var local = dims.Single(d => d.Kind == "Rotated" && Math.Abs(Math.Abs(d.Y2 - d.Y1) - 395.5) < 0.01);
             Assert.Equal("Mechanical-AM_5", local.Layer);
             Assert.Equal(15329.9, local.LineX, 1);
-            Assert.Equal("<>", local.TextOverride);
-            Assert.False(local.Tmove);
+            Assert.Null(local.TextOverride);   // chuẩn 17C: giữ chữ nháp
+            Assert.True(local.Tmove);   // giữ DIMTMOVE của nháp (tờ 17C)
             var chain = dims.Single(d => d.Kind == "Rotated" && Math.Abs(Math.Abs(d.Y2 - d.Y1) - 695.5) < 0.01);
-            Assert.Equal(-359.06 - PlanViewLayout.LashChainLeft * Scale, chain.LineX, 3);
+            Assert.Equal(-359.06 - PlanViewLayout.LashChainSide * Scale, chain.LineX, 3);
         }
 
         /// <summary>Tờ 7D-17P: điểm đặt chuỗi NGANG (trên) dời lên lỗ trên cùng của cột (709.9 → y −79); chuỗi DỌC (trái) dời sang lỗ
@@ -143,7 +143,7 @@ namespace MCG_3DPanel.Tests
             i.Cog = (7973.8, -6403.9, 250);
             var dims = DraftDimRules.Lashing(i, Scale, (0, 0));
             var v = dims.Single(d => Math.Abs(Math.Abs(d.Y2 - d.Y1) - 6403.9) < 0.1);
-            Assert.Equal(15939.84 + PlanViewLayout.LashCogRight * Scale, v.LineX, 3);
+            Assert.Equal(15939.84 + PlanViewLayout.LashCogSideNear * Scale, v.LineX, 3);
             Assert.Equal(7973.8 + 250, v.X2, 3);
             var h = dims.Single(d => Math.Abs(Math.Abs(d.X2 - d.X1) - 7966.04) < 0.1);
             Assert.Equal(500.84 + PlanViewLayout.LashCogTop * Scale, h.LineY, 3);
@@ -164,7 +164,7 @@ namespace MCG_3DPanel.Tests
         [Fact] public void Lashing_KeepsTextTmoveOblique()
         {
             var v = V(139.9, -12891.26, -12751.4); v.Text = "(<>)"; v.Tmove = false;
-            var d = DraftDimRules.Lashing(Input(v), Scale, (0, 0)).Single();
+            var d = DraftDimRules.Lashing(Input(v), Scale, (0, 0)).Single(x => Math.Abs(Math.Max(x.Y1, x.Y2) + 12751.4) < 1e-6);   // + đóng chuỗi tới cạnh trên
             Assert.Equal("(<>)", d.TextOverride);
             Assert.False(d.Tmove);
         }

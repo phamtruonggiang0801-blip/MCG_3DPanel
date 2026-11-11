@@ -187,7 +187,7 @@ namespace MCG_3DPanel.Commands
                         Add(e);
                         if (t.Justify == "CenterMiddleLeft" && e is DBText dt) CentreMiddleLeft(dt, x.P(t.Space, t.X, t.Y), db);
                     }
-                    void AddDim(PvDim d) { var dim = MakeDim(d, x, ds); Add(dim); Overrides(dim, d, s.Scale, oblique); }
+                    void AddDim(PvDim d) { var dim = MakeDim(d, x, ds); Add(dim); Overrides(dim, d, s.Scale, oblique, d.TextX.HasValue && d.TextY.HasValue ? x.P(d.Space, d.TextX.Value, d.TextY.Value) : Point3d.Origin); }
                     foreach (var d in m.Dims) AddDim(d);
                     foreach (var l in m.Lines) Add(new Line(x.P(l.Space, l.X1, l.Y1), x.P(l.Space, l.X2, l.Y2)) { Layer = l.Layer });
                     foreach (var pl in m.Polylines)
@@ -303,10 +303,17 @@ namespace MCG_3DPanel.Commands
 
         /// <summary>Override kích thước — gọi SAU khi kích thước đã nằm trong bản vẽ: DIMBLK1/2 đổi ObjectId mũi tên sang tên block
         /// qua database của đối tượng (trước đó chưa có ⇒ eKeyNotFound, lỗi 2026-11-10).</summary>
-        private static void Overrides(Dimension dim, PvDim d, int scale, ObjectId oblique)
+        private static void Overrides(Dimension dim, PvDim d, int scale, ObjectId oblique, Point3d textAt)
         {
             dim.Dimscale = scale;   // override bắt buộc (spec): DIMSCALE = tỉ lệ tờ
             if (d.Tmove) dim.Dimtmove = 1;   // tờ tay: có ở chuỗi chép từ nháp, không có ở kích thước "<>"
+            if (d.TextX.HasValue && d.TextY.HasValue && d.Kind != "Diametric")
+            {
+                // Chữ không lọt giữa 2 đường gióng ⇒ đặt trên đường kích thước (DimTextLayout), DIMTMOVE = 1 như tờ tay — thay vì để
+                // AutoCAD đẩy chữ ra ngoài đè lên chữ của kích thước bên cạnh.
+                dim.Dimtmove = 1;
+                dim.TextPosition = textAt;
+            }
             if (d.Oblique && !oblique.IsNull) { dim.Dimblk1 = oblique; dim.Dimblk2 = oblique; dim.Dimsah = true; }
         }
 
@@ -358,7 +365,11 @@ namespace MCG_3DPanel.Commands
             }
             foreach (var p in sec.Profiles)
             {
-                var br = new BlockReference(new Point3d(p.X, p.Y, 0), SymbolTables.Require(bt, p.Block, "Block")) { Layer = "0" };
+                // Lật profile theo hướng bụng HP (sx = −1) — trước đây bị bỏ qua nên HP trên mặt cắt không bao giờ lật (tờ 17C: 13 HP Y-Y lật).
+                var br = new BlockReference(new Point3d(p.X, p.Y, 0), SymbolTables.Require(bt, p.Block, "Block"))
+                {
+                    Layer = "0", ScaleFactors = new Scale3d(p.MirrorX ? -p.Scale : p.Scale, p.Scale, p.Scale), Rotation = p.Rotation,
+                };
                 btr.AppendEntity(br); tr.AddNewlyCreatedDBObject(br, true);
             }
             return btr.ObjectId;

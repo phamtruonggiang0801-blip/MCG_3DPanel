@@ -6,7 +6,7 @@ using Xunit;
 
 namespace MCG_3DPanel.Tests
 {
-    /// <summary>Mặt cắt theo tờ mẫu 7D-17P (CAS-0062242): đường cắt giữa panel, gốc = đầu tấm trên đường cắt, profile tại mặt lưng và lật
+    /// <summary>Mặt cắt theo tờ mẫu 7D-17P (CAS-0062242) + chuẩn 7D-17C: tấm giữa 2 cạnh thẳng chính, gốc = cạnh chính thấp, profile tại mặt lưng và lật
     /// theo hướng bầu, thk_sym mỗi thanh, kích thước 3 mức. Tọa độ tham chiếu lấy từ tờ tay.</summary>
     public class SectionRulesTests
     {
@@ -86,10 +86,11 @@ namespace MCG_3DPanel.Tests
             var s = Y();
             Assert.Equal("7D-17P_Y-Y_MCG", s.BlockName);
             Assert.Equal(Math.PI / 2, s.Rotation, 6);
-            Assert.Equal(4660.7 - PlanViewLayout.SectionYLeft * Scale, s.X, 2);  // tờ tay: 2392.0
+            Assert.Equal(4660.7 - SectionRules.YLeft(Panel7D17P()) * Scale, s.X, 2);   // kích thước rộng bên trái ⇒ 68.8 + 20 (chuẩn 17C)
+            Assert.Equal(PlanViewLayout.SectionYLeft + PlanViewLayout.LeftDimShift, SectionRules.YLeft(Panel7D17P()), 6);
             Assert.Equal(22476.66 - 12891.26, s.Y, 2);                            // tờ tay: 9585.3
             Assert.Equal(12952.26, s.Plates[0].X1 - s.Plates[0].X0, 2);          // tờ tay: 12952.3
-            Assert.Equal(-6, s.Plates[0].Y0, 3); Assert.Equal(0, s.Plates[0].Y1, 3);
+            Assert.Equal(0, s.Plates[0].Y0, 3); Assert.Equal(6, s.Plates[0].Y1, 3);   // chuẩn 17C: tấm 0…t như X-X
             var widths = s.Plates.Where(p => Math.Abs(p.Y1 - p.Y0 - 20) < 1e-6).OrderBy(p => p.X0).Select(p => Math.Round(p.X1 - p.X0)).ToArray();
             Assert.Equal(new double[] { 250, 170, 170, 150, 170, 170, 250 }, widths);
         }
@@ -109,9 +110,8 @@ namespace MCG_3DPanel.Tests
             var pitch = s.Dims.Where(d => Math.Abs(Math.Abs(d.X2 - d.X1) - 775) < 0.01 && Math.Abs(d.Rotation) < 1e-9).OrderBy(d => Math.Min(d.X1, d.X2)).First();
             Assert.Equal(s.Y + PlanViewLayout.SecXPitch * Scale, pitch.LineY, 2);  // tờ tay: 25579.3
             Assert.Equal(5809.76, pitch.X1, 2);                                     // tờ tay: 5809.7
-            var ends = s.Dims.Where(d => d.Oblique).ToList();
-            Assert.Equal(2, ends.Count);
-            Assert.Contains(ends, d => Math.Abs(Math.Abs(d.X2 - d.X1) - 60) < 0.01);  // tờ tay: 60.0
+            Assert.All(s.Dims.Where(d => Math.Abs(d.Rotation) < 1e-9), d => Assert.Equal(Math.Abs(d.LineY - (s.Y + PlanViewLayout.SecXGirder * Scale)) > 0.01, d.Oblique));   // chuẩn 17C: tick xiên trừ chuỗi girder X-X
+            Assert.Contains(s.Dims, d => Math.Abs(Math.Abs(d.X2 - d.X1) - 60) < 0.01 && Math.Abs(d.LineY - (s.Y + PlanViewLayout.SecXEnds * Scale)) < 0.01);  // tờ tay: 60.0
             var girder = s.Dims.Where(d => Math.Abs(d.LineY - (s.Y + PlanViewLayout.SecXGirder * Scale)) < 0.01).Select(d => Math.Round(Math.Abs(d.X2 - d.X1), 1)).ToList();
             Assert.Equal(new[] { 290.0, 15110.4 }, girder);                         // tờ tay: 290.0, 15110.5
             var h = s.Dims.Single(d => Math.Abs(d.Rotation - Math.PI / 2) < 1e-9);
@@ -122,7 +122,9 @@ namespace MCG_3DPanel.Tests
         [Fact] public void X_PitchChain_Generated_FromGirderFaceToGirderFace()
         {
             var s = X();
-            var pitch = s.Dims.Where(d => Math.Abs(d.LineY - (s.Y + PlanViewLayout.SecXPitch * Scale)) < 0.01).OrderBy(d => Math.Min(d.X1, d.X2)).ToList();
+            var pitch = s.Dims.Where(d => Math.Abs(d.LineY - (s.Y + PlanViewLayout.SecXPitch * Scale)) < 0.01
+                                          && Math.Min(d.X1, d.X2) > s.X + 1 && Math.Max(d.X1, d.X2) < s.X + 15939.84 - 1)   // bỏ 2 kích thước đầu mút cùng mức (17C)
+                             .OrderBy(d => Math.Min(d.X1, d.X2)).ToList();
             Assert.Equal(20, pitch.Count);                                          // tờ tay: 500 + 18 × 775 + 660.5
             Assert.Equal(660.4, Math.Abs(pitch[19].X2 - pitch[19].X1), 1);          // HP cuối trong T2 → mặt T2 (tờ tay 660.5)
             Assert.Equal(500, Math.Abs(pitch[0].X2 - pitch[0].X1), 3);              // tờ tay: 500.0 (mặt T1 → HP2)

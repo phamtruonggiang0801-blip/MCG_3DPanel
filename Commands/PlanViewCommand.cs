@@ -121,7 +121,8 @@ namespace MCG_3DPanel.Commands
                 if (blocks.FromTemplate.Count > 0) added += " Added from CAS.dwt: " + string.Join(", ", blocks.FromTemplate) + ".";
                 if (blocks.Drawn.Count > 0) added += " Drew blocks: " + string.Join(", ", blocks.Drawn) + ".";
                 if (addedTables.Count > 0) added += " New with the blocks: " + string.Join(", ", addedTables) + ".";
-                return $"Plan View: {labels} labels, {dims} dimensions, sections X-X / Y-Y.{added} {Path.GetFileName(path)} is not saved.";
+                string fit = model.Overflow > 0 ? $" WARNING: content still extends {model.Overflow:0} mm outside the drawing border — move items by hand." : "";
+                return $"Plan View ({model.Layout} spacing): {labels} labels, {dims} dimensions, sections X-X / Y-Y.{added}{fit} {Path.GetFileName(path)} is not saved.";
             }
         }
 

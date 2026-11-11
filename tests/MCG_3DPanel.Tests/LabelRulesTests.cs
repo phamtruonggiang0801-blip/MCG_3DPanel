@@ -5,8 +5,8 @@ using Xunit;
 
 namespace MCG_3DPanel.Tests
 {
-    /// <summary>Nhãn tên theo tờ mẫu 7D-17P: MiddleLeft; T (21.0), HT (25.2), BS phương T (31.8) trên mép trên, căn giữa thanh;
-    /// L (35.8), HL/BS phương L (42.6) trái mép trái. + member list MText.</summary>
+    /// <summary>Nhãn tên theo chuẩn 7D-17C: MiddleLeft; T (46.2), HT (47.6), BS phương T (52.3) trên mép trên, căn giữa thanh;
+    /// L / HL tính từ mặt cắt Y-Y (+16.8 / +5.9). + member list MText.</summary>
     public class LabelRulesTests
     {
         private const int Scale = 50;
@@ -28,11 +28,11 @@ namespace MCG_3DPanel.Tests
             var g = t.Single(x => x.Text == "T1");
             Assert.Equal("Mechanical-AM_1", g.Layer); Assert.Equal(5, g.PaperHeight); Assert.Equal("CenterMiddleLeft", g.Justify);
             Assert.Equal(300, g.X, 3);
-            Assert.Equal(13000 + 21.0 * Scale, g.Y, 3);
+            Assert.Equal(13000 + PlanViewLayout.LabelTopGirder * Scale, g.Y, 3);   // 17C: 46.2
             var s = t.Single(x => x.Text == "HT1");
             Assert.Equal("Mechanical-AM_6", s.Layer); Assert.Equal(3, s.PaperHeight);
-            Assert.Equal(13000 + 25.2 * Scale, s.Y, 3);
-            Assert.Equal(13000 + 31.8 * Scale, t.Single(x => x.Text == "BS").Y, 3);
+            Assert.Equal(13000 + PlanViewLayout.LabelTopHp * Scale, s.Y, 3);
+            Assert.Equal(13000 + PlanViewLayout.LabelTopFb * Scale, t.Single(x => x.Text == "BS").Y, 3);
             Assert.All(t, x => Assert.Equal("Name", x.Category));
         }
 
@@ -41,9 +41,9 @@ namespace MCG_3DPanel.Tests
             var t = LabelRules.Names(Input(M(1, "L3", "Web", 0, 4000, 16000, 4000), M(2, "HL1", "HP", 0, 200, 16000, 200)), Scale);
             var g = t.Single(x => x.Text == "L3");
             Assert.Equal("MiddleLeft", g.Justify);
-            Assert.Equal(-35.8 * Scale, g.X, 3);
+            Assert.Equal(-(88.8 - 16.8) * Scale, g.X, 3);   // Y-Y ở 68.8 + 20 (kích thước rộng bên trái), L = Y-Y + 16.8
             Assert.Equal(4000, g.Y, 3);
-            Assert.Equal(-42.6 * Scale, t.Single(x => x.Text == "HL1").X, 3);
+            Assert.Equal(-(88.8 - 5.9) * Scale, t.Single(x => x.Text == "HL1").X, 3);
         }
 
         [Fact] public void Names_MergedLinesShareOneLabel()

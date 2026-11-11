@@ -7,8 +7,8 @@ namespace MCG_3DPanel.Services.PlanView
 {
     // ⚠️ File THUẦN C# — KHÔNG using Autodesk.* (link sang tests/MCG_3DPanel.Tests).
 
-    /// <summary>Nhãn tên (1 cái mỗi tuyến tab Naming) + member list MText. Theo tờ mẫu 7D-17P: mọi nhãn MiddleLeft; phương T chữ căn giữa
-    /// đường tâm thanh (writer đo bề rộng chữ — Justify "CenterMiddleLeft"), phương L chữ bắt đầu tại cột trái tấm.</summary>
+    /// <summary>Nhãn tên (1 cái mỗi tuyến tab Naming) + member list MText. Theo chuẩn 7D-17C: mọi nhãn MiddleLeft; phương T chữ căn giữa
+    /// đường tâm thanh (writer đo bề rộng chữ — Justify "CenterMiddleLeft"), phương L chữ bắt đầu tại cột tính từ mặt cắt Y-Y.</summary>
     public static class LabelRules
     {
         public const string LayerGirder = "Mechanical-AM_1";
@@ -44,7 +44,7 @@ namespace MCG_3DPanel.Services.PlanView
                 else
                 {
                     t.Justify = "MiddleLeft";
-                    t.X = tp.MinX - (girder ? PlanViewLayout.LabelLeftGirder : PlanViewLayout.LabelLeftStiffener) * scale;
+                    t.X = tp.MinX - (SectionRules.YLeft(input) - (girder ? PlanViewLayout.LabelLeftGirderFromSection : PlanViewLayout.LabelLeftStiffenerFromSection)) * scale;
                     t.Y = (piece.Y0 + piece.Y1) / 2;
                 }
                 r.Add(t);

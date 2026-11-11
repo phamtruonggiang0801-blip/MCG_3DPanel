@@ -32,8 +32,8 @@ namespace MCG_3DPanel.Tests
         {
             var cs = SymbolRules.Continuous(Panel7D17P());
             Assert.Equal(95, cs.Count);
-            Assert.All(cs, c => Assert.Equal("CS_horl_up_right", c.Block));
-            Assert.All(cs, c => Assert.Equal("Mechanical-AM_0", c.Layer));
+            Assert.All(cs, c => Assert.Equal("CS_symbol", c.Block));          // chuẩn 7D-17C
+            Assert.All(cs, c => Assert.Equal("Mechanical-AM_6", c.Layer));
             Assert.All(cs, c => Assert.Equal(Math.PI / 2, c.Rotation, 6));   // xoay theo thanh chạy liên tục (HT đứng)
             Assert.DoesNotContain(cs, c => Math.Abs(c.Y - 400) < 1 || Math.Abs(c.Y - 12600) < 1);
         }

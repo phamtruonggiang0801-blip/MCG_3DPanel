@@ -11,6 +11,7 @@ namespace MCG_3DPanel.Services.PlanView
     public static class PlateGeometry
     {
         private const double Tol = 1.0;
+        private const double GroupTol = 10.0;
 
         /// <summary>Đoạn tấm trên đường cắt: <paramref name="axis"/> 'X' = đường ngang y = <paramref name="at"/> (trả khoảng x),
         /// 'Y' = đường đứng x = <paramref name="at"/> (trả khoảng y). Đường bao rỗng / không cắt ⇒ khung bao <paramref name="box"/>.</summary>
@@ -32,25 +33,71 @@ namespace MCG_3DPanel.Services.PlanView
             return axis == 'X' ? (box.MinX, box.MaxX) : (box.MinY, box.MaxY);
         }
 
-        /// <summary>Kích thước bao dài: góc dưới-trái → góc dưới-phải (đỉnh thấp nhất trong dải 5% sát mỗi cạnh đứng).</summary>
-        public static ((double, double) P1, (double, double) P2) OverallLength(IReadOnlyList<(double X, double Y)> outline)
+        /// <summary>Cạnh thẳng CHÍNH mỗi phía: nhóm cạnh song song trục cùng toạ độ (±1 mm), lấy nhóm dài nhất (tổng) ở mỗi nửa khung bao.
+        /// Tờ 7D-17C (tấm xiên góc dưới-trái): trái x 164.6 (bỏ tai 158.5), phải 376.9, dưới y 181.9 (bỏ vấu 176.4), trên 481.4
+        /// ⇒ mặt cắt X-X dài 15925, Y-Y 22465.5, đường chéo đo kiểm cùng hình chữ nhật này. Tờ 7D-17P: x 0…15939.8, y −12891.3…61.</summary>
+        public static Edges MainEdges(IReadOnlyList<(double X, double Y)> outline, (double MinX, double MinY, double MaxX, double MaxY) box = default)
         {
-            var (minX, maxX, w) = Span(outline, true);
-            var left = outline.Where(p => p.X <= minX + PlanViewLayout.OverallEdgeBand * w).OrderBy(p => p.Y).ThenBy(p => p.X).First();
-            var right = outline.Where(p => p.X >= maxX - PlanViewLayout.OverallEdgeBand * w).OrderBy(p => p.Y).ThenByDescending(p => p.X).First();
-            return (left, right);
+            if (outline == null || outline.Count < 3)
+                return new Edges { Left = (box.MinX, 0), Right = (box.MaxX, 0), Bottom = (box.MinY, 0), Top = (box.MaxY, 0) };
+            double minX = outline.Min(p => p.X), maxX = outline.Max(p => p.X), minY = outline.Min(p => p.Y), maxY = outline.Max(p => p.Y);
+            double mx = (minX + maxX) / 2, my = (minY + maxY) / 2;
+            var vert = new List<(double At, double Len)>(); var hor = new List<(double At, double Len)>();
+            for (int i = 0; i < outline.Count; i++)
+            {
+                var a = outline[i]; var b = outline[(i + 1) % outline.Count];
+                double dx = Math.Abs(b.X - a.X), dy = Math.Abs(b.Y - a.Y);
+                if (dx <= Tol && dy > Tol) vert.Add(((a.X + b.X) / 2, dy));
+                else if (dy <= Tol && dx > Tol) hor.Add(((a.Y + b.Y) / 2, dx));
+            }
+            // Nhóm: cạnh cách nhau ≤ 10 mm (bậc vát) là 1 cạnh; toạ độ = cạnh NGOÀI CÙNG của nhóm (tờ 17C: đáy −22460.5 / −22465.5 ⇒ 22465.5).
+            (double, double) Best(IEnumerable<(double At, double Len)> segs, double fallback, bool outerIsMin)
+            {
+                var groups = new List<(double Lo, double Hi, double Len)>();
+                foreach (var s in segs.OrderBy(s => s.At))
+                    if (groups.Count > 0 && s.At - groups[groups.Count - 1].Hi <= GroupTol)
+                        groups[groups.Count - 1] = (groups[groups.Count - 1].Lo, s.At, groups[groups.Count - 1].Len + s.Len);
+                    else groups.Add((s.At, s.At, s.Len));
+                if (groups.Count == 0) return (fallback, 0);
+                var g = groups.OrderByDescending(x => x.Len).First();
+                return (outerIsMin ? g.Lo : g.Hi, g.Len);
+            }
+            return new Edges
+            {
+                Left = Best(vert.Where(v => v.At < mx), minX, true), Right = Best(vert.Where(v => v.At > mx), maxX, false),
+                Bottom = Best(hor.Where(v => v.At < my), minY, true), Top = Best(hor.Where(v => v.At > my), maxY, false),
+                MinX = minX, MaxX = maxX, MinY = minY, MaxY = maxY,
+            };
         }
 
-        /// <summary>Kích thước bao rộng: góc dưới-trái → đỉnh CAO NHẤT trong dải 5% sát cạnh trái.</summary>
-        public static ((double, double) P1, (double, double) P2) OverallWidth(IReadOnlyList<(double X, double Y)> outline)
+        public sealed class Edges
         {
-            var (minX, _, w) = Span(outline, true);
-            var band = outline.Where(p => p.X <= minX + PlanViewLayout.OverallEdgeBand * w).ToList();
-            var bottom = band.OrderBy(p => p.Y).ThenBy(p => p.X).First();
-            var top = band.OrderByDescending(p => p.Y).ThenBy(p => p.X).First();
-            return (bottom, top);
+            public (double At, double Len) Left, Right, Bottom, Top;
+            public double MinX, MaxX, MinY, MaxY;
+            /// <summary>Kích thước dài đặt TRÊN khi cạnh dưới gãy (cạnh thẳng chính &lt; 50 % bề rộng) — tờ 17C; mặc định dưới (17P).</summary>
+            public bool LengthOnTop => Bottom.Len < PlanViewLayout.BrokenEdge * (MaxX - MinX) && Top.Len > Bottom.Len;
+            /// <summary>Kích thước rộng (và chuỗi dọc lỗ lashing) bên PHẢI khi cạnh trái gãy — tờ 17C; mặc định trái (17P).</summary>
+            public bool WidthOnRight => Left.Len < PlanViewLayout.BrokenEdge * (MaxY - MinY) && Right.Len > Left.Len;
         }
 
+        /// <summary>Kích thước bao dài = khung bao theo X, đo giữa đỉnh ngoài cùng trái / phải gần phía đặt kích thước nhất.</summary>
+        public static ((double, double) P1, (double, double) P2) OverallLength(IReadOnlyList<(double X, double Y)> outline, bool top)
+        {
+            double minX = outline.Min(p => p.X), maxX = outline.Max(p => p.X);
+            (double, double) Pick(IEnumerable<(double X, double Y)> ps) => top ? ps.OrderByDescending(p => p.Y).First() : ps.OrderBy(p => p.Y).First();
+            return (Pick(outline.Where(p => p.X <= minX + Tol)), Pick(outline.Where(p => p.X >= maxX - Tol)));
+        }
+
+        /// <summary>Kích thước bao rộng, đo ở cạnh ngoài cùng phía đặt: từ cạnh chính dưới tới cạnh chính trên, mở rộng tới đỉnh của
+        /// cạnh ngoài cùng nếu nó vượt ra (tờ 17P: tai trái lên 464.9; tờ 17C: bỏ vấu 176.4 vì không nằm trên cạnh phải ngoài cùng).</summary>
+        public static ((double, double) P1, (double, double) P2) OverallWidth(IReadOnlyList<(double X, double Y)> outline, bool right)
+        {
+            var e = MainEdges(outline);
+            double x = right ? e.MaxX : e.MinX;
+            var side = outline.Where(p => Math.Abs(p.X - x) <= Tol).ToList();
+            double lo = Math.Min(e.Bottom.At, side.Min(p => p.Y)), hi = Math.Max(e.Top.At, side.Max(p => p.Y));
+            return ((x, lo), (x, hi));
+        }
         /// <summary>Điểm nằm trên cạnh đường bao (≤ 1 mm).</summary>
         public static bool OnOutline(IReadOnlyList<(double X, double Y)> outline, double x, double y)
         {
@@ -63,12 +110,6 @@ namespace MCG_3DPanel.Services.PlanView
                 if (px * px + py * py <= Tol * Tol) return true;
             }
             return false;
-        }
-
-        private static (double Min, double Max, double Size) Span(IReadOnlyList<(double X, double Y)> o, bool x)
-        {
-            double mn = o.Min(p => x ? p.X : p.Y), mx = o.Max(p => x ? p.X : p.Y);
-            return (mn, mx, mx - mn);
         }
     }
 }
