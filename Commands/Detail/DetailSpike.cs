@@ -104,18 +104,17 @@ namespace MCG_3DPanel.Commands.Detail
                 Log("---- PLAN (horizontal plane Z=-1, box Z -5000..-1) ----");
                 var planClip = Clip(sources, x0, x1, y0, y1, -5000, -1);
                 Point3dCollection planPts = new Point3dCollection { new Point3d(x0, y0, -1), new Point3d(x1, y0, -1) };
-                SecOut plan = RunStage("PLAN", planClip, planPts, Vector3d.YAxis, -Vector3d.ZAxis);
-                if (plan != null)
-                {
-                    Matrix3d m = Matrix3d.Displacement(new Vector3d(20000, 0, 0));
-                    Collect(plan, m, drawList);
-                }
+                var plan = RunStage("PLAN", planClip, planPts, Vector3d.YAxis, -Vector3d.ZAxis);
+                // A: +20000 X; B: thêm +10000 Y để so cạnh nhau
+                if (plan.A != null) Collect(plan.A, Matrix3d.Displacement(new Vector3d(20000, 0, 0)), drawList);
+                if (plan.B != null) Collect(plan.B, Matrix3d.Displacement(new Vector3d(20000, 10000, 0)), drawList);
 
                 // Thử thêm mặt cắt Z = −2 (chỉ log, không vẽ) — xem mặt cắt trùng mặt hộp có làm hỏng boundary không
                 Log("---- PLAN variant (plane Z=-2, same clipped solids, log only) ----");
                 Point3dCollection planPts2 = new Point3dCollection { new Point3d(x0, y0, -2), new Point3d(x1, y0, -2) };
-                SecOut plan2 = RunStage("PLAN@-2", planClip, planPts2, Vector3d.YAxis, -Vector3d.ZAxis);
-                plan2?.DisposeAll();
+                var plan2 = RunStage("PLAN@-2", planClip, planPts2, Vector3d.YAxis, -Vector3d.ZAxis);
+                plan2.A?.DisposeAll();
+                plan2.B?.DisposeAll();
                 foreach (var s in planClip) s.Dispose();
 
                 // 5. Mặt cắt đứng: mặt phẳng qua đường giữa (trái→phải), nhìn +Y, hộp Y mid..top, Z −5000..+100
@@ -123,15 +122,14 @@ namespace MCG_3DPanel.Commands.Detail
                 Log($"---- VERTICAL (plane Y={ym:0.##}, view +Y, box Y {ym:0.##}..{y1:0.##} Z -5000..+100) ----");
                 var vClip = Clip(sources, x0, x1, ym, y1, -5000, 100);
                 Point3dCollection vPts = new Point3dCollection { new Point3d(x0, ym, 0), new Point3d(x1, ym, 0) };
-                SecOut vert = RunStage("VERTICAL", vClip, vPts, Vector3d.ZAxis, Vector3d.YAxis);
-                if (vert != null)
-                {
-                    // (x, ym, z) → (x + 20000, ym − 10000 + z, 0)
-                    Matrix3d m = Matrix3d.AlignCoordinateSystem(
-                        new Point3d(0, ym, 0), Vector3d.XAxis, Vector3d.ZAxis, -Vector3d.YAxis,
-                        new Point3d(20000, ym - 10000, 0), Vector3d.XAxis, Vector3d.YAxis, Vector3d.ZAxis);
-                    Collect(vert, m, drawList);
-                }
+                var vert = RunStage("VERTICAL", vClip, vPts, Vector3d.ZAxis, Vector3d.YAxis);
+                // (x, ym, z) → (x + 20000, ym + dy + z, 0). A: dy = −10000.
+                // B: dy = −20000 (dưới A 10000) — +10000 sẽ chồng lên mặt bằng A (z ∈ −5000..+100).
+                Matrix3d VertMap(double dy) => Matrix3d.AlignCoordinateSystem(
+                    new Point3d(0, ym, 0), Vector3d.XAxis, Vector3d.ZAxis, -Vector3d.YAxis,
+                    new Point3d(20000, ym + dy, 0), Vector3d.XAxis, Vector3d.YAxis, Vector3d.ZAxis);
+                if (vert.A != null) Collect(vert.A, VertMap(-10000), drawList);
+                if (vert.B != null) Collect(vert.B, VertMap(-20000), drawList);
                 foreach (var s in vClip) s.Dispose();
 
                 // 6. Vẽ vào bản vẽ hiện tại (kỹ sư đóng không lưu)
@@ -161,9 +159,9 @@ namespace MCG_3DPanel.Commands.Detail
                     }
                     tr.Commit();
                 }
-                Log($"Drawn {drawn} entities (failed {drawFail}), {sw.ElapsedMilliseconds} ms. Plan at +20000 X; vertical at +20000 X / -10000 Y.");
-                plan?.Fill.ForEach(e => { try { e.Dispose(); } catch { } });
-                vert?.Fill.ForEach(e => { try { e.Dispose(); } catch { } });
+                Log($"Drawn {drawn} entities (failed {drawFail}), {sw.ElapsedMilliseconds} ms. Plan A at +20000 X, plan B at +20000 X / +10000 Y; vertical A at +20000 X / -10000 Y, vertical B at +20000 X / -20000 Y.");
+                foreach (var o in new[] { plan.A, plan.B, vert.A, vert.B })
+                    o?.Fill.ForEach(e => { try { e.Dispose(); } catch { } });
             }
             catch (System.Exception ex)
             {
@@ -239,10 +237,10 @@ namespace MCG_3DPanel.Commands.Detail
             return res;
         }
 
-        /// <summary>A: Section ngoài database; nếu có exception ⇒ B: database tạm chứa solid + Section.</summary>
-        static SecOut RunStage(string tag, List<Solid3d> solids, Point3dCollection pts, Vector3d verticalDir, Vector3d wantView)
+        /// <summary>Luôn chạy cả 2: A Section ngoài database; B database tạm chứa solid + Section (settings 2D, bỏ nét khuất).</summary>
+        static (SecOut A, SecOut B) RunStage(string tag, List<Solid3d> solids, Point3dCollection pts, Vector3d verticalDir, Vector3d wantView)
         {
-            if (solids.Count == 0) { Log($"  [{tag}] no clipped solids - skipped."); return null; }
+            if (solids.Count == 0) { Log($"  [{tag}] no clipped solids - skipped."); return (null, null); }
 
             // --- Approach A ---
             SecOut outA = new SecOut();
@@ -262,11 +260,9 @@ namespace MCG_3DPanel.Commands.Detail
             finally { try { sec?.Dispose(); } catch { } }
             Log($"  [{tag}] Approach A (non-resident Section): ok {outA.Ok}, failed {outA.Failed}, {sw.ElapsedMilliseconds} ms");
             LogCounts(tag + "/A", outA);
-            if (outA.Failed == 0) return outA;
-            Log($"  [{tag}] A first exception: {outA.FirstError}");
+            if (outA.FirstError != null) Log($"  [{tag}] A first exception: {outA.FirstError}");
 
-            // --- Approach B ---
-            outA.DisposeAll();
+            // --- Approach B (luôn chạy) ---
             SecOut outB = new SecOut();
             sw.Restart();
             try
@@ -299,7 +295,7 @@ namespace MCG_3DPanel.Commands.Detail
             Log($"  [{tag}] Approach B (scratch Database): ok {outB.Ok}, failed {outB.Failed}, {sw.ElapsedMilliseconds} ms");
             LogCounts(tag + "/B", outB);
             if (outB.FirstError != null) Log($"  [{tag}] B first exception: {outB.FirstError}");
-            return outB;
+            return (outA, outB);
         }
 
         static void ConfigureSection(string tag, Section sec, Vector3d wantView)
@@ -333,7 +329,8 @@ namespace MCG_3DPanel.Commands.Detail
                     Log($"  [{tag}]   {g}: visible={st.Visibility(SectionType.Section2d, g)} hidden={st.HiddenLine(SectionType.Section2d, g)}");
                 st.SetVisibility(SectionType.Section2d, SectionGeometry.BackgroundGeometry, true);
                 st.SetHiddenLine(SectionType.Section2d, SectionGeometry.BackgroundGeometry, false);
-                Log($"  [{tag}] -> Section2d, background visible, hidden-line removal on (HiddenLine=false means hidden lines not shown)");
+                Log($"  [{tag}] -> CurrentSectionType={st.CurrentSectionType}, background visible={st.Visibility(SectionType.Section2d, SectionGeometry.BackgroundGeometry)}, " +
+                    $"hidden={st.HiddenLine(SectionType.Section2d, SectionGeometry.BackgroundGeometry)} (false = hidden lines removed)");
             }
             catch (System.Exception ex) { Log($"  [{tag}] settings failed: {ex}"); }
         }
