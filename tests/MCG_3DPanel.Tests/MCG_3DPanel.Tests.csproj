@@ -28,6 +28,7 @@
     <Compile Include="..\..\Commands\Panel3DPath.cs" Link="Panel3DPath.cs" />
     <!-- Plan View: cả thư mục là C# thuần (spec 2026-11-10-create-drawing-plan-view). -->
     <Compile Include="..\..\Services\PlanView\*.cs" LinkBase="PlanView" />
+    <Compile Include="..\..\Services\Detail\*.cs" LinkBase="Detail" />
   </ItemGroup>
 
   <ItemGroup>
