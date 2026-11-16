@@ -84,4 +84,57 @@ public class SectionFrameTests
         Assert.Equal(-7, s.Y, 6);
         Assert.Equal(0, f.ToSection(f.Start, 0).X, 6);
     }
+
+    [Fact]
+    public void Circle_ClipsAndDepth()
+    {
+        var c = DetailRegion.FromCircle(new P2(0, 0), 10);
+        var f = SectionFrame.From(new P2(-20, 0), new P2(20, 0), new P2(0, 5), c);
+        Assert.NotNull(f);
+        Assert.Equal(1, f.Right.X, 6);
+        Assert.Equal(20, f.Length, 6);
+        Assert.Equal(-10, f.Start.X, 6);
+        Assert.Equal(10, f.End.X, 6);
+        Assert.Equal(10, f.Depth, 6);
+    }
+
+    [Fact]
+    public void Circle_TangentOrMiss_ReturnsNull()
+    {
+        var c = DetailRegion.FromCircle(new P2(0, 0), 10);
+        Assert.Null(SectionFrame.From(new P2(-20, 10), new P2(20, 10), new P2(0, 15), c));
+        Assert.Null(SectionFrame.From(new P2(-20, 15), new P2(20, 15), new P2(0, 20), c));
+    }
+
+    [Fact]
+    public void Frame_Vertical_SideRight_StartIsLargerY()
+    {
+        var f = SectionFrame.From(new P2(100, -10), new P2(100, 200), new P2(150, 50), Rect());
+        Assert.Equal(0, f.Right.X, 6);
+        Assert.Equal(-1, f.Right.Y, 6);
+        Assert.Equal(100, f.Start.Y, 6);
+        Assert.Equal(0, f.End.Y, 6);
+    }
+
+    [Fact]
+    public void Snap_TieIsHorizontal()
+    {
+        var p = SectionFrame.Snap(new P2(0, 0), new P2(10, 10));
+        Assert.Equal(10, p.X, 6);
+        Assert.Equal(0, p.Y, 6);
+    }
+
+    [Fact]
+    public void Snap_MostlyVertical()
+    {
+        var p = SectionFrame.Snap(new P2(10, 10), new P2(15, 110));
+        Assert.Equal(10, p.X, 6);
+        Assert.Equal(110, p.Y, 6);
+    }
+
+    [Fact]
+    public void Frame_SideExactlyOneMm_ReturnsNull()
+    {
+        Assert.Null(SectionFrame.From(new P2(0, 50), new P2(200, 50), new P2(100, 51), Rect()));
+    }
 }
