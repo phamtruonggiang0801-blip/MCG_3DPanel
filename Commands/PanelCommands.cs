@@ -782,16 +782,22 @@ namespace MCG_3DPanel.Commands
         }
         // ─── Dữ liệu panel lưu trong block 3D (XRecord MCG3D_PANEL) ─────────────
 
-        /// <summary>Dấu vân tay block 2D nguồn (đọc từ bản đã nhập trong chính file 3D); lỗi ⇒ "" (không làm hỏng build).</summary>
-        static string Fingerprint3D(Database db, ObjectId srcBtr)
+        /// <summary>Dấu vân tay block 2D nguồn (đọc từ bản đã nhập trong chính file 3D); lỗi ⇒ "" kèm cảnh báo (không làm hỏng build).</summary>
+        static string Fingerprint3D(Database db, BuildResult build)
         {
+            ObjectId srcBtr = build.SourceBtrId;
             if (srcBtr.IsNull) return "";
             try
             {
                 using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
                     return Services.Detail.Detail3DMatch.Fingerprint(Detail.SourceFingerprintReader.Records(tr, srcBtr));
             }
-            catch (System.Exception) { return ""; }
+            catch (System.Exception ex)
+            {
+                build.Report.Add($"[PanelMeta] không tính được fingerprint 2D: {ex.Message}");
+                build.Warnings.Add($"Source fingerprint could not be computed: {ex.Message}. Detail Drawing cannot check whether this 3D file is out of date.");
+                return "";
+            }
         }
 
         /// <summary>Ghi PanelMeta (nguồn 2D, input, vị trí, danh sách solid) vào BTR 3D để mở lại file vẫn điền được các tab.
@@ -806,7 +812,7 @@ namespace MCG_3DPanel.Commands
                     SourceRefHandle = build.SourceRefId.IsNull ? "" : build.SourceRefId.Handle.ToString(),
                     SourceBtrHandle = build.SourceBtrId.IsNull ? "" : build.SourceBtrId.Handle.ToString(),
                     SourcePath = build.SourcePath ?? "",
-                    SourceFingerprint = Fingerprint3D(db, build.SourceBtrId),
+                    SourceFingerprint = Fingerprint3D(db, build),
                     Input = build.Input,
                     Position = (int)build.Position,
                 };

@@ -25,7 +25,7 @@ namespace MCG_3DPanel.Commands.Detail
             foreach (ObjectId id in btr)
             {
                 var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
-                if (ent == null || ent.Layer == DraftDimLayer) continue;
+                if (ent == null || string.Equals(ent.Layer, DraftDimLayer, StringComparison.OrdinalIgnoreCase)) continue;
                 list.Add(string.Join("|", btr.Name, ent.GetType().Name, ent.Layer, Ext(ent)));
                 if (ent is BlockReference br) Walk(tr, br.BlockTableRecord, list, seen);
             }
