@@ -72,7 +72,7 @@ namespace MCG_3DPanel.Services.Detail
         // ─── Section Detail ────────────────────────────────────────────────────
 
         /// <summary>Lệnh palette được phép gửi qua Request (chỉ đúng tên lệnh, không kèm gì khác).</summary>
-        public static readonly string[] Commands = { "MCG_DetailPlan", "MCG_DetailSection", "MCG_DetailView" };
+        public static readonly string[] Commands = { "MCG_DetailPlan", "MCG_DetailSection", "MCG_DetailView", "MCG_DetailUpdate" };
 
         public static bool IsCommand(string command) =>
             !string.IsNullOrWhiteSpace(command) && Commands.Contains(command.Trim(), StringComparer.OrdinalIgnoreCase);

@@ -59,10 +59,10 @@ namespace MCG_3DPanel.Commands.Detail
         // ─── Section ───────────────────────────────────────────────────────────
 
         /// <summary>Block section: vết cắt + AM_8 + đường thấy + Continuous symbol/(t) + "$". Gốc block = tâm khung bao hình
-        /// (<paramref name="basePt"/>, toạ độ section).</summary>
-        public static List<Entity> SectionEntities(SectionResult r, SectionFrame f, out P2 basePt)
+        /// (<paramref name="basePt"/>, toạ độ section); <paramref name="keepBase"/> (Update Details) ⇒ dùng gốc đó để hình không xê dịch.</summary>
+        public static List<Entity> SectionEntities(SectionResult r, SectionFrame f, out P2 basePt, P2? keepBase = null)
         {
-            basePt = Centre(r);
+            basePt = keepBase ?? Centre(r);
             var shift = new P2(-basePt.X, -basePt.Y);
             var ents = new List<Entity>();
             try
