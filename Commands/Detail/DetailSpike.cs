@@ -21,6 +21,7 @@ namespace MCG_3DPanel.Commands.Detail
     {
         static readonly string LogPath = Path.Combine(Path.GetTempPath(), "MCG_DetailSpike.log");
         static Editor _ed;
+        static Database _host; // database file 3D đã đọc: B gắn solid + Section vào đây rồi abort
 
         static void Log(string s)
         {
@@ -91,6 +92,7 @@ namespace MCG_3DPanel.Commands.Detail
                 db3 = new Database(false, true);
                 db3.ReadDwgFile(path, FileOpenMode.OpenForReadAndAllShare, true, null);
                 db3.CloseInput(true);
+                _host = db3;
                 Log($"ReadDwgFile: {sw.ElapsedMilliseconds} ms");
 
                 sw.Restart();
@@ -265,9 +267,11 @@ namespace MCG_3DPanel.Commands.Detail
             // --- Approach B (luôn chạy) ---
             SecOut outB = new SecOut();
             sw.Restart();
+            Database prevWorking = HostApplicationServices.WorkingDatabase;
             try
             {
-                using (var scratch = new Database(true, true))
+                var scratch = _host;
+                HostApplicationServices.WorkingDatabase = scratch;
                 using (Transaction tr = scratch.TransactionManager.StartTransaction())
                 {
                     var ms = (BlockTableRecord)tr.GetObject(SymbolUtilityServices.GetBlockModelSpaceId(scratch), OpenMode.ForWrite);
@@ -275,7 +279,6 @@ namespace MCG_3DPanel.Commands.Detail
                     foreach (var s in solids)
                     {
                         var c = (Solid3d)s.Clone();
-                        c.SetDatabaseDefaults(scratch);
                         ids.Add(ms.AppendEntity(c));
                         tr.AddNewlyCreatedDBObject(c, true);
                     }
@@ -285,7 +288,7 @@ namespace MCG_3DPanel.Commands.Detail
                     ConfigureSection(tag + "/B", secB, wantView);
                     ConfigureSettings(tag + "/B", tr, secB);
                     foreach (var id in ids) Generate(secB, (Entity)tr.GetObject(id, OpenMode.ForRead), outB);
-                    tr.Commit();
+                    tr.Abort(); // không ghi gì vào file 3D
                 }
             }
             catch (System.Exception ex)
@@ -293,6 +296,7 @@ namespace MCG_3DPanel.Commands.Detail
                 outB.Failed++;
                 if (outB.FirstError == null) outB.FirstError = ex.ToString();
             }
+            finally { HostApplicationServices.WorkingDatabase = prevWorking; }
             Log($"  [{tag}] Approach B (scratch Database): ok {outB.Ok}, failed {outB.Failed}, {sw.ElapsedMilliseconds} ms");
             LogCounts(tag + "/B", outB);
             if (outB.FirstError != null) Log($"  [{tag}] B first exception: {outB.FirstError}");
