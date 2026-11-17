@@ -34,6 +34,10 @@ namespace MCG_3DPanel.Services.Detail
 
         public string ToJson() => JsonSerializer.Serialize(this, Opt);
 
+        /// <summary>Dấu XData ngắn cho từng entity trong block Detail (bản ghi đầy đủ nằm trên block / reference / tiêu đề).</summary>
+        public string Marker() =>
+            $"{Kind} {Panel} DET.{Number}" + (Kind == DetailKind.Section ? $" {Number}{Letter}" : "");
+
         /// <summary>JSON rỗng/hỏng/thiếu Kind hoặc Panel/Section thiếu CutA-CutB-Side ⇒ null, không throw.</summary>
         public static DetailRecord FromJson(string s)
         {

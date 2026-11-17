@@ -57,20 +57,28 @@ namespace MCG_3DPanel.Commands.Detail
                     {
                         SymbolTables.FreeErasedName(tr, bt, n);
                         btr = new BlockTableRecord { Name = n, Origin = Point3d.Origin };
-                        bt.UpgradeOpen(); bt.Add(btr); tr.AddNewlyCreatedDBObject(btr, true);
+                        if (!bt.IsWriteEnabled) bt.UpgradeOpen();
+                        bt.Add(btr); tr.AddNewlyCreatedDBObject(btr, true);
                         break;
                     }
                     var old = (BlockTableRecord)tr.GetObject(id, OpenMode.ForRead);
                     if (Read(old) == null) continue;   // block vẽ tay trùng tên ⇒ thử tên kế
-                    old.UpgradeOpen();
-                    foreach (ObjectId e in old) tr.GetObject(e, OpenMode.ForWrite).Erase();
+                    if (!old.IsWriteEnabled) old.UpgradeOpen();
+                    foreach (ObjectId e in old) tr.GetObject(e, OpenMode.ForWrite, false, true).Erase();   // kể cả layer khoá
                     btr = old;
                 }
                 TagObject(tr, db, btr, rec);
+                // Từng entity trong block: RegApp + dấu ngắn (JSON đầy đủ chỉ trên block / reference / tiêu đề)
+                var mark = new TypedValue[]
+                {
+                    new TypedValue((int)DxfCode.ExtendedDataRegAppName, App),
+                    new TypedValue((int)DxfCode.ExtendedDataAsciiString, rec.Marker()),
+                };
                 foreach (var e in list)
                 {
                     btr.AppendEntity(e);
                     tr.AddNewlyCreatedDBObject(e, true);
+                    using (var rb = new ResultBuffer(mark)) e.XData = rb;
                 }
                 return btr.ObjectId;
             }
@@ -137,7 +145,10 @@ namespace MCG_3DPanel.Commands.Detail
         public static void AddTitle(Transaction tr, BlockReference br, string text, double below = 150)
         {
             var db = br.Database;
-            Extents3d ext = br.GeometricExtents;
+            // Block rỗng (vd section không chạm vật liệu) không có khung bao ⇒ lấy điểm chèn
+            Point3d lo, hi;
+            try { var ext = br.GeometricExtents; lo = ext.MinPoint; hi = ext.MaxPoint; }
+            catch (Autodesk.AutoCAD.Runtime.Exception) { lo = hi = br.Position; }
             var t = new MText();
             t.SetDatabaseDefaults(db);
             // MText không hiểu %%U (chỉ DBText) ⇒ gạch chân bằng \L
@@ -145,7 +156,7 @@ namespace MCG_3DPanel.Commands.Detail
                 ? "{\\L" + text.Substring(3) + "}" : text ?? "";
             t.TextHeight = 50;
             t.Attachment = AttachmentPoint.TopCenter;
-            t.Location = new Point3d((ext.MinPoint.X + ext.MaxPoint.X) / 2, ext.MinPoint.Y - below, 0);
+            t.Location = new Point3d((lo.X + hi.X) / 2, lo.Y - below, 0);
             t.Layer = "Mechanical-AM_1";
             var ts = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
             ObjectId style = SymbolTables.Live(ts, TextStyle);
@@ -198,7 +209,7 @@ namespace MCG_3DPanel.Commands.Detail
         {
             var rat = (RegAppTable)tr.GetObject(db.RegAppTableId, OpenMode.ForRead);
             if (SymbolTables.HasLive(rat, App)) return;
-            rat.UpgradeOpen();
+            if (!rat.IsWriteEnabled) rat.UpgradeOpen();
             var r = new RegAppTableRecord { Name = App };
             rat.Add(r); tr.AddNewlyCreatedDBObject(r, true);
         }

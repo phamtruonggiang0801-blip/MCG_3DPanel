@@ -19,6 +19,7 @@ namespace MCG_3DPanel.Commands.Detail
         public const string ContinuousBlock = "Continious symbol";
         const string TextStyle = "STANDARD";
         const double DedupeTol = 0.05;
+        const double BoundaryTol = 0.5;   // = SectionEngine.Tol: cạnh nằm trên biên vùng / hộp cắt
         const short TextColor = 2;   // chữ ký hiệu trên mẫu: màu 2
 
         static Database Db => HostApplicationServices.WorkingDatabase;
@@ -26,14 +27,16 @@ namespace MCG_3DPanel.Commands.Detail
         // ─── Detail Plan ───────────────────────────────────────────────────────
 
         /// <summary>Block DET: vết cắt + AM_8 + đường thấy + viền Top Plate (AM_7) + đồ 2D; toạ độ = plan − <paramref name="basePt"/>.
-        /// <paramref name="twoDItems"/> (từ <see cref="TwoDItems"/>) được dời rồi đưa luôn vào danh sách (không chép).</summary>
-        public static List<Entity> PlanEntities(SectionResult r, List<P2> topPlate, IEnumerable<Entity> twoDItems, P2 basePt)
+        /// <paramref name="twoDItems"/> (từ <see cref="TwoDItems"/>) được dời rồi đưa luôn vào danh sách (không chép).
+        /// <paramref name="region"/> (toạ độ plan): cạnh vết cắt nằm trên biên vùng ⇒ break AM_4 (null ⇒ chỉ theo break của engine).</summary>
+        public static List<Entity> PlanEntities(SectionResult r, List<P2> topPlate, IEnumerable<Entity> twoDItems, P2 basePt,
+            DetailRegion region = null)
         {
             var ents = new List<Entity>();
             try
             {
                 var shift = new P2(-basePt.X, -basePt.Y);
-                AddStructure(r, shift, ents);
+                AddStructure(r, shift, ents, region == null ? (Func<P2, double>)null : p => region.DistanceToBoundary(p - shift));
                 if (topPlate != null && topPlate.Count >= 3)
                     ents.Add(Poly(topPlate.Select(p => p + shift), true, AM7));
                 var m = Matrix3d.Displacement(new Vector3d(shift.X, shift.Y, 0));
@@ -62,7 +65,9 @@ namespace MCG_3DPanel.Commands.Detail
             var ents = new List<Entity>();
             try
             {
-                AddStructure(r, shift, ents);
+                // Hộp cắt section chặn 2 đầu đường cắt: x = 0 và x = Length (toạ độ section, trước khi dời)
+                AddStructure(r, shift, ents, f == null ? (Func<P2, double>)null
+                    : p => Math.Min(Math.Abs(p.X - shift.X), Math.Abs(p.X - shift.X - f.Length)));
 
                 // Continuous: 1 cho mỗi tấm (vết cắt lớn nhất của tấm) cắt liên tục, không phải HP
                 var members = r.Cut.Where(c => c.Outline != null && c.Outline.Count >= 3)
@@ -133,7 +138,7 @@ namespace MCG_3DPanel.Commands.Detail
 
         // ─── Đồ 2D (chỉ Detail Plan / View) ────────────────────────────────────
 
-        /// <summary>Đồ chỉ có trên bản vẽ 2D, toạ độ plan (WCS): đi cây block _Assy (bỏ Top Plate / Structure / Lashing Hole, đi xuống
+        /// <summary>Đồ chỉ có trên bản vẽ 2D, toạ độ plan (WCS): đi cây block _Assy (bỏ Top Plate / Structure, đi xuống
         /// mọi block &lt;panel&gt;_*). Block khác = phụ kiện, giữ nguyên nếu điểm chèn trong vùng (AM_0 nếu thuộc Hole cut out, còn lại
         /// AM_2). Đường cong trong các block chứa: cắt theo vùng, bỏ AM_9; polyline của Wire guide support ⇒ AM_7 rộng 3.
         /// Chỉ ĐỌC cây _Assy — entity trả về là bản chép.</summary>
@@ -142,7 +147,8 @@ namespace MCG_3DPanel.Commands.Detail
             var res = new List<Entity>();
             string assyName = Name(tr, assyRef);
             string panel = assyName.EndsWith("_Assy", StringComparison.Ordinal) ? assyName.Substring(0, assyName.Length - 5) : assyName;
-            var skip = new HashSet<string>(StringComparer.Ordinal) { panel + "_Top Plate", panel + "_Structure", panel + "_Lashing Hole" };
+            // Lashing Hole KHÔNG bỏ: lỗ lashing chỉ có trên 2D (spec)
+            var skip = new HashSet<string>(StringComparer.Ordinal) { panel + "_Top Plate", panel + "_Structure" };
             Entity boundary = Boundary(region);
             try
             {
@@ -259,19 +265,16 @@ namespace MCG_3DPanel.Commands.Detail
 
         // ─── Chung ─────────────────────────────────────────────────────────────
 
-        /// <summary>Vết cắt (AM_0 kín) + AM_8 + đường thấy (AM_0; trên biên vùng ⇒ AM_4 amzigzag) đã gộp đoạn trùng.</summary>
-        static void AddStructure(SectionResult r, P2 shift, List<Entity> ents)
+        /// <summary>Vết cắt + AM_8 + đường thấy, đã gộp đoạn trùng. Cạnh vết cắt nằm trên biên vùng / hộp cắt
+        /// (<paramref name="boundaryDist"/>, toạ độ đã dời) hoặc trùng break ⇒ AM_4 amzigzag, còn lại AM_0; đường thấy trên biên
+        /// ⇒ AM_4 amzigzag, bỏ phần đã có cạnh vết cắt break. Thiếu linetype ⇒ Continuous + ghi chú.</summary>
+        static void AddStructure(SectionResult r, P2 shift, List<Entity> ents, Func<P2, double> boundaryDist)
         {
-            var cutEdges = new List<(P2, P2)>();
-            foreach (var cf in r.Cut)
-            {
-                if (cf.Outline == null || cf.Outline.Count < 3) continue;
-                var o = cf.Outline.Select(p => p + shift).ToList();
-                ents.Add(Poly(o, true, AM0));
-                for (int i = 0; i < o.Count; i++) cutEdges.Add((o[i], o[(i + 1) % o.Count]));
-                foreach (var s in DetailComposeRules.MarkLines(o)) ents.Add(Line(s, AM8));
-            }
+            ObjectId zig = LinetypeId(Zigzag);
+            bool anyBreak = false;
+            void Zig(Entity e) { anyBreak = true; if (!zig.IsNull) e.LinetypeId = zig; }
 
+            // 1. Đường thấy: tách đoạn thẳng (gộp được) và đường cong (chép ngay vào danh sách)
             var m = Matrix3d.Displacement(new Vector3d(shift.X, shift.Y, 0));
             var straight0 = new List<(P2, P2)>();
             var straight4 = new List<(P2, P2)>();
@@ -289,29 +292,65 @@ namespace MCG_3DPanel.Commands.Detail
                     curved.Add((c, v.OnBoundary));
                 }
             }
+            var breaksRaw = DetailComposeRules.MergeCollinear(straight4, null, DedupeTol);
 
-            var breaks = DetailComposeRules.MergeCollinear(straight4, null, DedupeTol);
-            var lines = DetailComposeRules.MergeCollinear(straight0, cutEdges.Concat(breaks), DedupeTol);
-            foreach (var s in lines) ents.Add(Line(s, AM0));
-
-            ObjectId zig = ObjectId.Null;
-            if (breaks.Count > 0 || curved.Any(q => q.boundary))
+            // 2. Vết cắt: tách cạnh break / cạnh thường
+            var cutSolid = new List<(P2, P2)>();
+            var cutBreak = new List<(P2, P2)>();
+            foreach (var cf in r.Cut)
             {
-                zig = LinetypeId(Zigzag);
-                if (zig.IsNull) r.Warnings.Add($"Linetype {Zigzag} is missing from the drawing; break lines are drawn Continuous.");
+                if (cf.Outline == null || cf.Outline.Count < 3) continue;
+                var o = cf.Outline.Select(p => p + shift).ToList();
+                var flags = DetailComposeRules.BreakEdges(o, boundaryDist, breaksRaw, BoundaryTol);
+                foreach (var run in DetailComposeRules.Runs(o, flags))
+                {
+                    var pl = Poly(run.Pts, run.Closed, run.Break ? AM4 : AM0);
+                    ents.Add(pl);
+                    if (run.Break) Zig(pl);
+                    var bucket = run.Break ? cutBreak : cutSolid;
+                    for (int i = 1; i < run.Pts.Count; i++) bucket.Add((run.Pts[i - 1], run.Pts[i]));
+                    if (run.Closed) bucket.Add((run.Pts[run.Pts.Count - 1], run.Pts[0]));
+                }
+                foreach (var s in DetailComposeRules.MarkLines(o)) ents.Add(Line(s, AM8));
             }
+
+            // 3. Break thẳng còn lại (bỏ phần trùng cạnh vết cắt break) + nét thấy AM_0 (bỏ phần trùng mọi thứ đã vẽ)
+            var breaks = DetailComposeRules.MergeCollinear(breaksRaw, cutBreak, BoundaryTol);
             foreach (var s in breaks)
             {
                 var pl = Poly(new[] { s.Item1, s.Item2 }, false, AM4);
-                if (!zig.IsNull) pl.LinetypeId = zig;
                 ents.Add(pl);
+                Zig(pl);
             }
+            var lines = DetailComposeRules.MergeCollinear(straight0, cutSolid.Concat(cutBreak).Concat(breaks), DedupeTol);
+            foreach (var s in lines) ents.Add(Line(s, AM0));
+
+            // 4. Đường cong: trên biên ⇒ AM_4 (bỏ nếu nằm trọn trên cạnh vết cắt break), còn lại AM_0
             foreach (var (c, boundary) in curved)
             {
+                if (boundary && cutBreak.Count > 0 && OnSegments(c, cutBreak))
+                {
+                    ents.Remove(c);
+                    c.Dispose();
+                    continue;
+                }
                 c.SetDatabaseDefaults(Db);
                 c.Layer = boundary ? AM4 : AM0;
-                if (boundary && !zig.IsNull) c.LinetypeId = zig;
+                if (boundary) Zig(c);
             }
+            if (anyBreak && zig.IsNull) r.Warnings.Add($"Linetype {Zigzag} is missing from the drawing; break lines are drawn Continuous.");
+        }
+
+        /// <summary>Đầu, giữa, cuối đường cong đều cách các đoạn ≤ BoundaryTol.</summary>
+        static bool OnSegments(Curve c, List<(P2, P2)> segs)
+        {
+            foreach (double k in new[] { 0, 0.25, 0.5, 0.75, 1 })
+            {
+                var p = c.GetPointAtParameter(c.StartParam + (c.EndParam - c.StartParam) * k);
+                var q = new P2(p.X, p.Y);
+                if (!segs.Any(s => SectionCurveRules.DistanceToSegment(q, s.Item1, s.Item2) <= BoundaryTol)) return false;
+            }
+            return true;
         }
 
         /// <summary>Line, hoặc polyline 2 đỉnh không cung ⇒ đoạn thẳng.</summary>
@@ -373,38 +412,31 @@ namespace MCG_3DPanel.Commands.Detail
             return t;
         }
 
-        static ObjectId TextStyleId()
+        /// <summary>Tra bảng trong transaction đang mở của caller (bảng có thể đã mở ghi); không có ⇒ OpenClose riêng.</summary>
+        static T Look<T>(Func<Transaction, T> f)
         {
-            using (Transaction tr = Db.TransactionManager.StartOpenCloseTransaction())
-            {
-                var ts = (TextStyleTable)tr.GetObject(Db.TextStyleTableId, OpenMode.ForRead);
-                return SymbolTables.Live(ts, TextStyle);
-            }
+            Transaction top = Db.TransactionManager.TopTransaction;
+            if (top != null) return f(top);
+            using (Transaction tr = Db.TransactionManager.StartOpenCloseTransaction()) return f(tr);
         }
 
-        static ObjectId LinetypeId(string name)
+        static ObjectId TextStyleId() => Look(tr =>
+            SymbolTables.Live((TextStyleTable)tr.GetObject(Db.TextStyleTableId, OpenMode.ForRead), TextStyle));
+
+        static ObjectId LinetypeId(string name) => Look(tr =>
         {
-            using (Transaction tr = Db.TransactionManager.StartOpenCloseTransaction())
+            var lt = (LinetypeTable)tr.GetObject(Db.LinetypeTableId, OpenMode.ForRead);
+            foreach (ObjectId id in lt)
             {
-                var lt = (LinetypeTable)tr.GetObject(Db.LinetypeTableId, OpenMode.ForRead);
-                foreach (ObjectId id in lt)
-                {
-                    var rec = (LinetypeTableRecord)tr.GetObject(id, OpenMode.ForRead);
-                    if (!rec.IsErased && string.Equals(rec.Name, name, StringComparison.OrdinalIgnoreCase)) return id;
-                }
-                return ObjectId.Null;
+                var rec = (LinetypeTableRecord)tr.GetObject(id, OpenMode.ForRead);
+                if (!rec.IsErased && string.Equals(rec.Name, name, StringComparison.OrdinalIgnoreCase)) return id;
             }
-        }
+            return ObjectId.Null;
+        });
 
         /// <summary>Block phải có sẵn (caller đã bổ sung qua PlanViewBlockSource).</summary>
-        static ObjectId BlockId(string name)
-        {
-            using (Transaction tr = Db.TransactionManager.StartOpenCloseTransaction())
-            {
-                var bt = (BlockTable)tr.GetObject(Db.BlockTableId, OpenMode.ForRead);
-                return SymbolTables.Require(bt, name, "Block");
-            }
-        }
+        static ObjectId BlockId(string name) => Look(tr =>
+            SymbolTables.Require((BlockTable)tr.GetObject(Db.BlockTableId, OpenMode.ForRead), name, "Block"));
 
         static string Name(Transaction tr, BlockReference br)
         {

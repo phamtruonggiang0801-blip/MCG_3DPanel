@@ -67,6 +67,15 @@ namespace MCG_3DPanel.Services.Detail
             return true;
         }
 
+
+        /// <summary>Khoảng cách tới biên vùng (cạnh chữ nhật / đường tròn).</summary>
+        public double DistanceToBoundary(P2 pt)
+        {
+            if (IsCircle) return Math.Abs((pt - Center).Length - Radius);
+            double d = double.MaxValue;
+            for (int i = 0; i < 4; i++) d = Math.Min(d, SectionCurveRules.DistanceToSegment(pt, Corners[i], Corners[(i + 1) % 4]));
+            return d;
+        }
         public P2[] Outline(int circleSegments = 72)
         {
             if (!IsCircle) return (P2[])Corners.Clone();

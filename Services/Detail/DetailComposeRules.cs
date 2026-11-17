@@ -94,6 +94,53 @@ namespace MCG_3DPanel.Services.Detail
             return r;
         }
 
+
+        /// <summary>Cạnh i (outline[i]→outline[i+1]) là break khi nằm trên biên vùng/hộp cắt (đầu, giữa, ¼, ¾ cách biên ≤ tol)
+        /// hoặc bị các đoạn break thẳng phủ kín.</summary>
+        public static List<bool> BreakEdges(IList<P2> outline, Func<P2, double> boundaryDist, IEnumerable<(P2 A, P2 B)> breaks, double tol)
+        {
+            var res = new List<bool>();
+            var brk = (breaks ?? Enumerable.Empty<(P2, P2)>()).ToList();
+            int n = outline?.Count ?? 0;
+            for (int i = 0; i < n; i++)
+            {
+                P2 a = outline[i], b = outline[(i + 1) % n];
+                bool onBoundary = boundaryDist != null
+                    && new[] { 0, 0.25, 0.5, 0.75, 1 }.All(k => boundaryDist(a + (b - a) * k) <= tol);
+                bool covered = false;
+                if (!onBoundary && brk.Count > 0)
+                {
+                    if ((b - a).Length > tol) covered = MergeCollinear(new[] { (a, b) }, brk, tol).Count == 0;
+                    else covered = new[] { a, b }.All(p => brk.Any(s => SectionCurveRules.DistanceToSegment(p, s.Item1, s.Item2) <= tol));
+                }
+                res.Add(onBoundary || covered);
+            }
+            return res;
+        }
+
+        /// <summary>Gom cạnh liên tiếp cùng loại thành đường: tất cả cùng loại ⇒ 1 vòng kín (đỉnh như outline); không thì các đoạn hở.</summary>
+        public static List<(List<P2> Pts, bool Break, bool Closed)> Runs(IList<P2> outline, IList<bool> brk)
+        {
+            var res = new List<(List<P2>, bool, bool)>();
+            int n = outline?.Count ?? 0;
+            if (n == 0) return res;
+            int s = -1;
+            for (int i = 0; i < n; i++) if (brk[i] != brk[(i + n - 1) % n]) { s = i; break; }
+            if (s < 0) { res.Add((outline.ToList(), brk[0], true)); return res; }
+            List<P2> cur = null; bool kind = false;
+            for (int k = 0; k < n; k++)
+            {
+                int i = (s + k) % n;
+                if (cur == null || brk[i] != kind)
+                {
+                    if (cur != null) res.Add((cur, kind, false));
+                    cur = new List<P2> { outline[i] }; kind = brk[i];
+                }
+                cur.Add(outline[(i + 1) % n]);
+            }
+            res.Add((cur, kind, false));
+            return res;
+        }
         /// <summary>Phần của đường thẳng vô hạn p + t·d nằm trong đa giác (kín, có thể lõm; không lặp đỉnh đầu).</summary>
         public static List<(P2 A, P2 B)> ClipLine(P2 p, P2 d, IList<P2> poly)
         {
