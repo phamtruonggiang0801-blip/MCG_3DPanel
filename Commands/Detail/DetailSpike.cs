@@ -275,6 +275,7 @@ namespace MCG_3DPanel.Commands.Detail
                     foreach (var s in solids)
                     {
                         var c = (Solid3d)s.Clone();
+                        c.SetDatabaseDefaults(scratch);
                         ids.Add(ms.AppendEntity(c));
                         tr.AddNewlyCreatedDBObject(c, true);
                     }
