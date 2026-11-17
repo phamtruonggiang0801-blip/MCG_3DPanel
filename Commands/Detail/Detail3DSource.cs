@@ -71,9 +71,10 @@ namespace MCG_3DPanel.Commands.Detail
                 : Directory.GetFiles(folder, Detail3DMatch.CandidatePattern(panel));
 
             var loaded = new List<Loaded>();
+            string current = null;   // file đang đọc (lỗi catch-all nêu tên)
             try
             {
-                string firstFailure = null;
+                var failures = new List<(string File, string Error)>();
                 foreach (string file in files)
                 {
                     try
@@ -83,17 +84,16 @@ namespace MCG_3DPanel.Commands.Detail
                     }
                     catch (System.Exception ex)
                     {
-                        if (firstFailure == null) firstFailure = $"{Path.GetFileName(file)}: {ex.Message}";
+                        failures.Add((Path.GetFileName(file), ex.Message));
+                        CommandLine($"Could not read {file}:\n{ex}");   // lỗi đầy đủ ra dòng lệnh
                     }
                 }
 
                 var matches = Detail3DMatch.Matching(loaded.Select(l => l.Info), drawingPath, refHandle);
                 if (matches.Count == 0)
                 {
-                    // Mọi file đều đọc lỗi ⇒ nói thẳng lỗi đầu tiên, không báo "chưa có file" sai sự thật.
-                    why = loaded.Count == 0 && firstFailure != null
-                        ? $"Could not read the 3D file of {panel} ({firstFailure})"
-                        : $"No 3D file of {panel} next to this drawing. Build 3D first.";
+                    // Không báo "chưa có file" sai sự thật: nói file nào dựng từ bản vẽ khác / đọc lỗi.
+                    why = Detail3DMatch.NoMatchReason(panel, loaded.Select(l => l.Info), failures, drawingPath, refHandle);
                     return null;
                 }
 
@@ -105,6 +105,7 @@ namespace MCG_3DPanel.Commands.Detail
                     if (pick == null) { why = "Cancelled."; return null; }
                 }
                 Loaded chosen = loaded.First(l => l.Info == pick);
+                current = Path.GetFileName(chosen.Info.Path);
 
                 var src = new Detail3DSource
                 {
@@ -120,7 +121,9 @@ namespace MCG_3DPanel.Commands.Detail
             }
             catch (System.Exception ex)
             {
-                why = "Could not read the 3D file: " + ex.Message;
+                // Lỗi bất ngờ: tên file + lỗi lên status, ex.ToString() đầy đủ ra dòng lệnh (Global Constraint)
+                why = $"Could not read the 3D file{(current != null ? " " + current : "")}: {ex.Message} (details on the command line).";
+                CommandLine($"Could not read the 3D file{(current != null ? " " + current : "")}:\n{ex}");
                 return null;
             }
             finally
@@ -242,6 +245,13 @@ namespace MCG_3DPanel.Commands.Detail
             _ownedDb = null;
             SourceDb = null;
             DisposeQuietly(db);
+        }
+
+        /// <summary>Ghi ra dòng lệnh của document đang hoạt động (bỏ qua nếu không có).</summary>
+        private static void CommandLine(string msg)
+        {
+            try { Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument?.Editor?.WriteMessage("\n[MCG_3DPanel] " + msg + "\n"); }
+            catch { }
         }
 
         private static void DisposeQuietly(Database db)

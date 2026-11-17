@@ -14,21 +14,34 @@ namespace MCG_3DPanel.Commands.Detail
         public static List<string> Records(Transaction tr, ObjectId assyBtrId)
         {
             var list = new List<string>();
-            Walk(tr, assyBtrId, list, new HashSet<ObjectId>());
+            Walk(tr, assyBtrId, null, list, new HashSet<ObjectId>());
             return list;
         }
 
-        static void Walk(Transaction tr, ObjectId btrId, List<string> list, HashSet<ObjectId> seen)
+        /// <param name="dynamicName">Tên định nghĩa gốc khi <paramref name="btrId"/> là bản ẩn danh của block động (null nếu không).</param>
+        static void Walk(Transaction tr, ObjectId btrId, string dynamicName, List<string> list, HashSet<ObjectId> seen)
         {
             if (!seen.Add(btrId)) return;   // mỗi định nghĩa block chỉ duyệt 1 lần
             var btr = (BlockTableRecord)tr.GetObject(btrId, OpenMode.ForRead);
+            // Tên hiệu dụng; tên ẩn danh *U… đổi khi mở lại / purge ⇒ bỏ (không báo 3D cũ sai)
+            string name = Services.Detail.Detail3DMatch.FingerprintName(btr.Name, dynamicName);
             foreach (ObjectId id in btr)
             {
                 var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
                 if (ent == null || string.Equals(ent.Layer, DraftDimLayer, StringComparison.OrdinalIgnoreCase)) continue;
-                list.Add(string.Join("|", btr.Name, ent.GetType().Name, ent.Layer, Ext(ent)));
-                if (ent is BlockReference br) Walk(tr, br.BlockTableRecord, list, seen);
+                list.Add(string.Join("|", name, ent.GetType().Name, ent.Layer, Ext(ent)));
+                if (ent is BlockReference br) Walk(tr, br.BlockTableRecord, DynamicName(tr, br), list, seen);
             }
+        }
+
+        static string DynamicName(Transaction tr, BlockReference br)
+        {
+            try
+            {
+                if (!br.IsDynamicBlock || br.DynamicBlockTableRecord == br.BlockTableRecord) return null;
+                return ((BlockTableRecord)tr.GetObject(br.DynamicBlockTableRecord, OpenMode.ForRead)).Name;
+            }
+            catch (Autodesk.AutoCAD.Runtime.Exception) { return null; }
         }
 
         static string Ext(Entity e)

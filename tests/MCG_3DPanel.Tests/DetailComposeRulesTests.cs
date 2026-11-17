@@ -223,4 +223,18 @@ public class DetailComposeRulesTests
         Assert.All(m, x => Assert.NotEqual("HP", x.Type));
         Assert.Empty(DetailComposeRules.ContinuousMembers(null));
     }
+
+    // ─── Phụ kiện có thuộc tính (final review #8) ───
+
+    [Fact]
+    public void AttributesNote_NamesBlocksOnce_Sorted()
+        => Assert.Equal("attribute values of block(s) M.D2, Socket are not shown in the detail (attributes are not copied)",
+            DetailComposeRules.AttributesNote(new[] { "Socket", "M.D2", "Socket" }));
+
+    [Fact]
+    public void AttributesNote_None_Null()
+    {
+        Assert.Null(DetailComposeRules.AttributesNote(new string[0]));
+        Assert.Null(DetailComposeRules.AttributesNote(null));
+    }
 }

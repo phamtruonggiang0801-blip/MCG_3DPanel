@@ -114,4 +114,24 @@ public class ClipBoxTests
         var r = b.Bounds();
         Assert.Equal(5, r.minX, 6); Assert.Equal(25, r.maxY, 6);
     }
+
+    // ─── Mặt cắt Detail Plan theo đáy Top Plate (final review #10) ───
+
+    [Fact]
+    public void PlanCutZ_TopPlateUnderside_Minus1()
+    {
+        Assert.Equal(-1, ClipBox.PlanCutZ(new double[] { 0 }) ?? double.NaN, 9);
+        Assert.Equal(1499, ClipBox.PlanCutZ(new double[] { 1500, 1502 }) ?? double.NaN, 9);   // tấm thấp nhất
+    }
+
+    [Fact]
+    public void PlanCutZ_NoTopPlate_Null() => Assert.Null(ClipBox.PlanCutZ(new double[0]));
+
+    [Fact]
+    public void TopPlateCutZ_MidThickness()
+    {
+        Assert.Equal(3, ClipBox.TopPlateCutZ(0, 6, 6), 9);
+        Assert.Equal(1503, ClipBox.TopPlateCutZ(1500, 1506, 6), 9);
+        Assert.Equal(1504, ClipBox.TopPlateCutZ(1500, 1508, 0), 9);   // không có độ dày ⇒ giữa khung bao
+    }
 }

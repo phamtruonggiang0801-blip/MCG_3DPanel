@@ -211,6 +211,16 @@ namespace MCG_3DPanel.Services.Detail
 
         /// <summary>Tấm nhận ký hiệu Continuous trên section: mỗi tấm (handle; rỗng ⇒ mỗi vết riêng) lấy vết cắt lớn nhất
         /// (≥ 3 điểm), giữ những tấm <see cref="SectionSymbolRules.IsContinuous"/>. Rỗng ⇒ không cần block "Continious symbol".</summary>
+        /// <summary>Ghi chú khi phụ kiện chép vào detail có thuộc tính (bản chép reference không mang theo AttributeReference):
+        /// tên block không trùng, sắp ordinal. Không có ⇒ null.</summary>
+        public static string AttributesNote(IEnumerable<string> blockNames)
+        {
+            var names = (blockNames ?? Enumerable.Empty<string>()).Where(n => !string.IsNullOrEmpty(n))
+                .Distinct(StringComparer.Ordinal).OrderBy(n => n, StringComparer.Ordinal).ToList();
+            return names.Count == 0 ? null
+                : $"attribute values of block(s) {string.Join(", ", names)} are not shown in the detail (attributes are not copied)";
+        }
+
         public static List<CutMember> ContinuousMembers(
             IEnumerable<(string Handle, string Type, IList<P2> Outline, double MinSigned, double MaxSigned)> cuts)
         {

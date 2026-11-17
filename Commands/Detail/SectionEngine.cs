@@ -61,7 +61,7 @@ namespace MCG_3DPanel.Commands.Detail
         const double JoinTol = 0.05;     // mm: nối vết cắt
         const double CoverStep = 2.0;    // mm: mật độ điểm khi kiểm phủ
         const double ZMargin = 10.0;     // mm: hộp vượt solid theo Z để đáy/đỉnh hộp không trùng mặt solid
-        const double PlanCutZ = -1.0;    // mặt cắt Detail Plan
+        const double PlanCutFallback = -1.0;   // mặt cắt Detail Plan khi không có Top Plate
         const double ParallelDeg = 1.0;
 
         sealed class Job
@@ -91,24 +91,29 @@ namespace MCG_3DPanel.Commands.Detail
 
         // ─── API ───────────────────────────────────────────────────────────────
 
-        /// <summary>Detail Plan: mặt cắt Z=−1 nhìn −Z, hộp = lăng trụ vùng Z∈[−1, đáy kết cấu]; bỏ Top Plate. Toạ độ ra = toạ độ plan.</summary>
+        /// <summary>Detail Plan: mặt cắt Z = đáy Top Plate − 1 (không có Top Plate ⇒ −1 + cảnh báo) nhìn −Z, hộp = lăng trụ vùng
+        /// Z∈[đáy kết cấu, mặt cắt]; bỏ Top Plate. Toạ độ ra = toạ độ plan.</summary>
         public static SectionResult Plan(Database target, Detail3DSource src, DetailRegion regionPlan)
         {
             var region3 = To3D(src, regionPlan);
-            double minZ = src.Solids.Count == 0 ? PlanCutZ : src.Solids.Min(s => s.Extents.MinPoint.Z);
-            double zMin = Math.Min(minZ, PlanCutZ) - ZMargin;
-            var box = ClipBox.Plan(region3, zMin, PlanCutZ);
+            double? topCut = ClipBox.PlanCutZ(src.Solids.Where(s => s.Type == nameof(PartType.TopPlate)).Select(s => s.Extents.MinPoint.Z));
+            double cutZ = topCut ?? PlanCutFallback;   // WCS 3D
+            double minZ = src.Solids.Count == 0 ? cutZ : src.Solids.Min(s => s.Extents.MinPoint.Z);
+            double zMin = Math.Min(minZ, cutZ) - ZMargin;
+            var box = ClipBox.Plan(region3, zMin, cutZ);
             var b = box.Bounds();
-            var c = new Point3d((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, PlanCutZ);
+            var c = new Point3d((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, cutZ);
             var job = new Job
             {
-                Box = box, Region3 = region3, ZMin = zMin, ZMax = PlanCutZ,
+                Box = box, Region3 = region3, ZMin = zMin, ZMax = cutZ,
                 SecP1 = c, SecP2 = c + Vector3d.XAxis * 100, SecVertical = Vector3d.YAxis, View = -Vector3d.ZAxis,
                 PlaneOrigin = c, Look3 = -Vector3d.ZAxis, Right3 = Vector3d.XAxis,
                 ToOut = PlanOut(src, c),
             };
             var items = src.Solids.Where(s => s.Type != nameof(PartType.TopPlate) && Meets(box, s)).ToList();
-            return Run(target, src, items, job);
+            SectionResult result = Run(target, src, items, job);
+            if (topCut == null) result.Warnings.Add("no top plate in the 3D file; the plan cut is at Z = -1");
+            return result;
         }
 
         /// <summary>Section Detail: mặt cắt đứng qua đường cắt nhìn theo Look, hộp = lăng trụ vùng ∩ slab (0..Depth), Z toàn bộ.
@@ -145,15 +150,14 @@ namespace MCG_3DPanel.Commands.Detail
             return Run(target, src, items, job);
         }
 
-        /// <summary>Viền Top Plate trong vùng (cắt ngang Z = +t/2, đã cắt theo vùng), toạ độ plan, CCW; vòng ngoài lớn nhất.
+        /// <summary>Viền Top Plate trong vùng (cắt ngang giữa chiều dày, đáy + t/2, đã cắt theo vùng), toạ độ plan, CCW; vòng ngoài lớn nhất.
         /// Outline rỗng ⇒ không có. Lỗi từng phần ⇒ Warnings.</summary>
         public static TopPlateResult TopPlateOutline(Database target, Detail3DSource src, DetailRegion regionPlan)
         {
             var res = new TopPlateResult();
             var plates = src.Solids.Where(s => s.Type == nameof(PartType.TopPlate)).ToList();
             if (plates.Count == 0) return res;
-            double t = src.TopPlateThickness > 0 ? src.TopPlateThickness : plates.Max(s => s.Extents.MaxPoint.Z);
-            double zCut = t / 2;
+            double zCut = ClipBox.TopPlateCutZ(plates.Min(s => s.Extents.MinPoint.Z), plates.Max(s => s.Extents.MaxPoint.Z), src.TopPlateThickness);
             var region3 = To3D(src, regionPlan);
             double zMin = plates.Min(s => s.Extents.MinPoint.Z) - ZMargin, zMax = plates.Max(s => s.Extents.MaxPoint.Z) + ZMargin;
             var box = ClipBox.Plan(region3, zMin, zMax);
@@ -167,6 +171,7 @@ namespace MCG_3DPanel.Commands.Detail
             try
             {
                 template = Prism(region3, zMin, zMax);
+                var nodKeys = NodKeys(target);   // khoá NOD có sẵn TRƯỚC khi chép
                 clones.Clone(target, src, items);
                 Warn(res.Warnings, items.Count - clones.Primary.Count, "top plate solid(s) could not be copied from the 3D file");
                 var loops = new List<List<P2>>();
@@ -201,6 +206,7 @@ namespace MCG_3DPanel.Commands.Detail
                     }
                     Warn(res.Warnings, open, "top plate outline(s) did not close");
                     Warn(res.Warnings, clones.EraseAll(tr), "temporary object(s) could not be erased");
+                    RemoveNewNodEntries(tr, target, nodKeys, clones, res.Warnings);
                     tr.Commit();
                 }
                 var best = loops.Where(l => l.Count >= 3).OrderByDescending(l => Math.Abs(SectionCurveRules.SignedArea(l))).FirstOrDefault();
@@ -243,6 +249,7 @@ namespace MCG_3DPanel.Commands.Detail
             {
                 template = MakeBox(job);
                 // 1. Chép solid nguồn vào bản vẽ 2D (WblockCloneObjects; Clone() chéo database ⇒ eWrongDatabase)
+                var nodKeys = NodKeys(target);   // khoá NOD có sẵn TRƯỚC khi chép / thêm Section (Section manager tự tạo khi chưa có)
                 clones.Clone(target, src, items);
                 int missing = items.Count - clones.Primary.Count;
                 if (missing > 0) result.Warnings.Add($"{missing} solid(s) could not be copied from the 3D file");
@@ -275,10 +282,12 @@ namespace MCG_3DPanel.Commands.Detail
                     if (clipFail > 0) result.Warnings.Add($"{clipFail} solid(s) could not be clipped to the detail region and were skipped");
                     if (footFail > 0) result.Warnings.Add($"{footFail} solid footprint(s) could not be read (weld-trace check skipped)");
 
-                    if (members.Count > 0) Generate(target, tr, job, members, clones, result);
+                    if (members.Count > 0) Generate(target, tr, job, members, result);
 
                     // 7. Xoá mọi đối tượng tạm
                     Warn(result.Warnings, clones.EraseAll(tr), "temporary object(s) could not be erased");
+                    // SAU EraseAll: dictionary mới do chép / Section tạo, nay rỗng ⇒ bỏ luôn (chỉ mục mới + rỗng)
+                    RemoveNewNodEntries(tr, target, nodKeys, clones, result.Warnings);
                     tr.Commit();
                 }
                 return result;
@@ -298,13 +307,9 @@ namespace MCG_3DPanel.Commands.Detail
         }
 
         /// <summary>Bước 3–6 trên các tấm đã cắt hộp (bản chép resident trong target).</summary>
-        static void Generate(Database target, Transaction tr, Job job, List<Member> members, Clones clones, SectionResult result)
+        static void Generate(Database target, Transaction tr, Job job, List<Member> members, SectionResult result)
         {
             var ms = (BlockTableRecord)tr.GetObject(SymbolUtilityServices.GetBlockModelSpaceId(target), OpenMode.ForWrite);
-            // khoá NOD có sẵn trước khi thêm Section (Section manager AutoCAD tự tạo khi chưa có)
-            var nodKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (DBDictionaryEntry e in (DBDictionary)tr.GetObject(target.NamedObjectsDictionaryId, OpenMode.ForRead))
-                nodKeys.Add(e.Key);
             var sec = new AcSection(new Point3dCollection { job.SecP1, job.SecP2 }, job.SecVertical);
             ms.AppendEntity(sec);
             tr.AddNewlyCreatedDBObject(sec, true);
@@ -325,11 +330,21 @@ namespace MCG_3DPanel.Commands.Detail
             var so = tr.GetObject(settingsId, OpenMode.ForWrite, true);
             if (!so.IsErased) so.Erase();
             if (!sec.IsErased) sec.Erase();
-            RemoveNewNodEntries(tr, target, nodKeys, clones, result);
+        }
+
+        static HashSet<string> NodKeys(Database target)
+        {
+            var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using (Transaction tr = target.TransactionManager.StartOpenCloseTransaction())
+            {
+                foreach (DBDictionaryEntry e in (DBDictionary)tr.GetObject(target.NamedObjectsDictionaryId, OpenMode.ForRead)) keys.Add(e.Key);
+                tr.Commit();
+            }
+            return keys;
         }
 
         /// <summary>Khoá NOD do lần chạy này tạo (Section manager…) và nay rỗng ⇒ bỏ; khoá có sẵn không bao giờ đụng.</summary>
-        static void RemoveNewNodEntries(Transaction tr, Database target, HashSet<string> before, Clones clones, SectionResult result)
+        static void RemoveNewNodEntries(Transaction tr, Database target, HashSet<string> before, Clones clones, List<string> warnings)
         {
             var nod = (DBDictionary)tr.GetObject(target.NamedObjectsDictionaryId, OpenMode.ForRead);
             var added = new List<DBDictionaryEntry>();
@@ -349,7 +364,7 @@ namespace MCG_3DPanel.Commands.Detail
                 }
                 catch (System.Exception) { fail++; }
             }
-            Warn(result.Warnings, fail, "temporary drawing dictionary entr(ies) could not be removed");
+            Warn(warnings, fail, "temporary drawing dictionary entr(ies) could not be removed");
         }
 
         /// <summary>Số phần tử còn sống trong một đối tượng chứa (DBDictionary, Section manager); không phải đối tượng chứa ⇒ 0.</summary>

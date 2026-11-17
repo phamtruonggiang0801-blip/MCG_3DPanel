@@ -61,13 +61,19 @@ namespace MCG_3DPanel.Services.Detail
             switch (s)
             {
                 case StaleState.Unsaved3D:
-                    return $"{file3D} has unsaved changes. The detail is cut from the saved file, so it may not match what you see in 3D.\n\nContinue anyway?";
+                    return $"{file3D} has unsaved changes. The detail is cut from the open, unsaved 3D model, so it will not match {file3D} on disk until you save it.\n\nContinue anyway?";
                 case StaleState.Changed2D:
                     return $"The {panel} block changed in this drawing after {file3D} was built. The 3D file may be out of date (run Build/Update 3D first).\n\nContinue anyway?";
                 default:
                     return null;
             }
         }
+
+        /// <summary>Ghi chú status sau khi người dùng chọn tiếp tục với 3D chưa lưu / có thể cũ.</summary>
+        public static string StaleNote(StaleState s, string file3D)
+            => s == StaleState.Unsaved3D
+                ? $"cut from the open, unsaved {file3D} (save it so the file matches this detail)"
+                : $"{file3D} may be out of date";
 
         // ─── Section Detail ────────────────────────────────────────────────────
 

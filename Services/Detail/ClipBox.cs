@@ -24,6 +24,18 @@ namespace MCG_3DPanel.Services.Detail
 
         const double CoplanarTol = 1e-3;
 
+        /// <summary>Mặt cắt Detail Plan (WCS 3D) = đáy Top Plate thấp nhất − 1. Không có Top Plate ⇒ null (caller dùng −1 + cảnh báo).</summary>
+        public static double? PlanCutZ(IEnumerable<double> topPlateMinZ)
+        {
+            double? lo = null;
+            foreach (double z in topPlateMinZ ?? Array.Empty<double>()) lo = lo.HasValue ? Math.Min(lo.Value, z) : z;
+            return lo.HasValue ? lo.Value - 1 : (double?)null;
+        }
+
+        /// <summary>Mặt cắt ngang lấy viền Top Plate (WCS 3D): đáy + t/2; không có độ dày ⇒ giữa khung bao Z.</summary>
+        public static double TopPlateCutZ(double minZ, double maxZ, double thickness) =>
+            thickness > 0 ? minZ + thickness / 2 : (minZ + maxZ) / 2;
+
         /// <summary>Detail Plan: lăng trụ vùng, mặt cắt = mặt trên Z = zMax.</summary>
         public static ClipBox Plan(DetailRegion region, double zMin, double zMax)
         {

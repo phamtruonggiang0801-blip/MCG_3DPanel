@@ -144,17 +144,20 @@ namespace MCG_3DPanel.Commands.Detail
         /// mọi block &lt;panel&gt;_*). Block khác = phụ kiện, giữ nguyên nếu điểm chèn trong vùng (AM_0 nếu thuộc Hole cut out, còn lại
         /// AM_2). Đường cong trong các block chứa: cắt theo vùng, bỏ AM_9; polyline của Wire guide support ⇒ AM_7 rộng 3.
         /// Chỉ ĐỌC cây _Assy — entity trả về là bản chép.</summary>
-        public static List<Entity> TwoDItems(Transaction tr, BlockReference assyRef, DetailRegion region)
+        public static List<Entity> TwoDItems(Transaction tr, BlockReference assyRef, DetailRegion region, List<string> warnings = null)
         {
             var res = new List<Entity>();
             string assyName = Name(tr, assyRef);
             string panel = assyName.EndsWith("_Assy", StringComparison.Ordinal) ? assyName.Substring(0, assyName.Length - 5) : assyName;
             // Lashing Hole KHÔNG bỏ: lỗ lashing chỉ có trên 2D (spec)
             var skip = new HashSet<string>(StringComparer.Ordinal) { panel + "_Top Plate", panel + "_Structure" };
+            var withAttributes = new List<string>();   // phụ kiện có thuộc tính: bản chép mất giá trị ⇒ báo
             Entity boundary = Boundary(region);
             try
             {
                 Walk((BlockTableRecord)tr.GetObject(assyRef.BlockTableRecord, OpenMode.ForRead), assyRef.BlockTransform, assyName, 0);
+                string note = DetailComposeRules.AttributesNote(withAttributes);
+                if (note != null) warnings?.Add(note);
                 return res;
             }
             catch
@@ -183,6 +186,7 @@ namespace MCG_3DPanel.Commands.Detail
                         }
                         var at = br.Position.TransformBy(xf);
                         if (!region.Contains(new P2(at.X, at.Y))) continue;
+                        if (br.AttributeCollection.Count > 0) withAttributes.Add(n);
                         var leaf = (BlockReference)br.Clone();
                         res.Add(leaf);
                         leaf.TransformBy(xf);

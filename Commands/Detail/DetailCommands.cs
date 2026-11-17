@@ -159,7 +159,7 @@ namespace MCG_3DPanel.Commands.Detail
                             BaseY = centre.Y,
                         };
 
-                        List<Entity> twoD = DetailComposer.TwoDItems(tr, assyRef, region);
+                        List<Entity> twoD = DetailComposer.TwoDItems(tr, assyRef, region, result.Warnings);
                         List<Entity> ents;
                         try { ents = DetailComposer.PlanEntities(result, top.Outline, twoD, centre, region); }
                         catch
@@ -216,9 +216,7 @@ namespace MCG_3DPanel.Commands.Detail
                 var answer = System.Windows.MessageBox.Show(question, what, System.Windows.MessageBoxButton.YesNo,
                     System.Windows.MessageBoxImage.Warning, System.Windows.MessageBoxResult.No);
                 if (answer != System.Windows.MessageBoxResult.Yes) throw new StopException(cancelled);
-                notes.Add(src.Stale == StaleState.Unsaved3D
-                    ? $"cut from the saved {file3D} (it had unsaved changes)"
-                    : $"{file3D} may be out of date");
+                notes.Add(DetailCommandRules.StaleNote(src.Stale, file3D));
             }
             return file3D;
         }
@@ -266,7 +264,6 @@ namespace MCG_3DPanel.Commands.Detail
                     if (result.Cut.Count == 0 && result.Visible.Count == 0)
                         throw new StopException("The cut line crosses no structure. Nothing was drawn.");
 
-                    notes.AddRange(result.Warnings);
                     WithContinuousBlock(db, DetailComposer.ContinuousMembers(result).Count > 0, what, "Nothing was drawn.", notes, () =>
                     {
                         // 6. MỘT transaction: không commit (Esc / lỗi) ⇒ huỷ hết, kể cả ký hiệu đã thêm vào block DET
@@ -306,6 +303,8 @@ namespace MCG_3DPanel.Commands.Detail
                             DetailWriter.AddTitle(tr, br, title);
                             tr.Commit();
                         }
+                        // Sau khi ghi: SectionEntities cũng đẩy cảnh báo (thiếu amzigzag) vào result.Warnings
+                        notes.AddRange(result.Warnings);
                     });
                 }
                 finally { result?.DisposeCurves(); }
@@ -524,7 +523,12 @@ namespace MCG_3DPanel.Commands.Detail
                     foreach (ObjectId id in blocks)
                         foreach (ObjectId e in (BlockTableRecord)tr.GetObject(id, OpenMode.ForRead))
                             tr.GetObject(e, OpenMode.ForWrite, false, true).Erase();
-                    foreach (ObjectId id in blocks) tr.GetObject(id, OpenMode.ForWrite).Erase();
+                    foreach (ObjectId id in blocks)
+                    {
+                        // openErased: định nghĩa đã bị xoá (vd theo block cha) không làm hỏng lượt dọn
+                        var b = tr.GetObject(id, OpenMode.ForWrite, true);
+                        if (!b.IsErased) b.Erase();
+                    }
                     tr.Commit();
                 }
                 // Purge lặp: xoá cái không còn tham chiếu sẽ giải phóng cái nó tham chiếu (dim style → text style → …)
@@ -699,12 +703,6 @@ namespace MCG_3DPanel.Commands.Detail
                                 notes.Add($"{DetailUpdateRules.DisplayName(i.Rec)}: no structure inside the boundary");
                         }
                     }
-                    foreach (var i in items)
-                    {
-                        if (i.Result != null) notes.AddRange(i.Result.Warnings);
-                        if (i.Top != null) notes.AddRange(i.Top.Warnings);
-                    }
-
                     // 4b. MỘT transaction cho tất cả: không commit (lỗi) ⇒ không đổi gì; block ký hiệu vừa bổ sung bị xoá
                     bool needSymbol = items.Any(i => !i.Empty && i.Rec.Kind == DetailKind.Section
                         && DetailComposer.ContinuousMembers(i.Result).Count > 0);
@@ -721,6 +719,12 @@ namespace MCG_3DPanel.Commands.Detail
                                 RetagTexts(tr, i, texts);
                             }
                             tr.Commit();
+                        }
+                        // Sau khi ghi: PlanEntities / SectionEntities cũng đẩy cảnh báo (thiếu amzigzag) vào Warnings
+                        foreach (var i in items)
+                        {
+                            if (i.Result != null) notes.AddRange(i.Result.Warnings);
+                            if (i.Top != null) notes.AddRange(i.Top.Warnings);
                         }
                     });
                 }
@@ -818,7 +822,7 @@ namespace MCG_3DPanel.Commands.Detail
             i.New.AssyRefHandle = i.AssyId.Handle.ToString();
 
             var assyRef = (BlockReference)tr.GetObject(i.AssyId, OpenMode.ForRead);
-            List<Entity> twoD = DetailComposer.TwoDItems(tr, assyRef, i.Region);
+            List<Entity> twoD = DetailComposer.TwoDItems(tr, assyRef, i.Region, i.Result.Warnings);
             List<Entity> ents;
             try { ents = DetailComposer.PlanEntities(i.Result, i.Top?.Outline, twoD, basePt, i.Region); }
             catch
@@ -855,11 +859,17 @@ namespace MCG_3DPanel.Commands.Detail
             i.New.AssyRefHandle = i.AssyId.Handle.ToString();
 
             var ents = new List<Entity>();
+            SectionFrame oldFrame = i.OldRegion == null ? null
+                : SectionFrame.From(P(i.Rec.CutA), P(i.Rec.CutB), P(i.Rec.Side), i.OldRegion);
+            P2? keep = DetailUpdateRules.SectionBase(new P2(i.Rec.BaseX, i.Rec.BaseY), oldFrame, i.Frame);
+            if (keep.HasValue)
+            {
+                // Có đủ 2 khung ⇒ luôn dời gốc theo vùng, kể cả section rỗng (lần Update sau không lệch)
+                i.New.BaseX = keep.Value.X;
+                i.New.BaseY = keep.Value.Y;
+            }
             if (!i.Empty)
             {
-                SectionFrame oldFrame = i.OldRegion == null ? null
-                    : SectionFrame.From(P(i.Rec.CutA), P(i.Rec.CutB), P(i.Rec.Side), i.OldRegion);
-                P2? keep = DetailUpdateRules.SectionBase(new P2(i.Rec.BaseX, i.Rec.BaseY), oldFrame, i.Frame);
                 ents = DetailComposer.SectionEntities(i.Result, i.Frame, out P2 basePt, keep);
                 i.New.BaseX = basePt.X;
                 i.New.BaseY = basePt.Y;

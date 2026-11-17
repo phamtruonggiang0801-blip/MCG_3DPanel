@@ -72,8 +72,19 @@ namespace MCG_3DPanel.Tests
             Assert.Null(DetailCommandRules.StaleQuestion(StaleState.Fresh, "P_3D.dwg", "P"));
             Assert.Null(DetailCommandRules.StaleQuestion(StaleState.Unknown, "P_3D.dwg", "P"));
             Assert.Contains("P_3D.dwg has unsaved changes", DetailCommandRules.StaleQuestion(StaleState.Unsaved3D, "P_3D.dwg", "P"));
+            // Cắt từ mô hình đang mở (chưa lưu), không phải từ file đã lưu (final review #3)
+            Assert.Contains("cut from the open, unsaved 3D model", DetailCommandRules.StaleQuestion(StaleState.Unsaved3D, "P_3D.dwg", "P"));
+            Assert.DoesNotContain("saved file", DetailCommandRules.StaleQuestion(StaleState.Unsaved3D, "P_3D.dwg", "P"));
             Assert.Contains("The P block changed in this drawing after P_3D.dwg was built",
                 DetailCommandRules.StaleQuestion(StaleState.Changed2D, "P_3D.dwg", "P"));
+        }
+
+        [Fact]
+        public void StaleNote_UnsavedSaysOpenModel()
+        {
+            Assert.Equal("cut from the open, unsaved P_3D.dwg (save it so the file matches this detail)",
+                DetailCommandRules.StaleNote(StaleState.Unsaved3D, "P_3D.dwg"));
+            Assert.Equal("P_3D.dwg may be out of date", DetailCommandRules.StaleNote(StaleState.Changed2D, "P_3D.dwg"));
         }
 
         [Fact]

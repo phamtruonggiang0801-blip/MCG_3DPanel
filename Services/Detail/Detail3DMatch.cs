@@ -46,6 +46,32 @@ namespace MCG_3DPanel.Services.Detail
             return res;
         }
 
+        /// <summary>Lý do không có file 3D dùng được: file đọc được nhưng dựng từ bản vẽ / reference khác, file đọc lỗi (tên + lỗi),
+        /// hoặc thật sự không có file. <paramref name="loaded"/> = ứng viên đọc được (đều không khớp).</summary>
+        public static string NoMatchReason(string panel, IEnumerable<Candidate3D> loaded,
+            IEnumerable<(string File, string Error)> readFailures, string drawingPath, string assyRefHandle)
+        {
+            string want = Full(drawingPath);
+            var parts = new List<string>();
+            foreach (var c in loaded ?? Enumerable.Empty<Candidate3D>())
+            {
+                string file = System.IO.Path.GetFileName(c.Path ?? "");
+                string src = Full(c.SourcePath);
+                if (src == null)
+                    parts.Add($"Found {file} but it does not record which 2D drawing it was built from.");
+                else if (want == null || !string.Equals(src, want, StringComparison.OrdinalIgnoreCase))
+                    parts.Add($"Found {file} but it was built from {c.SourcePath}.");
+                else
+                    parts.Add($"Found {file} but it was built from another {panel}_Assy block reference in this drawing.");
+            }
+            bool found = parts.Count > 0;   // "Build 3D again" đứng cuối, sau lỗi đọc
+            foreach (var f in readFailures ?? Enumerable.Empty<(string, string)>())
+                parts.Add($"Could not read {f.File} ({f.Error}).");
+            if (parts.Count == 0) return $"No 3D file of {panel} next to this drawing. Build 3D first.";
+            if (found) parts.Add("Build 3D again from this drawing.");
+            return string.Join(" ", parts);
+        }
+
         /// <summary>Độ cũ của 3D: chưa lưu thắng tất cả; fingerprint rỗng ⇒ file cũ không biết; khác ⇒ 2D đã đổi.</summary>
         public static StaleState Stale(Candidate3D c, string current2DFingerprint)
         {
@@ -61,6 +87,14 @@ namespace MCG_3DPanel.Services.Detail
             var name = panel ?? "";
             foreach (var ch in System.IO.Path.GetInvalidFileNameChars()) name = name.Replace(ch, '_');
             return name + "_3D*.dwg";
+        }
+
+        /// <summary>Tên block trong record vân tay: tên hiệu dụng (block động ⇒ tên định nghĩa gốc); tên ẩn danh '*' (*U…) có thể
+        /// đổi khi mở lại / purge ⇒ bỏ (chuỗi rỗng), tránh báo 3D cũ sai.</summary>
+        public static string FingerprintName(string blockName, string dynamicName)
+        {
+            string n = string.IsNullOrEmpty(dynamicName) ? blockName ?? "" : dynamicName;
+            return n.StartsWith("*", StringComparison.Ordinal) ? "" : n;
         }
 
         /// <summary>Dấu vân tay nguồn 2D: SHA-256 (hex) của các record sắp ordinal, nối bằng '\n' ⇒ không phụ thuộc thứ tự duyệt.</summary>
