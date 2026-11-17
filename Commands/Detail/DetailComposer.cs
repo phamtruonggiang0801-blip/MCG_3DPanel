@@ -28,15 +28,17 @@ namespace MCG_3DPanel.Commands.Detail
 
         /// <summary>Block DET: vết cắt + AM_8 + đường thấy + viền Top Plate (AM_7) + đồ 2D; toạ độ = plan − <paramref name="basePt"/>.
         /// <paramref name="twoDItems"/> (từ <see cref="TwoDItems"/>) được dời rồi đưa luôn vào danh sách (không chép).
-        /// <paramref name="region"/> (toạ độ plan): cạnh vết cắt nằm trên biên vùng ⇒ break AM_4 (null ⇒ chỉ theo break của engine).</summary>
+        /// <paramref name="region"/> (toạ độ plan, BẮT BUỘC): cạnh vết cắt nằm trên biên vùng ⇒ break AM_4.</summary>
         public static List<Entity> PlanEntities(SectionResult r, List<P2> topPlate, IEnumerable<Entity> twoDItems, P2 basePt,
-            DetailRegion region = null)
+            DetailRegion region)
         {
+            // Thiếu vùng ⇒ cạnh tại biên lại thành nét liền AM_0 — không cho phép im lặng
+            if (region == null) throw new ArgumentNullException(nameof(region));
             var ents = new List<Entity>();
             try
             {
                 var shift = new P2(-basePt.X, -basePt.Y);
-                AddStructure(r, shift, ents, region == null ? (Func<P2, double>)null : p => region.DistanceToBoundary(p - shift));
+                AddStructure(r, shift, ents, p => region.DistanceToBoundary(p - shift));
                 if (topPlate != null && topPlate.Count >= 3)
                     ents.Add(Poly(topPlate.Select(p => p + shift), true, AM7));
                 var m = Matrix3d.Displacement(new Vector3d(shift.X, shift.Y, 0));
