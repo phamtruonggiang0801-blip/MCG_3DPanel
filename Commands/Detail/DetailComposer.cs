@@ -72,11 +72,7 @@ namespace MCG_3DPanel.Commands.Detail
                     : p => Math.Min(Math.Abs(p.X - shift.X), Math.Abs(p.X - shift.X - f.Length)));
 
                 // Continuous: 1 cho mỗi tấm (vết cắt lớn nhất của tấm) cắt liên tục, không phải HP
-                var members = r.Cut.Where(c => c.Outline != null && c.Outline.Count >= 3)
-                    .GroupBy(c => string.IsNullOrEmpty(c.Handle) ? Guid.NewGuid().ToString() : c.Handle)
-                    .Select(g => g.OrderByDescending(c => DetailComposeRules.Area(c.Outline)).First())
-                    .Select(c => DetailComposeRules.ToCutMember(c.Type, c.Outline, c.MinSigned, c.MaxSigned))
-                    .Where(m => SectionSymbolRules.IsContinuous(m)).ToList();
+                var members = ContinuousMembers(r);
                 if (members.Count > 0)
                 {
                     ObjectId sym = BlockId(ContinuousBlock);
@@ -108,6 +104,10 @@ namespace MCG_3DPanel.Commands.Detail
                 throw;
             }
         }
+
+        /// <summary>Tấm nhận ký hiệu Continuous trong <see cref="SectionEntities"/>; rỗng ⇒ section không cần block "Continious symbol".</summary>
+        public static List<CutMember> ContinuousMembers(SectionResult r) =>
+            DetailComposeRules.ContinuousMembers(r.Cut.Select(c => (c.Handle, c.Type, (IList<P2>)c.Outline, c.MinSigned, c.MaxSigned)));
 
         /// <summary>Ký hiệu mặt cắt trên block DET: 2 mũi tên (theo block mẫu A$C1A6307D4, AM_10) ở 2 đầu đường cắt chĩa theo Look
         /// + chữ "nA" h30. Toạ độ cục bộ block DET (plan − <paramref name="basePt"/>).</summary>

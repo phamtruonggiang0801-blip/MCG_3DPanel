@@ -224,12 +224,16 @@ namespace MCG_3DPanel.Commands.Detail
                     if (result.Cut.Count == 0 && result.Visible.Count == 0)
                         throw new StopException("The cut line crosses no structure. Nothing was drawn.");
 
-                    // Block "Continious symbol" thiếu ⇒ bổ sung (bản vẽ → CAS.dwt → tự vẽ) TRƯỚC, commit riêng như Plan View;
-                    // không commit được transaction ghi ⇒ xoá lại block vừa thêm (bên dưới).
-                    var blocks = PlanViewBlockSource.Prepare(db, new[] { DetailComposer.ContinuousBlock });
+                    // Block "Continious symbol" chỉ cần khi section có tấm cắt liên tục. Thiếu ⇒ bổ sung (bản vẽ → CAS.dwt → tự vẽ)
+                    // TRƯỚC, commit riêng như Plan View; transaction ghi không commit ⇒ xoá mọi bản ghi lần bổ sung đã tạo
+                    // (handle ≥ Handseed trước khi bổ sung: block, block lồng, dim style, layer…).
+                    var blocks = new PlanViewBlockSource.Plan();
+                    if (DetailComposer.ContinuousMembers(result).Count > 0)
+                        blocks = PlanViewBlockSource.Prepare(db, new[] { DetailComposer.ContinuousBlock });
                     if (blocks.Unavailable.Count > 0)
                         throw new StopException($"{what} stopped; the drawing is missing: block {DetailComposer.ContinuousBlock}. Nothing was drawn.");
                     bool added = blocks.FromTemplate.Count + blocks.Drawn.Count > 0;
+                    long seed = db.Handseed.Value;
                     bool committed = false;
                     try
                     {
@@ -281,7 +285,7 @@ namespace MCG_3DPanel.Commands.Detail
                     }
                     finally
                     {
-                        if (added && !committed) EraseUnusedBlock(db, DetailComposer.ContinuousBlock);
+                        if (added && !committed) RemoveCreatedSince(db, seed);
                     }
 
                     notes.AddRange(result.Warnings);
@@ -439,27 +443,82 @@ namespace MCG_3DPanel.Commands.Detail
             return DetailCommandRules.UsedLetters(panel, n, recs, names);
         }
 
-        /// <summary>Xoá định nghĩa block vừa bổ sung khi lần chạy bị huỷ (chỉ khi không còn reference nào).</summary>
-        static void EraseUnusedBlock(Database db, string name)
+        /// <summary>Huỷ phần bổ sung block khi lần chạy không commit: xoá mọi bản ghi bảng ký hiệu / mục dictionary có handle ≥
+        /// <paramref name="seed"/> (chỉ của lần chạy này, không bao giờ bản ghi có sẵn). Block trước (kéo theo entity bên trong), rồi
+        /// lặp Purge cho phần còn lại (dim style, text style, linetype, layer… chỉ xoá khi không còn ai tham chiếu).
+        /// Còn sót ⇒ liệt kê trên dòng lệnh.</summary>
+        static void RemoveCreatedSince(Database db, long seed)
         {
+            var leftover = new List<string>();
             try
             {
+                var blocks = new List<ObjectId>();
+                var others = new List<ObjectId>();
+                using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
+                {
+                    ObjectId[] tables =
+                    {
+                        db.BlockTableId, db.DimStyleTableId, db.TextStyleTableId, db.LinetypeTableId, db.LayerTableId, db.RegAppTableId,
+                    };
+                    foreach (ObjectId t in tables)
+                        foreach (ObjectId id in (SymbolTable)tr.GetObject(t, OpenMode.ForRead))
+                            if (!id.IsErased && SectionCleanupRules.CreatedThisRun(seed, id.Handle.Value))
+                                (t == db.BlockTableId ? blocks : others).Add(id);
+                    CollectNew(tr, db.NamedObjectsDictionaryId, seed, others, 0);
+                    tr.Commit();
+                }
+                if (blocks.Count + others.Count == 0) return;
+
                 using (Transaction tr = db.TransactionManager.StartTransaction())
                 {
-                    var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
-                    ObjectId id = SymbolTables.Live(bt, name);
-                    if (!id.IsNull)
+                    foreach (ObjectId id in blocks)
                     {
-                        var btr = (BlockTableRecord)tr.GetObject(id, OpenMode.ForRead);
-                        if (btr.GetBlockReferenceIds(true, true).Count == 0) { btr.UpgradeOpen(); btr.Erase(); }
+                        var btr = (BlockTableRecord)tr.GetObject(id, OpenMode.ForWrite);
+                        foreach (ObjectId e in btr) tr.GetObject(e, OpenMode.ForWrite, false, true).Erase();
+                        btr.Erase();
+                    }
+                    tr.Commit();
+                }
+                // Purge lặp: xoá cái không còn tham chiếu sẽ giải phóng cái nó tham chiếu (dim style → text style → …)
+                for (int round = 0; round < 8 && others.Count > 0; round++)
+                {
+                    var free = new ObjectIdCollection(others.ToArray());
+                    db.Purge(free);
+                    if (free.Count == 0) break;
+                    using (Transaction tr = db.TransactionManager.StartTransaction())
+                    {
+                        foreach (ObjectId id in free) tr.GetObject(id, OpenMode.ForWrite).Erase();
+                        tr.Commit();
+                    }
+                    var gone = new HashSet<ObjectId>(free.Cast<ObjectId>());
+                    others.RemoveAll(gone.Contains);
+                }
+                using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
+                {
+                    foreach (ObjectId id in others)
+                    {
+                        var o = tr.GetObject(id, OpenMode.ForRead);
+                        leftover.Add(o is SymbolTableRecord s ? s.Name : o.GetRXClass().DxfName + " " + id.Handle);
                     }
                     tr.Commit();
                 }
             }
-            catch (System.Exception ex)
-            {
+            catch (System.Exception ex) { leftover.Add("(" + ex.Message + ")"); }
+            if (leftover.Count > 0)
                 try { Application.DocumentManager.MdiActiveDocument?.Editor?.WriteMessage(
-                    $"\n[MCG_3DPanel] Could not remove the unused block {name}: {ex.Message}\n"); } catch { }
+                    $"\n[MCG_3DPanel] Could not remove what was added with {DetailComposer.ContinuousBlock}: {string.Join(", ", leftover)}\n"); } catch { }
+        }
+
+        /// <summary>Mục mới (handle ≥ seed) trong dictionary và dictionary con (mục mới là dictionary ⇒ đi vào trong, rồi tự nó).</summary>
+        static void CollectNew(Transaction tr, ObjectId dictId, long seed, List<ObjectId> into, int depth)
+        {
+            if (depth > 3 || !(tr.GetObject(dictId, OpenMode.ForRead) is DBDictionary dict)) return;
+            foreach (DBDictionaryEntry e in dict)
+            {
+                if (e.Value.IsErased) continue;
+                bool isNew = SectionCleanupRules.CreatedThisRun(seed, e.Value.Handle.Value);
+                if (tr.GetObject(e.Value, OpenMode.ForRead) is DBDictionary) CollectNew(tr, e.Value, seed, into, depth + 1);
+                if (isNew) into.Add(e.Value);
             }
         }
 

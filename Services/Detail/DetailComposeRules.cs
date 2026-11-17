@@ -210,6 +210,19 @@ namespace MCG_3DPanel.Services.Detail
         }
 
         /// <summary>CutMember từ 1 vết cắt: dày = bề rộng hình chữ nhật bao nhỏ nhất, tâm = tâm hình chữ nhật, trục = trục dài.</summary>
+        /// <summary>Tấm nhận ký hiệu Continuous trên section: mỗi tấm (handle; rỗng ⇒ mỗi vết riêng) lấy vết cắt lớn nhất
+        /// (≥ 3 điểm), giữ những tấm <see cref="SectionSymbolRules.IsContinuous"/>. Rỗng ⇒ không cần block "Continious symbol".</summary>
+        public static List<CutMember> ContinuousMembers(
+            IEnumerable<(string Handle, string Type, IList<P2> Outline, double MinSigned, double MaxSigned)> cuts)
+        {
+            if (cuts == null) return new List<CutMember>();
+            return cuts.Where(c => c.Outline != null && c.Outline.Count >= 3)
+                .GroupBy(c => string.IsNullOrEmpty(c.Handle) ? Guid.NewGuid().ToString() : c.Handle)
+                .Select(g => g.OrderByDescending(c => Area(c.Outline)).First())
+                .Select(c => ToCutMember(c.Type, c.Outline, c.MinSigned, c.MaxSigned))
+                .Where(m => SectionSymbolRules.IsContinuous(m)).ToList();
+        }
+
         public static CutMember ToCutMember(string type, IList<P2> outline, double minSigned, double maxSigned)
         {
             var r = SectionMarkRules.MinAreaRect(outline);

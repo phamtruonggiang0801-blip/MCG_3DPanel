@@ -200,4 +200,27 @@ public class DetailComposeRulesTests
         Assert.True(p.X < 10 - 50);
         Assert.Equal(20, p.Y, 6);
     }
+
+    // ─── Ký hiệu Continuous: tấm nào nhận ───
+
+    [Fact]
+    public void ContinuousMembers_LargestCutPerPlate_SkipsHpAndOneSided()
+    {
+        var cuts = new List<(string, string, IList<P2>, double, double)>
+        {
+            ("A1", "Web", Rect(0, 0, 10, 100), -50, 50),     // lớn hơn ⇒ đại diện tấm A1
+            ("A1", "Web", Rect(200, 0, 210, 20), -50, 50),
+            ("B2", "HP", Rect(300, 0, 310, 100), -50, 50),   // HP ⇒ không
+            ("C3", "FB", Rect(400, 0, 410, 100), 0, 50),     // chỉ 1 phía ⇒ không
+            ("", "Bracket", Rect(500, 0, 510, 100), -5, 5),  // không handle ⇒ mỗi vết riêng
+            (null, "Bracket", Rect(600, 0, 610, 100), -5, 5),
+            ("D4", "Web", new[] { new P2(0, 0), new P2(1, 0) }, -5, 5),   // < 3 điểm ⇒ bỏ
+        };
+        var m = DetailComposeRules.ContinuousMembers(cuts);
+        Assert.Equal(3, m.Count);
+        Assert.Equal(5, m[0].CutCenter.X, 3);
+        Assert.Equal(50, m[0].CutCenter.Y, 3);
+        Assert.All(m, x => Assert.NotEqual("HP", x.Type));
+        Assert.Empty(DetailComposeRules.ContinuousMembers(null));
+    }
 }
