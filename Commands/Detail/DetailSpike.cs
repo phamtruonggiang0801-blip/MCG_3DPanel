@@ -22,6 +22,7 @@ namespace MCG_3DPanel.Commands.Detail
         static readonly string LogPath = Path.Combine(Path.GetTempPath(), "MCG_DetailSpike.log");
         static Editor _ed;
         static Database _host; // database file 3D đã đọc (nguồn WblockCloneObjects cho B)
+        static Database _target; // bản vẽ 2D đang mở
         static ObjectIdCollection _srcIds = new ObjectIdCollection();
         static Matrix3d _srcXf = Matrix3d.Identity;
 
@@ -69,7 +70,7 @@ namespace MCG_3DPanel.Commands.Detail
                 if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir)) dlg.InitialDirectory = dir;
             }
             catch { }
-            _srcIds = new ObjectIdCollection(); _srcXf = Matrix3d.Identity;
+            _srcIds = new ObjectIdCollection(); _srcXf = Matrix3d.Identity; _target = doc.Database;
             if (dlg.ShowDialog() != true) { Log("Cancelled (no file)."); return; }
             string path = dlg.FileName;
             Log("3D file: " + path);
@@ -270,21 +271,19 @@ namespace MCG_3DPanel.Commands.Detail
             if (outA.FirstError != null) Log($"  [{tag}] A first exception: {outA.FirstError}");
 
             // --- Approach B (luôn chạy) ---
-            SecOut outB = new SecOut();
+            // B: WblockCloneObjects solid gốc (file 3D) -> CHÍNH bản vẽ 2D; cắt hộp + Section ở đó; output thuộc bản vẽ 2D;
+            // xoá solid tạm + Section rồi commit. (Database tạm riêng => output dính database bị huỷ => crash 0xC0000005.)
+            SecOut outB = new SecOut(), outB2 = new SecOut();
             sw.Restart();
-            Database prevWorking = HostApplicationServices.WorkingDatabase;
             try
             {
-                // B: WblockCloneObjects solid gốc (file 3D) -> database tạm; cắt hộp + Section ngay trong database tạm.
-                using (var scratch = new Database(true, true))
-                {
-                HostApplicationServices.WorkingDatabase = scratch;
-                ObjectId scratchMs = SymbolUtilityServices.GetBlockModelSpaceId(scratch);
+                Database target = _target;
+                ObjectId targetMs = SymbolUtilityServices.GetBlockModelSpaceId(target);
                 var map = new IdMapping();
-                _host.WblockCloneObjects(_srcIds, scratchMs, map, DuplicateRecordCloning.Ignore, false);
-                using (Transaction tr = scratch.TransactionManager.StartTransaction())
+                _host.WblockCloneObjects(_srcIds, targetMs, map, DuplicateRecordCloning.Ignore, false);
+                using (Transaction tr = target.TransactionManager.StartTransaction())
                 {
-                    var ms = (BlockTableRecord)tr.GetObject(scratchMs, OpenMode.ForWrite);
+                    var ms = (BlockTableRecord)tr.GetObject(targetMs, OpenMode.ForWrite);
                     var ids = new List<ObjectId>();
                     int cloned = 0, kept = 0;
                     foreach (IdPair p in map)
@@ -311,11 +310,14 @@ namespace MCG_3DPanel.Commands.Detail
                     ms.AppendEntity(secB);
                     tr.AddNewlyCreatedDBObject(secB, true);
                     ConfigureSection(tag + "/B", secB, wantView);
-                    ConfigureSettings(tag + "/B", tr, secB);
+                    ConfigureSettings(tag + "/B", tr, secB, hidden: false);
                     foreach (var id in ids) Generate(secB, (Entity)tr.GetObject(id, OpenMode.ForRead), outB);
-                    tr.Abort();
-                }
-                HostApplicationServices.WorkingDatabase = prevWorking;
+                    // Đối chứng: cùng Section, HiddenLine = true (chỉ log)
+                    ConfigureSettings(tag + "/B2", tr, secB, hidden: true);
+                    foreach (var id in ids) Generate(secB, (Entity)tr.GetObject(id, OpenMode.ForRead), outB2);
+                    foreach (var id in ids) tr.GetObject(id, OpenMode.ForWrite).Erase();
+                    secB.Erase();
+                    tr.Commit();
                 }
             }
             catch (System.Exception ex)
@@ -323,9 +325,11 @@ namespace MCG_3DPanel.Commands.Detail
                 outB.Failed++;
                 if (outB.FirstError == null) outB.FirstError = ex.ToString();
             }
-            finally { HostApplicationServices.WorkingDatabase = prevWorking; }
-            Log($"  [{tag}] Approach B (scratch Database): ok {outB.Ok}, failed {outB.Failed}, {sw.ElapsedMilliseconds} ms");
+            Log($"  [{tag}] Approach B (section in the 2D drawing): ok {outB.Ok}, failed {outB.Failed}, {sw.ElapsedMilliseconds} ms");
             LogCounts(tag + "/B", outB);
+            Log($"  [{tag}] B2 (same section, HiddenLine=true) for comparison:");
+            LogCounts(tag + "/B2", outB2);
+            outB2.DisposeAll();
             if (outB.FirstError != null) Log($"  [{tag}] B first exception: {outB.FirstError}");
             return (outA, outB);
         }
@@ -346,7 +350,7 @@ namespace MCG_3DPanel.Commands.Detail
         }
 
         /// <summary>Chỉ có khi Section nằm trong database: log + bật background cho kiểu 2D.</summary>
-        static void ConfigureSettings(string tag, Transaction tr, Section sec)
+        static void ConfigureSettings(string tag, Transaction tr, Section sec, bool hidden)
         {
             try
             {
@@ -360,7 +364,7 @@ namespace MCG_3DPanel.Commands.Detail
                     SectionGeometry.BackgroundGeometry, SectionGeometry.ForegroundGeometry, SectionGeometry.CurveTangencyLines })
                     Log($"  [{tag}]   {g}: visible={st.Visibility(SectionType.Section2d, g)} hidden={st.HiddenLine(SectionType.Section2d, g)}");
                 st.SetVisibility(SectionType.Section2d, SectionGeometry.BackgroundGeometry, true);
-                st.SetHiddenLine(SectionType.Section2d, SectionGeometry.BackgroundGeometry, false);
+                st.SetHiddenLine(SectionType.Section2d, SectionGeometry.BackgroundGeometry, hidden);
                 Log($"  [{tag}] -> CurrentSectionType={st.CurrentSectionType}, background visible={st.Visibility(SectionType.Section2d, SectionGeometry.BackgroundGeometry)}, " +
                     $"hidden={st.HiddenLine(SectionType.Section2d, SectionGeometry.BackgroundGeometry)} (false = hidden lines removed)");
             }
