@@ -34,6 +34,36 @@ namespace MCG_3DPanel.Commands.Detail
             doc.SendStringToExecute(command.Trim() + " ", true, false, false);
         }
 
+        /// <summary>Kiểm rẻ cho menu palette (bản vẽ <paramref name="doc"/> đang active): có reference *_Assy trong Model Space mà thư mục
+        /// của bản vẽ có file &lt;panel&gt;_3D*.dwg; <paramref name="hasDetail"/> = có block / reference mang bản ghi MCG3D_DETAIL.
+        /// Khớp đầy đủ do lệnh làm. Chỉ đọc.</summary>
+        public static bool HasPanelWith3DFile(Document doc, out bool hasDetail)
+        {
+            hasDetail = false;
+            bool found = false;
+            string dir = string.IsNullOrEmpty(doc.Name) ? null : Path.GetDirectoryName(doc.Name);
+            var checkedPanels = new HashSet<string>(StringComparer.Ordinal);
+            using (Transaction tr = doc.Database.TransactionManager.StartOpenCloseTransaction())
+            {
+                var ms = (BlockTableRecord)tr.GetObject(SymbolUtilityServices.GetBlockModelSpaceId(doc.Database), OpenMode.ForRead);
+                foreach (ObjectId id in ms)
+                {
+                    if (!(tr.GetObject(id, OpenMode.ForRead) is BlockReference br)) continue;
+                    if (!hasDetail)
+                        hasDetail = DetailWriter.Read(br) != null
+                            || DetailWriter.Read(tr.GetObject(br.BlockTableRecord, OpenMode.ForRead)) != null;
+                    if (found) { if (hasDetail) break; continue; }
+                    string n = PartCollector.GetName(tr, br);
+                    if (n == null || !n.EndsWith("_Assy", StringComparison.Ordinal) || n.Length <= 5) continue;
+                    string panel = n.Substring(0, n.Length - 5);
+                    if (dir != null && checkedPanels.Add(panel) && Directory.Exists(dir)
+                        && Directory.EnumerateFiles(dir, Detail3DMatch.CandidatePattern(panel)).Any()) found = true;
+                }
+                tr.Commit();
+            }
+            return found;
+        }
+
         [CommandMethod(PlanCommand, CommandFlags.Modal | CommandFlags.UsePickSet)]
         public void DetailPlan() => Run("Detail Plan", doc => Create(doc, false));
 

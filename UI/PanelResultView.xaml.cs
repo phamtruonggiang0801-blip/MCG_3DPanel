@@ -23,6 +23,7 @@ namespace MCG_3DPanel.UI
             InitializeComponent();
             StepExport.Finished += (msg, err) => SetStatus(msg, err);
             PlanViewCommand.Finished += (msg, err) => SetStatus(msg, err);
+            Commands.Detail.DetailCommands.Finished += (msg, err) => SetStatus(msg, err);
             Loaded += (s, e) =>
             {
                 // STEPOUT chỉ có khi chạy AutoCAD Mechanical — không có thì nút mờ + tooltip giải thích.
@@ -656,6 +657,7 @@ namespace MCG_3DPanel.UI
             MnuPlanView.IsEnabled = has3D;
             MnuPlanView.ToolTip = has3D ? "Write the Plan View sheet of this panel into the 2D drawing it was built from"
                                         : "Open a 3D panel file first";
+            UpdateDetailMenus();
             var cm = BtnCreateDrawing.ContextMenu;
             cm.PlacementTarget = BtnCreateDrawing;
             cm.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
@@ -663,6 +665,40 @@ namespace MCG_3DPanel.UI
         }
 
         private void MnuPlanView_Click(object sender, RoutedEventArgs e) => PlanViewCommand.Request();
+
+        // ─── Create Drawing ▸ Details (spec 2026-11-16) ───────────────────
+
+        const string DetailDisabledTip = "Open the 2D drawing of a panel that has a 3D file";
+
+        /// <summary>Bật 4 mục Detail theo bản vẽ ACTIVE (đọc lại mỗi lần mở menu): bản vẽ 2D (không phải file 3D) có _Assy mà
+        /// thư mục có file &lt;panel&gt;_3D*.dwg. Update Details cần thêm block Detail do tool tạo. Lỗi đọc ⇒ báo status, không bật.</summary>
+        private void UpdateDetailMenus()
+        {
+            bool can = false, hasDetail = false;
+            try
+            {
+                var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+                if (doc != null && !Panel3DFile.HoldsSourceReference(doc.Database))
+                    can = Commands.Detail.DetailCommands.HasPanelWith3DFile(doc, out hasDetail);
+            }
+            catch (System.Exception ex)
+            {
+                can = false; hasDetail = false;
+                SetStatus("Could not check the drawing for details: " + ex.Message, error: true);
+            }
+            MnuDetailPlan.IsEnabled = MnuSectionDetail.IsEnabled = MnuDetailView.IsEnabled = can;
+            MnuDetailPlan.ToolTip = can ? "Cut a detail (inserted at scale 1) from an AM_7 rectangle on the Plan View" : DetailDisabledTip;
+            MnuSectionDetail.ToolTip = can ? "Cut a section through a Detail Plan" : DetailDisabledTip;
+            MnuDetailView.ToolTip = can ? "Cut a detail at any scale from an AM_7 circle or rectangle" : DetailDisabledTip;
+            MnuUpdateDetails.IsEnabled = can && hasDetail;
+            MnuUpdateDetails.ToolTip = !can ? DetailDisabledTip
+                : !hasDetail ? "This drawing has no detail made by the tool yet" : "Redraw every detail from the current 3D file";
+        }
+
+        private void MnuDetailPlan_Click(object sender, RoutedEventArgs e) => Commands.Detail.DetailCommands.Request("MCG_DetailPlan ");
+        private void MnuSectionDetail_Click(object sender, RoutedEventArgs e) => Commands.Detail.DetailCommands.Request("MCG_DetailSection ");
+        private void MnuDetailView_Click(object sender, RoutedEventArgs e) => Commands.Detail.DetailCommands.Request("MCG_DetailView ");
+        private void MnuUpdateDetails_Click(object sender, RoutedEventArgs e) => Commands.Detail.DetailCommands.Request("MCG_DetailUpdate ");
 
         // ─── Export STEP (mỗi panel 1 file) ───────────────────────────────
 
