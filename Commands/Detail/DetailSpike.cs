@@ -23,6 +23,7 @@ namespace MCG_3DPanel.Commands.Detail
         static Editor _ed;
         static Database _host; // database file 3D đã đọc (nguồn WblockCloneObjects cho B)
         static Database _target; // bản vẽ 2D đang mở
+        static SecOut _lastC = new SecOut(); // kết quả cách C của lần RunStage gần nhất
         static ObjectIdCollection _srcIds = new ObjectIdCollection();
         static Matrix3d _srcXf = Matrix3d.Identity;
 
@@ -114,6 +115,7 @@ namespace MCG_3DPanel.Commands.Detail
                 // A: +20000 X; B: thêm +10000 Y để so cạnh nhau
                 if (plan.A != null) Collect(plan.A, Matrix3d.Displacement(new Vector3d(20000, 0, 0)), drawList);
                 if (plan.B != null) Collect(plan.B, Matrix3d.Displacement(new Vector3d(20000, 10000, 0)), drawList);
+                Collect(_lastC, Matrix3d.Displacement(new Vector3d(20000, 20000, 0)), drawList); // C: +20000 Y
 
                 // Thử thêm mặt cắt Z = −2 (chỉ log, không vẽ) — xem mặt cắt trùng mặt hộp có làm hỏng boundary không
                 Log("---- PLAN variant (plane Z=-2, same clipped solids, log only) ----");
@@ -121,6 +123,7 @@ namespace MCG_3DPanel.Commands.Detail
                 var plan2 = RunStage("PLAN@-2", planClip, planPts2, Vector3d.YAxis, -Vector3d.ZAxis, (x0, x1, y0, y1, -5000, -1));
                 plan2.A?.DisposeAll();
                 plan2.B?.DisposeAll();
+                _lastC.DisposeAll();
                 foreach (var s in planClip) s.Dispose();
 
                 // 5. Mặt cắt đứng: mặt phẳng qua đường giữa (trái→phải), nhìn +Y, hộp Y mid..top, Z −5000..+100
@@ -136,6 +139,7 @@ namespace MCG_3DPanel.Commands.Detail
                     new Point3d(20000, ym + dy, 0), Vector3d.XAxis, Vector3d.YAxis, Vector3d.ZAxis);
                 if (vert.A != null) Collect(vert.A, VertMap(-10000), drawList);
                 if (vert.B != null) Collect(vert.B, VertMap(-20000), drawList);
+                Collect(_lastC, VertMap(-30000), drawList); // C: -30000 Y
                 foreach (var s in vClip) s.Dispose();
 
                 // 6. Vẽ vào bản vẽ hiện tại (kỹ sư đóng không lưu)
@@ -165,7 +169,7 @@ namespace MCG_3DPanel.Commands.Detail
                     }
                     tr.Commit();
                 }
-                Log($"Drawn {drawn} entities (failed {drawFail}), {sw.ElapsedMilliseconds} ms. Plan A at +20000 X, plan B at +20000 X / +10000 Y; vertical A at +20000 X / -10000 Y, vertical B at +20000 X / -20000 Y.");
+                Log($"Drawn {drawn} entities (failed {drawFail}), {sw.ElapsedMilliseconds} ms. Plan A at +20000 X, plan B +10000 Y, plan C +20000 Y; vertical A -10000 Y, vertical B -20000 Y, vertical C -30000 Y (all +20000 X).");
                 foreach (var o in new[] { plan.A, plan.B, vert.A, vert.B })
                     o?.Fill.ForEach(e => { try { e.Dispose(); } catch { } });
             }
@@ -274,6 +278,7 @@ namespace MCG_3DPanel.Commands.Detail
             // B: WblockCloneObjects solid gốc (file 3D) -> CHÍNH bản vẽ 2D; cắt hộp + Section ở đó; output thuộc bản vẽ 2D;
             // xoá solid tạm + Section rồi commit. (Database tạm riêng => output dính database bị huỷ => crash 0xC0000005.)
             SecOut outB = new SecOut(), outB2 = new SecOut();
+            _lastC = new SecOut();
             sw.Restart();
             try
             {
@@ -315,6 +320,24 @@ namespace MCG_3DPanel.Commands.Detail
                     // Đối chứng: cùng Section, HiddenLine = true (chỉ log)
                     ConfigureSettings(tag + "/B2", tr, secB, hidden: true);
                     foreach (var id in ids) Generate(secB, (Entity)tr.GetObject(id, OpenMode.ForRead), outB2);
+                    // C: gộp mọi solid đã cắt hộp thành 1 khối (BoolUnite) rồi cắt với HiddenLine = false
+                    //    => AutoCAD bỏ cả nét bị solid KHÁC che. Đổi lại: mặt phẳng trùng nhau giữa 2 tấm bị hợp nhất (mất nét mối nối phẳng).
+                    ConfigureSettings(tag + "/C", tr, secB, hidden: false);
+                    var swC = Stopwatch.StartNew();
+                    int uniteFail = 0;
+                    if (ids.Count > 0)
+                    {
+                        var u = (Solid3d)tr.GetObject(ids[0], OpenMode.ForWrite);
+                        for (int i = 1; i < ids.Count; i++)
+                        {
+                            try { u.BooleanOperation(BooleanOperationType.BoolUnite, (Solid3d)tr.GetObject(ids[i], OpenMode.ForWrite)); }
+                            catch (System.Exception ex) { uniteFail++; if (uniteFail <= 3) Log($"  [{tag}/C] unite failed: {ex.Message}"); }
+                        }
+                        Log($"  [{tag}/C] unite {ids.Count} solids, failed {uniteFail}, {swC.ElapsedMilliseconds} ms");
+                        swC.Restart();
+                        Generate(secB, u, _lastC);
+                        Log($"  [{tag}/C] generate on union: {swC.ElapsedMilliseconds} ms");
+                    }
                     foreach (var id in ids) tr.GetObject(id, OpenMode.ForWrite).Erase();
                     secB.Erase();
                     tr.Commit();
@@ -330,6 +353,8 @@ namespace MCG_3DPanel.Commands.Detail
             Log($"  [{tag}] B2 (same section, HiddenLine=true) for comparison:");
             LogCounts(tag + "/B2", outB2);
             outB2.DisposeAll();
+            Log($"  [{tag}] C (union of all clipped solids, HiddenLine=false):");
+            LogCounts(tag + "/C", _lastC);
             if (outB.FirstError != null) Log($"  [{tag}] B first exception: {outB.FirstError}");
             return (outA, outB);
         }
