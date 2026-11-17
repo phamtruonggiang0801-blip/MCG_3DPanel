@@ -471,12 +471,12 @@ namespace MCG_3DPanel.Commands.Detail
 
                 using (Transaction tr = db.TransactionManager.StartTransaction())
                 {
+                    // 2 lượt: xoá entity của MỌI block mới trước (gỡ reference block lồng), rồi mới xoá định nghĩa —
+                    // thứ tự bảng block theo tên nên block lồng có thể đứng trước block cha
                     foreach (ObjectId id in blocks)
-                    {
-                        var btr = (BlockTableRecord)tr.GetObject(id, OpenMode.ForWrite);
-                        foreach (ObjectId e in btr) tr.GetObject(e, OpenMode.ForWrite, false, true).Erase();
-                        btr.Erase();
-                    }
+                        foreach (ObjectId e in (BlockTableRecord)tr.GetObject(id, OpenMode.ForRead))
+                            tr.GetObject(e, OpenMode.ForWrite, false, true).Erase();
+                    foreach (ObjectId id in blocks) tr.GetObject(id, OpenMode.ForWrite).Erase();
                     tr.Commit();
                 }
                 // Purge lặp: xoá cái không còn tham chiếu sẽ giải phóng cái nó tham chiếu (dim style → text style → …)

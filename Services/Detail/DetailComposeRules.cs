@@ -209,7 +209,6 @@ namespace MCG_3DPanel.Services.Detail
             return res;
         }
 
-        /// <summary>CutMember từ 1 vết cắt: dày = bề rộng hình chữ nhật bao nhỏ nhất, tâm = tâm hình chữ nhật, trục = trục dài.</summary>
         /// <summary>Tấm nhận ký hiệu Continuous trên section: mỗi tấm (handle; rỗng ⇒ mỗi vết riêng) lấy vết cắt lớn nhất
         /// (≥ 3 điểm), giữ những tấm <see cref="SectionSymbolRules.IsContinuous"/>. Rỗng ⇒ không cần block "Continious symbol".</summary>
         public static List<CutMember> ContinuousMembers(
@@ -223,6 +222,7 @@ namespace MCG_3DPanel.Services.Detail
                 .Where(m => SectionSymbolRules.IsContinuous(m)).ToList();
         }
 
+        /// <summary>CutMember từ 1 vết cắt: dày = bề rộng hình chữ nhật bao nhỏ nhất, tâm = tâm hình chữ nhật, trục = trục dài.</summary>
         public static CutMember ToCutMember(string type, IList<P2> outline, double minSigned, double maxSigned)
         {
             var r = SectionMarkRules.MinAreaRect(outline);
