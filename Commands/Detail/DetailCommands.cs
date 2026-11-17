@@ -57,7 +57,7 @@ namespace MCG_3DPanel.Commands.Detail
                     if (n == null || !n.EndsWith("_Assy", StringComparison.Ordinal) || n.Length <= 5) continue;
                     string panel = n.Substring(0, n.Length - 5);
                     if (dir != null && checkedPanels.Add(panel) && Directory.Exists(dir)
-                        && Directory.EnumerateFiles(dir, Detail3DMatch.CandidatePattern(panel)).Any()) found = true;
+                        && Directory.EnumerateFiles(dir, Detail3DMatch.CandidatePattern(n)).Any()) found = true; // tên file 3D = tên block _Assy + "_3D"
                 }
                 tr.Commit();
             }

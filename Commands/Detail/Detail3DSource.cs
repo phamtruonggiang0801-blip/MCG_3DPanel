@@ -53,12 +53,13 @@ namespace MCG_3DPanel.Commands.Detail
             Func<IList<string>, string> choose, out string why)
         {
             why = null;
-            string panel, fingerprint;
+            string panel, assyName, fingerprint;
             Matrix3d assyXform;
             using (Transaction tr = db2D.TransactionManager.StartOpenCloseTransaction())
             {
                 var assy = (BlockReference)tr.GetObject(assyRefId, OpenMode.ForRead);
                 string name = PartCollector.GetName(tr, assy);
+                assyName = name;
                 panel = name.EndsWith("_Assy", StringComparison.Ordinal) ? name.Substring(0, name.Length - 5) : name;
                 fingerprint = Detail3DMatch.Fingerprint(SourceFingerprintReader.Records(tr, assy.BlockTableRecord));
                 assyXform = assy.BlockTransform;
@@ -68,7 +69,7 @@ namespace MCG_3DPanel.Commands.Detail
             string folder = string.IsNullOrEmpty(drawingPath) ? null : Path.GetDirectoryName(drawingPath);
             string[] files = folder == null || !Directory.Exists(folder)
                 ? new string[0]
-                : Directory.GetFiles(folder, Detail3DMatch.CandidatePattern(panel));
+                : Directory.GetFiles(folder, Detail3DMatch.CandidatePattern(assyName)); // Build 3D đặt tên theo tên block _Assy
 
             var loaded = new List<Loaded>();
             string current = null;   // file đang đọc (lỗi catch-all nêu tên)

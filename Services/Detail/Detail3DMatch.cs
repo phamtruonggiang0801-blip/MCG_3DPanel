@@ -81,10 +81,11 @@ namespace MCG_3DPanel.Services.Detail
                 ? StaleState.Fresh : StaleState.Changed2D;
         }
 
-        /// <summary>Mẫu tên file 3D (gồm hậu tố _2, _3...), tên panel làm sạch như Panel3DPath.Target.</summary>
-        public static string CandidatePattern(string panel)
+        /// <summary>Mẫu tên file 3D (gồm hậu tố _2, _3...). Truyền TÊN BLOCK _Assy (vd "7D-16P_Assy"): Build 3D đặt tên file theo nó
+        /// (Panel3DPath.Target ⇒ "7D-16P_Assy_3D.dwg"). Làm sạch như Panel3DPath.Target.</summary>
+        public static string CandidatePattern(string assyBlockName)
         {
-            var name = panel ?? "";
+            var name = assyBlockName ?? "";
             foreach (var ch in System.IO.Path.GetInvalidFileNameChars()) name = name.Replace(ch, '_');
             return name + "_3D*.dwg";
         }

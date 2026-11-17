@@ -26,6 +26,15 @@ namespace MCG_3DPanel.Tests
         [Fact] public void Stale_EmptyFingerprint_Unknown() => Assert.Equal(StaleState.Unknown, Detail3DMatch.Stale(C("s", "h", ""), "f"));
         [Fact] public void Stale_Differs_Changed2D() => Assert.Equal(StaleState.Changed2D, Detail3DMatch.Stale(C("s", "h", "f1"), "f2"));
         [Fact] public void Stale_Same_Fresh() => Assert.Equal(StaleState.Fresh, Detail3DMatch.Stale(C("s", "h", "f"), "f"));
+        /// <summary>Build 3D đặt tên file theo TÊN BLOCK _Assy (Panel3DPath.Target) ⇒ mẫu tìm phải khớp đúng file đó.</summary>
+        [Fact] public void CandidatePattern_MatchesBuildTarget()
+        {
+            string built = System.IO.Path.GetFileName(MCG_3DPanel.Commands.Panel3DPath.Target(@"C:\p", "7D-16P_Assy"));
+            string pattern = Detail3DMatch.CandidatePattern("7D-16P_Assy");
+            Assert.Equal("7D-16P_Assy_3D.dwg", built);
+            Assert.True(System.IO.Enumeration.FileSystemName.MatchesSimpleExpression(pattern, built));
+        }
+
         [Fact] public void CandidatePattern_Sanitizes() => Assert.Equal("7D_16P_3D*.dwg", Detail3DMatch.CandidatePattern("7D/16P"));
 
         // ─── Tên block trong record vân tay (final review #6): tên hiệu dụng, bỏ tên ẩn danh '*' ───
