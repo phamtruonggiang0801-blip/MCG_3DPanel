@@ -84,5 +84,92 @@ namespace MCG_3DPanel.Tests
             Assert.Equal("Notes: 2 solid(s) could not be copied; line type missing.",
                 DetailCommandRules.Notes(new[] { "2 solid(s) could not be copied", "line type missing.", "2 solid(s) could not be copied" }));
         }
+
+        // ─── Section Detail ────────────────────────────────────────────────────
+
+        [Fact]
+        public void IsCommand_OnlyKnownDetailCommands()
+        {
+            Assert.True(DetailCommandRules.IsCommand("MCG_DetailPlan"));
+            Assert.True(DetailCommandRules.IsCommand(" mcg_detailsection "));
+            Assert.True(DetailCommandRules.IsCommand("MCG_DetailView"));
+            Assert.False(DetailCommandRules.IsCommand(null));
+            Assert.False(DetailCommandRules.IsCommand(""));
+            Assert.False(DetailCommandRules.IsCommand("ERASE ALL"));
+            Assert.False(DetailCommandRules.IsCommand("MCG_DetailPlan ERASE"));
+        }
+
+        [Fact]
+        public void RegionFromData_RoundTripsRectangleAndCircle()
+        {
+            var rect = DetailCommandRules.RegionFromData(DetailCommandRules.RegionData(Rect(0, 0, 100, 40)), false);
+            Assert.False(rect.IsCircle);
+            Assert.Equal(4, rect.Corners.Length);
+            Assert.True(rect.Contains(new P2(50, 20)));
+            Assert.False(rect.Contains(new P2(150, 20)));
+            var c = DetailCommandRules.RegionFromData(DetailCommandRules.RegionData(DetailRegion.FromCircle(new P2(5, 6), 10)), true);
+            Assert.True(c.IsCircle);
+            Assert.Equal(10, c.Radius, 6);
+            Assert.Equal(5, c.Center.X, 6);
+        }
+
+        [Fact]
+        public void RegionFromData_BadDataIsNull()
+        {
+            Assert.Null(DetailCommandRules.RegionFromData(null, false));
+            Assert.Null(DetailCommandRules.RegionFromData(new List<double[]>(), false));
+            Assert.Null(DetailCommandRules.RegionFromData(new List<double[]> { new[] { 0.0, 0 }, new[] { 1.0, 0 } }, false));
+            Assert.Null(DetailCommandRules.RegionFromData(new List<double[]> { new[] { 0.0, 0, 0 } }, true));
+            Assert.Null(DetailCommandRules.RegionFromData(new List<double[]> { new[] { 0.0, 0 } }, true));
+        }
+
+        [Fact]
+        public void UsedLetters_SectionRecordsAndBlockNamesOfThatDetailOnly()
+        {
+            var recs = new[]
+            {
+                new DetailRecord { Kind = DetailKind.Section, Panel = "7D-16P", Number = 1, Letter = "A" },
+                new DetailRecord { Kind = DetailKind.Section, Panel = "7D-16P", Number = 2, Letter = "B" },
+                new DetailRecord { Kind = DetailKind.Section, Panel = "7D-16PX", Number = 1, Letter = "C" },
+                new DetailRecord { Kind = DetailKind.Plan, Panel = "7D-16P", Number = 1, Letter = "D" },
+                null,
+            };
+            var names = new[] { "7D-16P_DET.1_1E-1E", "7D-16P_DET.1_1F-1F_MCG", "7D-16P_DET.10_10G-10G", "7D-16PX_DET.1_1H-1H", "7D-16P_DET.1" };
+            var used = new HashSet<string>(DetailCommandRules.UsedLetters("7D-16P", 1, recs, names));
+            Assert.Equal(new HashSet<string> { "A", "E", "F" }, used);
+            Assert.Equal("B", DetailNaming.NextSectionLetter(used));
+        }
+
+        [Fact]
+        public void CutLineProblem_LengthAndCrossing()
+        {
+            var r = Rect(0, 0, 100, 40);
+            Assert.Null(DetailCommandRules.CutLineProblem(new P2(-50, 20), new P2(500, 20), r));   // dài hơn vùng: cắt theo vùng
+            Assert.Equal("The cut line has no length. Pick the end point again.",
+                DetailCommandRules.CutLineProblem(new P2(10, 20), new P2(10, 20), r));
+            Assert.Equal("The cut line does not cross the detail. Pick the end point again.",
+                DetailCommandRules.CutLineProblem(new P2(10, 50), new P2(90, 50), r));
+            var c = DetailRegion.FromCircle(new P2(0, 0), 10);
+            Assert.Null(DetailCommandRules.CutLineProblem(new P2(-20, 5), new P2(20, 5), c));
+            Assert.NotNull(DetailCommandRules.CutLineProblem(new P2(-20, 15), new P2(20, 15), c));
+        }
+
+        [Fact]
+        public void FrameProblem_NamesWhatToPickAgain()
+        {
+            var r = Rect(0, 0, 100, 40);
+            Assert.Null(DetailCommandRules.FrameProblem(new P2(10, 20), new P2(90, 20), new P2(50, 30), r, out _));
+
+            Assert.NotNull(DetailCommandRules.FrameProblem(new P2(10, 20), new P2(10, 20), new P2(50, 30), r, out bool again));
+            Assert.True(again);   // không dài ⇒ chọn lại điểm cuối
+
+            string why = DetailCommandRules.FrameProblem(new P2(200, 20), new P2(300, 20), new P2(250, 30), r, out again);
+            Assert.Equal("The cut line does not cross the detail. Pick the end point again.", why);
+            Assert.True(again);
+
+            why = DetailCommandRules.FrameProblem(new P2(10, 20), new P2(90, 20), new P2(50, 20.5), r, out again);
+            Assert.Equal("The viewing side is on the cut line. Pick a point to one side of it.", why);
+            Assert.False(again);
+        }
     }
 }

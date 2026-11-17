@@ -69,23 +69,48 @@ namespace MCG_3DPanel.Commands.Detail
                 }
                 TagObject(tr, db, btr, rec);
                 // Từng entity trong block: RegApp + dấu ngắn (JSON đầy đủ chỉ trên block / reference / tiêu đề)
-                var mark = new TypedValue[]
-                {
-                    new TypedValue((int)DxfCode.ExtendedDataRegAppName, App),
-                    new TypedValue((int)DxfCode.ExtendedDataAsciiString, rec.Marker()),
-                };
-                foreach (var e in list)
-                {
-                    btr.AppendEntity(e);
-                    tr.AddNewlyCreatedDBObject(e, true);
-                    using (var rb = new ResultBuffer(mark)) e.XData = rb;
-                }
+                AppendMarked(tr, btr, list, rec);
                 return btr.ObjectId;
             }
             catch
             {
                 foreach (var e in list) if (!e.IsDisposed && e.ObjectId.IsNull) e.Dispose();
                 throw;
+            }
+        }
+
+        /// <summary>Thêm <paramref name="ents"/> vào block CÓ SẴN <paramref name="btrId"/> (vd ký hiệu mặt cắt trên DET), mỗi entity mang
+        /// dấu ngắn của <paramref name="rec"/>; các reference của block được báo vẽ lại. Lỗi ⇒ giải phóng entity chưa vào bản vẽ.</summary>
+        public static void AddToBlock(Transaction tr, ObjectId btrId, IEnumerable<Entity> ents, DetailRecord rec)
+        {
+            var list = (ents ?? Enumerable.Empty<Entity>()).ToList();
+            try
+            {
+                EnsureRegApp(tr, btrId.Database);
+                var btr = (BlockTableRecord)tr.GetObject(btrId, OpenMode.ForWrite);
+                AppendMarked(tr, btr, list, rec);
+                foreach (ObjectId id in btr.GetBlockReferenceIds(true, false))
+                    ((Entity)tr.GetObject(id, OpenMode.ForWrite, false, true)).RecordGraphicsModified(true);
+            }
+            catch
+            {
+                foreach (var e in list) if (!e.IsDisposed && e.ObjectId.IsNull) e.Dispose();
+                throw;
+            }
+        }
+
+        static void AppendMarked(Transaction tr, BlockTableRecord btr, List<Entity> list, DetailRecord rec)
+        {
+            var mark = new TypedValue[]
+            {
+                new TypedValue((int)DxfCode.ExtendedDataRegAppName, App),
+                new TypedValue((int)DxfCode.ExtendedDataAsciiString, rec.Marker()),
+            };
+            foreach (var e in list)
+            {
+                btr.AppendEntity(e);
+                tr.AddNewlyCreatedDBObject(e, true);
+                using (var rb = new ResultBuffer(mark)) e.XData = rb;
             }
         }
 

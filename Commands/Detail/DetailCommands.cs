@@ -19,32 +19,34 @@ namespace MCG_3DPanel.Commands.Detail
     /// Esc ở bất kỳ bước nào / lỗi ⇒ không để lại gì.</summary>
     public class DetailCommands
     {
-        public const string PlanCommand = "MCG_DetailPlan", ViewCommand = "MCG_DetailView";
+        public const string PlanCommand = "MCG_DetailPlan", ViewCommand = "MCG_DetailView", SectionCommand = "MCG_DetailSection";
         const string LabelLayer = "Mechanical-AM_1";
         const double LabelHeight = 150, LabelGap = 50;
 
         public static event Action<string, bool> Finished;
 
-        /// <summary>Gọi từ palette: chạy lệnh trong ngữ cảnh lệnh của document đang active.</summary>
+        /// <summary>Gọi từ palette: chạy lệnh trong ngữ cảnh lệnh của document đang active. Chỉ nhận đúng tên lệnh Detail.</summary>
         public static void Request(string command)
         {
             Document doc = Application.DocumentManager.MdiActiveDocument;
-            if (doc == null || string.IsNullOrWhiteSpace(command)) return;
+            if (doc == null || !DetailCommandRules.IsCommand(command)) return;
             doc.SendStringToExecute(command.Trim() + " ", true, false, false);
         }
 
         [CommandMethod(PlanCommand, CommandFlags.Modal | CommandFlags.UsePickSet)]
-        public void DetailPlan() => Run(false);
+        public void DetailPlan() => Run("Detail Plan", doc => Create(doc, false));
 
         [CommandMethod(ViewCommand, CommandFlags.Modal | CommandFlags.UsePickSet)]
-        public void DetailView() => Run(true);
+        public void DetailView() => Run("Detail View", doc => Create(doc, true));
 
-        static void Run(bool view)
+        [CommandMethod(SectionCommand, CommandFlags.Modal | CommandFlags.UsePickSet)]
+        public void DetailSection() => Run("Section Detail", CreateSection);
+
+        static void Run(string what, Func<Document, string> create)
         {
             Document doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
-            string what = view ? "Detail View" : "Detail Plan";
-            try { Finish(Create(doc, view), false); }
+            try { Finish(create(doc), false); }
             catch (StopException stop) { Finish(stop.Message, true); }
             catch (System.Exception ex)
             {
@@ -77,22 +79,9 @@ namespace MCG_3DPanel.Commands.Detail
             string panel = assyName.Substring(0, assyName.Length - "_Assy".Length);
 
             // 3. File 3D + kiểm 3D cũ
-            using (Detail3DSource src = Detail3DSource.Open(db, doc.Name, assyId, paths => Choose(ed, paths), out string why))
+            var notes = new List<string>();
+            using (Detail3DSource src = Open3D(doc, assyId, panel, what, cancelled, notes, out string file3D))
             {
-                if (src == null) throw new StopException(why == "Cancelled." ? cancelled : why + " Nothing was drawn.");
-                string file3D = Path.GetFileName(src.FilePath);
-                var notes = new List<string>();
-                string question = DetailCommandRules.StaleQuestion(src.Stale, file3D, panel);
-                if (question != null)
-                {
-                    var answer = System.Windows.MessageBox.Show(question, what, System.Windows.MessageBoxButton.YesNo,
-                        System.Windows.MessageBoxImage.Warning, System.Windows.MessageBoxResult.No);
-                    if (answer != System.Windows.MessageBoxResult.Yes) throw new StopException(cancelled);
-                    notes.Add(src.Stale == StaleState.Unsaved3D
-                        ? $"cut from the saved {file3D} (it had unsaved changes)"
-                        : $"{file3D} may be out of date");
-                }
-
                 // 4. Số DET
                 int n = DetailNaming.NextDetailNumber(panel, BlockNames(db));
 
@@ -163,6 +152,314 @@ namespace MCG_3DPanel.Commands.Detail
 
                 string tail = DetailCommandRules.Notes(notes);
                 return $"{shown} created from {file3D}." + (tail.Length > 0 ? " " + tail : "");
+            }
+        }
+
+        /// <summary>Mở file 3D của panel + kiểm 3D cũ (hỏi Yes/No). Huỷ ⇒ <see cref="StopException"/>; ghi chú 3D cũ vào
+        /// <paramref name="notes"/>.</summary>
+        static Detail3DSource Open3D(Document doc, ObjectId assyId, string panel, string what, string cancelled,
+            List<string> notes, out string file3D)
+        {
+            Editor ed = doc.Editor;
+            Detail3DSource src = Detail3DSource.Open(doc.Database, doc.Name, assyId, paths => Choose(ed, paths), out string why);
+            if (src == null) throw new StopException(why == "Cancelled." ? cancelled : why + " Nothing was drawn.");
+            try
+            {
+                file3D = Path.GetFileName(src.FilePath);
+                string question = DetailCommandRules.StaleQuestion(src.Stale, file3D, panel);
+                if (question != null)
+                {
+                    var answer = System.Windows.MessageBox.Show(question, what, System.Windows.MessageBoxButton.YesNo,
+                        System.Windows.MessageBoxImage.Warning, System.Windows.MessageBoxResult.No);
+                    if (answer != System.Windows.MessageBoxResult.Yes) throw new StopException(cancelled);
+                    notes.Add(src.Stale == StaleState.Unsaved3D
+                        ? $"cut from the saved {file3D} (it had unsaved changes)"
+                        : $"{file3D} may be out of date");
+                }
+                return src;
+            }
+            catch { src.Dispose(); throw; }
+        }
+
+        // ─── Section Detail ────────────────────────────────────────────────────
+
+        /// <summary>Section Detail: chọn DET (Detail Plan) → đầu/cuối đường cắt (bắt ngang/dọc) → bên nhìn → cắt → 1 transaction:
+        /// ký hiệu vào block DET, định nghĩa &lt;panel&gt;_DET.n_nL-nL, kéo-thả chèn, tiêu đề. Esc / lỗi ⇒ không để lại gì.</summary>
+        static string CreateSection(Document doc)
+        {
+            Editor ed = doc.Editor;
+            Database db = doc.Database;
+            const string what = "Section Detail";
+            const string cancelled = what + " cancelled. Nothing was drawn.";
+
+            // 1. Reference DET của Detail Plan
+            ObjectId detRefId = PickDetailPlan(ed, out DetailRecord det, out DetailRegion region);
+            if (detRefId.IsNull) throw new StopException(cancelled);
+
+            var missing = DetailWriter.Missing(db);
+            if (missing.Count > 0)
+                throw new StopException($"{what} stopped; the drawing is missing: {string.Join(", ", missing)}. Nothing was drawn.");
+
+            string panel = det.Panel;
+            int n = det.Number;
+            ObjectId assyId = AssyOf(db, det);
+            if (assyId.IsNull) throw new StopException($"The {panel}_Assy block of DET.{n} is no longer in this drawing. Nothing was drawn.");
+
+            var notes = new List<string>();
+            using (Detail3DSource src = Open3D(doc, assyId, panel, what, cancelled, notes, out string file3D))
+            {
+                // 2–3. Đường cắt + bên nhìn (toạ độ plan)
+                SectionFrame f = AskCut(ed, db, detRefId, det, region, out P2 cutA, out P2 cutB, out P2 side)
+                    ?? throw new StopException(cancelled);
+
+                // 4. Chữ section
+                string letter = DetailNaming.NextSectionLetter(UsedSectionLetters(db, panel, n));
+                string title = DetailNaming.SectionTitle(n, letter, f.Vertical);
+
+                // 5. Cắt (transaction riêng, net-empty) TRƯỚC transaction ghi
+                SectionResult result = null;
+                try
+                {
+                    result = SectionEngine.Section(db, src, region, f);
+                    if (result.Cut.Count == 0 && result.Visible.Count == 0)
+                        throw new StopException("The cut line crosses no structure. Nothing was drawn.");
+
+                    // Block "Continious symbol" thiếu ⇒ bổ sung (bản vẽ → CAS.dwt → tự vẽ) TRƯỚC, commit riêng như Plan View;
+                    // không commit được transaction ghi ⇒ xoá lại block vừa thêm (bên dưới).
+                    var blocks = PlanViewBlockSource.Prepare(db, new[] { DetailComposer.ContinuousBlock });
+                    if (blocks.Unavailable.Count > 0)
+                        throw new StopException($"{what} stopped; the drawing is missing: block {DetailComposer.ContinuousBlock}. Nothing was drawn.");
+                    bool added = blocks.FromTemplate.Count + blocks.Drawn.Count > 0;
+                    bool committed = false;
+                    try
+                    {
+                        if (added)
+                        {
+                            PlanViewBlockSource.Apply(db, blocks);
+                            if (PlanViewBlockSource.NotLive(db, new[] { DetailComposer.ContinuousBlock }).Count > 0)
+                                throw new StopException($"{what} stopped; block {DetailComposer.ContinuousBlock} could not be added. Nothing was drawn.");
+                        }
+
+                        // 6. MỘT transaction: không commit (Esc / lỗi) ⇒ huỷ hết, kể cả ký hiệu đã thêm vào block DET
+                        using (Transaction tr = db.TransactionManager.StartTransaction())
+                        {
+                            var detRef = (BlockReference)tr.GetObject(detRefId, OpenMode.ForRead);
+                            var rec = new DetailRecord
+                            {
+                                Kind = DetailKind.Section,
+                                Panel = panel,
+                                Number = n,
+                                Letter = letter,
+                                AssyRefHandle = assyId.Handle.ToString(),
+                                BoundaryHandle = det.BoundaryHandle,
+                                Region = det.Region,
+                                Circle = det.Circle,
+                                CutA = new[] { cutA.X, cutA.Y },
+                                CutB = new[] { cutB.X, cutB.Y },
+                                Side = new[] { side.X, side.Y },
+                                Scale = 1,
+                                Title = title,
+                            };
+
+                            // Ký hiệu nA trong block DET (toạ độ cục bộ = plan − gốc DET)
+                            var marks = DetailComposer.SectionMarks(f, n, letter, new P2(det.BaseX, det.BaseY));
+                            DetailWriter.AddToBlock(tr, detRef.BlockTableRecord, marks, rec);
+
+                            List<Entity> ents = DetailComposer.SectionEntities(result, f, out P2 basePt);
+                            rec.BaseX = basePt.X;   // gốc block section, toạ độ section
+                            rec.BaseY = basePt.Y;
+                            ObjectId btrId = DetailWriter.DefineBlock(tr, db, DetailNaming.SectionBlock(panel, n, letter), ents, rec);
+                            tr.TransactionManager.QueueForGraphicsFlush();
+                            doc.TransactionManager.FlushGraphics();   // ký hiệu hiện trên DET trong lúc kéo-thả
+                            if (!DetailWriter.Place(ed, tr, btrId, 1, $"Insertion point of {title}:", out BlockReference br))
+                                throw new StopException(cancelled);   // tr chưa commit ⇒ huỷ ký hiệu + block section
+                            DetailWriter.Tag(br, rec);
+                            DetailWriter.AddTitle(tr, br, title);
+                            tr.Commit();
+                            committed = true;
+                        }
+                    }
+                    finally
+                    {
+                        if (added && !committed) EraseUnusedBlock(db, DetailComposer.ContinuousBlock);
+                    }
+
+                    notes.AddRange(result.Warnings);
+                    if (blocks.FromTemplate.Count > 0) notes.Add($"block {DetailComposer.ContinuousBlock} added from CAS.dwt");
+                    if (blocks.Drawn.Count > 0) notes.Add($"block {DetailComposer.ContinuousBlock} drawn by the tool");
+                }
+                finally { result?.DisposeCurves(); }
+
+                string tail = DetailCommandRules.Notes(notes);
+                return $"{title} created from {file3D}." + (tail.Length > 0 ? " " + tail : "");
+            }
+        }
+
+        /// <summary>Reference DET của Detail Plan (chọn trước, rồi hỏi lại tới khi đúng). Esc ⇒ Null.</summary>
+        static ObjectId PickDetailPlan(Editor ed, out DetailRecord rec, out DetailRegion region)
+        {
+            rec = null; region = null;
+            PromptSelectionResult pre = ed.SelectImplied();
+            if (pre.Status == PromptStatus.OK && pre.Value != null)
+            {
+                ed.SetImpliedSelection(new ObjectId[0]);
+                if (pre.Value.Count == 1)
+                {
+                    ObjectId id = pre.Value[0].ObjectId;
+                    string why = CheckDetailPlan(id, out rec, out region);
+                    if (why == null) return id;
+                    ed.WriteMessage("\n" + why);
+                }
+                else ed.WriteMessage("\nSelect only one Detail Plan.");
+            }
+
+            var opt = new PromptEntityOptions("\nSelect the Detail Plan (DET block) to cut: ");
+            opt.SetRejectMessage("\nSelect a Detail Plan block.");
+            opt.AddAllowedClass(typeof(BlockReference), true);
+            while (true)
+            {
+                PromptEntityResult r = ed.GetEntity(opt);
+                if (r.Status != PromptStatus.OK) return ObjectId.Null;
+                string why = CheckDetailPlan(r.ObjectId, out rec, out region);
+                if (why == null) return r.ObjectId;
+                ed.WriteMessage("\n" + why);
+            }
+        }
+
+        /// <summary>Null ⇒ là reference DET của Detail Plan (bản ghi + vùng đã điền); ngược lại là lý do để hỏi lại.</summary>
+        static string CheckDetailPlan(ObjectId id, out DetailRecord rec, out DetailRegion region)
+        {
+            rec = null; region = null;
+            using (Transaction tr = id.Database.TransactionManager.StartOpenCloseTransaction())
+            {
+                const string other = "Select a Detail Plan block (DET.n) made by the tool.";
+                if (!(tr.GetObject(id, OpenMode.ForRead) is BlockReference br)) return other;
+                // Bản ghi đầy đủ trên reference; thiếu ⇒ bản ghi trên định nghĩa block
+                DetailRecord r = DetailWriter.Read(br) ?? DetailWriter.Read(tr.GetObject(br.BlockTableRecord, OpenMode.ForRead));
+                if (r == null) return other;
+                if (r.Kind == DetailKind.View) return "Sections are only made on Detail Plans.";
+                if (r.Kind != DetailKind.Plan) return other;
+                region = DetailCommandRules.RegionFromData(r.Region, r.Circle);
+                if (region == null) return $"The detail data of DET.{r.Number} is damaged (no valid boundary). Select another Detail Plan.";
+                rec = r;
+                return null;
+            }
+        }
+
+        /// <summary>_Assy của DET: theo handle trong bản ghi (đúng tên &lt;panel&gt;_Assy), mất ⇒ tìm theo gốc DET trên plan.</summary>
+        static ObjectId AssyOf(Database db, DetailRecord det)
+        {
+            string want = det.Panel + "_Assy";
+            if (long.TryParse(det.AssyRefHandle, System.Globalization.NumberStyles.HexNumber, null, out long h)
+                && db.TryGetObjectId(new Handle(h), out ObjectId id) && !id.IsErased)
+            {
+                using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
+                {
+                    bool ok = tr.GetObject(id, OpenMode.ForRead) is BlockReference br && PartCollector.GetName(tr, br) == want;
+                    tr.Commit();
+                    if (ok) return id;
+                }
+            }
+            ObjectId found = FindAssy(db, new P2(det.BaseX, det.BaseY), out string name);
+            return name == want ? found : ObjectId.Null;
+        }
+
+        /// <summary>Hỏi đầu, cuối (rubber band từ đầu, bắt ngang/dọc), bên nhìn; toạ độ plan. Khung sai ⇒ nói lý do, hỏi lại
+        /// điểm cuối hoặc bên nhìn. Esc ở bất kỳ câu nào ⇒ null.</summary>
+        static SectionFrame AskCut(Editor ed, Database db, ObjectId detRefId, DetailRecord det, DetailRegion region,
+            out P2 a, out P2 b, out P2 side)
+        {
+            a = b = side = default;
+            Matrix3d toLocal;
+            using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
+            {
+                toLocal = ((BlockReference)tr.GetObject(detRefId, OpenMode.ForRead)).BlockTransform.Inverse();
+                tr.Commit();
+            }
+            // WCS → cục bộ block DET → plan (+ gốc DET)
+            Matrix3d toPlan = Matrix3d.Displacement(new Vector3d(det.BaseX, det.BaseY, 0)) * toLocal;
+            Matrix3d ucs = ed.CurrentUserCoordinateSystem;
+
+            P2 Plan(Point3d wcs) { Point3d p = wcs.TransformBy(toPlan); return new P2(p.X, p.Y); }
+            Point3d? Ask(string prompt, Point3d? fromWcs)
+            {
+                var opt = new PromptPointOptions("\n" + prompt) { AllowNone = false };
+                if (fromWcs.HasValue)
+                {
+                    opt.UseBasePoint = true;
+                    opt.UseDashedLine = true;
+                    opt.BasePoint = fromWcs.Value.TransformBy(ucs.Inverse());
+                }
+                PromptPointResult r = ed.GetPoint(opt);
+                return r.Status == PromptStatus.OK ? r.Value.TransformBy(ucs) : (Point3d?)null;
+            }
+
+            Point3d? startW = Ask("Start point of the cut line:", null);
+            if (startW == null) return null;
+            a = Plan(startW.Value);
+            while (true)
+            {
+                Point3d? endW = Ask("End point of the cut line:", startW);
+                if (endW == null) return null;
+                b = SectionFrame.Snap(a, Plan(endW.Value));
+                // Đường cắt sai (không dài / không qua vùng) ⇒ hỏi lại điểm cuối ngay, chưa hỏi bên nhìn
+                string lineWhy = DetailCommandRules.CutLineProblem(a, b, region);
+                if (lineWhy != null) { ed.WriteMessage("\n" + lineWhy); continue; }
+                while (true)
+                {
+                    Point3d? sideW = Ask("Viewing side (pick a point on the side to look at):", null);
+                    if (sideW == null) return null;
+                    side = Plan(sideW.Value);
+                    string why = DetailCommandRules.FrameProblem(a, b, side, region, out bool endAgain);
+                    if (why == null) return SectionFrame.From(a, b, side, region);
+                    ed.WriteMessage("\n" + why);
+                    if (endAgain) break;
+                }
+            }
+        }
+
+        /// <summary>Chữ section đã dùng của DET n: bản ghi Section trên các định nghĩa block + tên block nL-nL.</summary>
+        static IEnumerable<string> UsedSectionLetters(Database db, string panel, int n)
+        {
+            var recs = new List<DetailRecord>();
+            var names = new List<string>();
+            using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
+            {
+                var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                foreach (ObjectId id in bt)
+                {
+                    if (id.IsErased) continue;
+                    var btr = (BlockTableRecord)tr.GetObject(id, OpenMode.ForRead);
+                    names.Add(btr.Name);
+                    var r = DetailWriter.Read(btr);
+                    if (r != null) recs.Add(r);
+                }
+                tr.Commit();
+            }
+            return DetailCommandRules.UsedLetters(panel, n, recs, names);
+        }
+
+        /// <summary>Xoá định nghĩa block vừa bổ sung khi lần chạy bị huỷ (chỉ khi không còn reference nào).</summary>
+        static void EraseUnusedBlock(Database db, string name)
+        {
+            try
+            {
+                using (Transaction tr = db.TransactionManager.StartTransaction())
+                {
+                    var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                    ObjectId id = SymbolTables.Live(bt, name);
+                    if (!id.IsNull)
+                    {
+                        var btr = (BlockTableRecord)tr.GetObject(id, OpenMode.ForRead);
+                        if (btr.GetBlockReferenceIds(true, true).Count == 0) { btr.UpgradeOpen(); btr.Erase(); }
+                    }
+                    tr.Commit();
+                }
+            }
+            catch (System.Exception ex)
+            {
+                try { Application.DocumentManager.MdiActiveDocument?.Editor?.WriteMessage(
+                    $"\n[MCG_3DPanel] Could not remove the unused block {name}: {ex.Message}\n"); } catch { }
             }
         }
 

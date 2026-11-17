@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace MCG_3DPanel.Services.Detail
 {
@@ -66,6 +67,71 @@ namespace MCG_3DPanel.Services.Detail
                 default:
                     return null;
             }
+        }
+
+        // ─── Section Detail ────────────────────────────────────────────────────
+
+        /// <summary>Lệnh palette được phép gửi qua Request (chỉ đúng tên lệnh, không kèm gì khác).</summary>
+        public static readonly string[] Commands = { "MCG_DetailPlan", "MCG_DetailSection", "MCG_DetailView" };
+
+        public static bool IsCommand(string command) =>
+            !string.IsNullOrWhiteSpace(command) && Commands.Contains(command.Trim(), StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Ngược của <see cref="RegionData"/>: 4 góc [x,y] (phải là chữ nhật) hoặc 1 bộ [cx,cy,r] (r &gt; 0). Hỏng ⇒ null.</summary>
+        public static DetailRegion RegionFromData(List<double[]> data, bool circle)
+        {
+            if (data == null || data.Any(p => p == null)) return null;
+            if (circle)
+            {
+                if (data.Count != 1 || data[0].Length != 3 || !(data[0][2] > 0)) return null;
+                return DetailRegion.FromCircle(new P2(data[0][0], data[0][1]), data[0][2]);
+            }
+            if (data.Count != 4 || data.Any(p => p.Length != 2)) return null;
+            return DetailRegion.FromPolyline(data.Select(p => (p[0], p[1], 0.0)).ToList(), true, out _);
+        }
+
+        /// <summary>Chữ section đã dùng của DET n: bản ghi Section cùng panel + số, và tên block "[NEW_]&lt;panel&gt;_DET.n_nL-nL…"
+        /// (kể cả block vẽ tay / hậu tố _MCG).</summary>
+        public static IEnumerable<string> UsedLetters(string panel, int n, IEnumerable<DetailRecord> records, IEnumerable<string> blockNames)
+        {
+            var used = new List<string>();
+            foreach (var r in records ?? Enumerable.Empty<DetailRecord>())
+                if (r != null && r.Kind == DetailKind.Section && r.Number == n && string.Equals(r.Panel, panel, StringComparison.Ordinal)
+                    && !string.IsNullOrEmpty(r.Letter)) used.Add(r.Letter);
+            if (!string.IsNullOrEmpty(panel))
+            {
+                var re = new Regex("^(?:NEW_)?" + Regex.Escape(panel) + @"_DET\." + n + "_" + n + "([A-Za-z]+)-" + n + @"\1(?:_|$)",
+                    RegexOptions.CultureInvariant);
+                foreach (var name in blockNames ?? Enumerable.Empty<string>())
+                {
+                    var m = name == null ? null : re.Match(name);
+                    if (m != null && m.Success) used.Add(m.Groups[1].Value.ToUpperInvariant());
+                }
+            }
+            return used.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        /// <summary>Vì sao <see cref="SectionFrame.From"/> trả null (toạ độ plan); hợp lệ ⇒ null.
+        /// <paramref name="pickEndAgain"/> = true ⇒ hỏi lại điểm cuối (rồi hướng nhìn), false ⇒ chỉ hỏi lại hướng nhìn.</summary>
+        public static string FrameProblem(P2 start, P2 end, P2 side, DetailRegion region, out bool pickEndAgain)
+        {
+            pickEndAgain = false;
+            if (SectionFrame.From(start, end, side, region) != null) return null;
+            string line = CutLineProblem(start, end, region);
+            if (line != null) { pickEndAgain = true; return line; }
+            return "The viewing side is on the cut line. Pick a point to one side of it.";
+        }
+
+        /// <summary>Đường cắt (chưa có bên nhìn) dùng được không: không dài / không qua vùng ⇒ lý do; được ⇒ null.</summary>
+        public static string CutLineProblem(P2 start, P2 end, DetailRegion region)
+        {
+            var d = end - start;
+            if (d.Length < 1e-6) return "The cut line has no length. Pick the end point again.";
+            // Bên nhìn đặt xa hẳn đường cắt mà vẫn null ⇒ đường cắt không qua vùng
+            var far = new P2(-d.Y, d.X) * (1.0 / d.Length) * 1e3;
+            if (SectionFrame.From(start, end, start + far, region) == null)
+                return "The cut line does not cross the detail. Pick the end point again.";
+            return null;
         }
 
         /// <summary>Ghi chú status: các cảnh báo khác nhau, nối "; ", kết thúc bằng "."; không có ⇒ "".</summary>
