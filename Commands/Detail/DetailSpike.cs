@@ -21,7 +21,9 @@ namespace MCG_3DPanel.Commands.Detail
     {
         static readonly string LogPath = Path.Combine(Path.GetTempPath(), "MCG_DetailSpike.log");
         static Editor _ed;
-        static Database _host; // database file 3D đã đọc: B gắn solid + Section vào đây rồi abort
+        static Database _host; // database file 3D đã đọc (nguồn WblockCloneObjects cho B)
+        static ObjectIdCollection _srcIds = new ObjectIdCollection();
+        static Matrix3d _srcXf = Matrix3d.Identity;
 
         static void Log(string s)
         {
@@ -67,6 +69,7 @@ namespace MCG_3DPanel.Commands.Detail
                 if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir)) dlg.InitialDirectory = dir;
             }
             catch { }
+            _srcIds = new ObjectIdCollection(); _srcXf = Matrix3d.Identity;
             if (dlg.ShowDialog() != true) { Log("Cancelled (no file)."); return; }
             string path = dlg.FileName;
             Log("3D file: " + path);
@@ -106,7 +109,7 @@ namespace MCG_3DPanel.Commands.Detail
                 Log("---- PLAN (horizontal plane Z=-1, box Z -5000..-1) ----");
                 var planClip = Clip(sources, x0, x1, y0, y1, -5000, -1);
                 Point3dCollection planPts = new Point3dCollection { new Point3d(x0, y0, -1), new Point3d(x1, y0, -1) };
-                var plan = RunStage("PLAN", planClip, planPts, Vector3d.YAxis, -Vector3d.ZAxis);
+                var plan = RunStage("PLAN", planClip, planPts, Vector3d.YAxis, -Vector3d.ZAxis, (x0, x1, y0, y1, -5000, -1));
                 // A: +20000 X; B: thêm +10000 Y để so cạnh nhau
                 if (plan.A != null) Collect(plan.A, Matrix3d.Displacement(new Vector3d(20000, 0, 0)), drawList);
                 if (plan.B != null) Collect(plan.B, Matrix3d.Displacement(new Vector3d(20000, 10000, 0)), drawList);
@@ -114,7 +117,7 @@ namespace MCG_3DPanel.Commands.Detail
                 // Thử thêm mặt cắt Z = −2 (chỉ log, không vẽ) — xem mặt cắt trùng mặt hộp có làm hỏng boundary không
                 Log("---- PLAN variant (plane Z=-2, same clipped solids, log only) ----");
                 Point3dCollection planPts2 = new Point3dCollection { new Point3d(x0, y0, -2), new Point3d(x1, y0, -2) };
-                var plan2 = RunStage("PLAN@-2", planClip, planPts2, Vector3d.YAxis, -Vector3d.ZAxis);
+                var plan2 = RunStage("PLAN@-2", planClip, planPts2, Vector3d.YAxis, -Vector3d.ZAxis, (x0, x1, y0, y1, -5000, -1));
                 plan2.A?.DisposeAll();
                 plan2.B?.DisposeAll();
                 foreach (var s in planClip) s.Dispose();
@@ -124,7 +127,7 @@ namespace MCG_3DPanel.Commands.Detail
                 Log($"---- VERTICAL (plane Y={ym:0.##}, view +Y, box Y {ym:0.##}..{y1:0.##} Z -5000..+100) ----");
                 var vClip = Clip(sources, x0, x1, ym, y1, -5000, 100);
                 Point3dCollection vPts = new Point3dCollection { new Point3d(x0, ym, 0), new Point3d(x1, ym, 0) };
-                var vert = RunStage("VERTICAL", vClip, vPts, Vector3d.ZAxis, Vector3d.YAxis);
+                var vert = RunStage("VERTICAL", vClip, vPts, Vector3d.ZAxis, Vector3d.YAxis, (x0, x1, ym, y1, -5000, 100));
                 // (x, ym, z) → (x + 20000, ym + dy + z, 0). A: dy = −10000.
                 // B: dy = −20000 (dưới A 10000) — +10000 sẽ chồng lên mặt bằng A (z ∈ −5000..+100).
                 Matrix3d VertMap(double dy) => Matrix3d.AlignCoordinateSystem(
@@ -193,6 +196,7 @@ namespace MCG_3DPanel.Commands.Detail
                     foreach (ObjectId sid in btr)
                     {
                         if (!(tr.GetObject(sid, OpenMode.ForRead) is Solid3d s)) continue;
+                        _srcIds.Add(sid); _srcXf = br.BlockTransform;
                         var c = (Solid3d)s.Clone();
                         c.TransformBy(br.BlockTransform);
                         outList.Add(c);
@@ -240,7 +244,8 @@ namespace MCG_3DPanel.Commands.Detail
         }
 
         /// <summary>Luôn chạy cả 2: A Section ngoài database; B database tạm chứa solid + Section (settings 2D, bỏ nét khuất).</summary>
-        static (SecOut A, SecOut B) RunStage(string tag, List<Solid3d> solids, Point3dCollection pts, Vector3d verticalDir, Vector3d wantView)
+        static (SecOut A, SecOut B) RunStage(string tag, List<Solid3d> solids, Point3dCollection pts, Vector3d verticalDir, Vector3d wantView,
+            (double x0, double x1, double y0, double y1, double z0, double z1) box)
         {
             if (solids.Count == 0) { Log($"  [{tag}] no clipped solids - skipped."); return (null, null); }
 
@@ -270,25 +275,47 @@ namespace MCG_3DPanel.Commands.Detail
             Database prevWorking = HostApplicationServices.WorkingDatabase;
             try
             {
-                var scratch = _host;
+                // B: WblockCloneObjects solid gốc (file 3D) -> database tạm; cắt hộp + Section ngay trong database tạm.
+                using (var scratch = new Database(true, true))
+                {
                 HostApplicationServices.WorkingDatabase = scratch;
+                ObjectId scratchMs = SymbolUtilityServices.GetBlockModelSpaceId(scratch);
+                var map = new IdMapping();
+                _host.WblockCloneObjects(_srcIds, scratchMs, map, DuplicateRecordCloning.Ignore, false);
                 using (Transaction tr = scratch.TransactionManager.StartTransaction())
                 {
-                    var ms = (BlockTableRecord)tr.GetObject(SymbolUtilityServices.GetBlockModelSpaceId(scratch), OpenMode.ForWrite);
+                    var ms = (BlockTableRecord)tr.GetObject(scratchMs, OpenMode.ForWrite);
                     var ids = new List<ObjectId>();
-                    foreach (var s in solids)
+                    int cloned = 0, kept = 0;
+                    foreach (IdPair p in map)
                     {
-                        var c = (Solid3d)s.Clone();
-                        ids.Add(ms.AppendEntity(c));
-                        tr.AddNewlyCreatedDBObject(c, true);
+                        if (!p.IsCloned || !p.IsPrimary) continue;
+                        if (!(tr.GetObject(p.Value, OpenMode.ForWrite) is Solid3d s)) continue;
+                        cloned++;
+                        s.TransformBy(_srcXf);
+                        Extents3d ext;
+                        try { ext = s.GeometricExtents; } catch { s.Erase(); continue; }
+                        if (ext.MaxPoint.X < box.x0 || ext.MinPoint.X > box.x1 || ext.MaxPoint.Y < box.y0 || ext.MinPoint.Y > box.y1
+                            || ext.MaxPoint.Z < box.z0 || ext.MinPoint.Z > box.z1) { s.Erase(); continue; }
+                        var bx = new Solid3d();
+                        bx.CreateBox(box.x1 - box.x0, box.y1 - box.y0, box.z1 - box.z0);
+                        bx.TransformBy(Matrix3d.Displacement(new Vector3d((box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2, (box.z0 + box.z1) / 2)));
+                        s.BooleanOperation(BooleanOperationType.BoolIntersect, bx);
+                        bx.Dispose();
+                        if (s.IsNull) { s.Erase(); continue; }
+                        ids.Add(s.ObjectId);
+                        kept++;
                     }
+                    Log($"  [{tag}/B] wblock-cloned {cloned}, kept after clip {kept}");
                     var secB = new Section(pts, verticalDir);
                     ms.AppendEntity(secB);
                     tr.AddNewlyCreatedDBObject(secB, true);
                     ConfigureSection(tag + "/B", secB, wantView);
                     ConfigureSettings(tag + "/B", tr, secB);
                     foreach (var id in ids) Generate(secB, (Entity)tr.GetObject(id, OpenMode.ForRead), outB);
-                    tr.Abort(); // không ghi gì vào file 3D
+                    tr.Abort();
+                }
+                HostApplicationServices.WorkingDatabase = prevWorking;
                 }
             }
             catch (System.Exception ex)
