@@ -44,6 +44,13 @@ namespace MCG_3DPanel.Commands.Detail
         }
     }
 
+    /// <summary>Viền Top Plate (AM_7), toạ độ plan, CCW; rỗng ⇒ không có.</summary>
+    public sealed class TopPlateResult
+    {
+        public List<P2> Outline = new List<P2>();
+        public List<string> Warnings = new List<string>();
+    }
+
     /// <summary>Cắt solid 3D (file &lt;panel&gt;_3D) ra hình Detail Plan / Section KHÔNG nét khuất — cách D của spike (Task 1):
     /// WblockClone vào bản vẽ 2D → cắt hộp → Section từng tấm (vết cắt) → gộp + in cạnh từng tấm → Section khối gộp (đường thấy).
     /// Mọi đối tượng tạm bị xoá; lỗi ⇒ không để lại gì rồi ném tiếp. Caller đã lock document của <c>target</c>.</summary>
@@ -138,62 +145,88 @@ namespace MCG_3DPanel.Commands.Detail
             return Run(target, src, items, job);
         }
 
-        /// <summary>Viền Top Plate trong vùng (cắt ngang Z = +t/2, đã cắt theo vùng), toạ độ plan, CCW; vòng ngoài lớn nhất. Rỗng ⇒ không có.</summary>
-        public static List<P2> TopPlateOutline(Database target, Detail3DSource src, DetailRegion regionPlan)
+        /// <summary>Viền Top Plate trong vùng (cắt ngang Z = +t/2, đã cắt theo vùng), toạ độ plan, CCW; vòng ngoài lớn nhất.
+        /// Outline rỗng ⇒ không có. Lỗi từng phần ⇒ Warnings.</summary>
+        public static TopPlateResult TopPlateOutline(Database target, Detail3DSource src, DetailRegion regionPlan)
         {
+            var res = new TopPlateResult();
             var plates = src.Solids.Where(s => s.Type == nameof(PartType.TopPlate)).ToList();
-            if (plates.Count == 0) return new List<P2>();
+            if (plates.Count == 0) return res;
             double t = src.TopPlateThickness > 0 ? src.TopPlateThickness : plates.Max(s => s.Extents.MaxPoint.Z);
             double zCut = t / 2;
             var region3 = To3D(src, regionPlan);
             double zMin = plates.Min(s => s.Extents.MinPoint.Z) - ZMargin, zMax = plates.Max(s => s.Extents.MaxPoint.Z) + ZMargin;
             var box = ClipBox.Plan(region3, zMin, zMax);
             var items = plates.Where(s => Meets(box, s)).ToList();
-            if (items.Count == 0) return new List<P2>();
+            if (items.Count == 0) return res;
             var b = box.Bounds();
             Matrix3d toOut = PlanOut(src, new Point3d((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, zCut));
 
-            var clones = new Clones();
+            var clones = new Clones(target);
             Solid3d template = null;
-            bool done = false;
             try
             {
                 template = Prism(region3, zMin, zMax);
                 clones.Clone(target, src, items);
+                Warn(res.Warnings, items.Count - clones.Primary.Count, "top plate solid(s) could not be copied from the 3D file");
                 var loops = new List<List<P2>>();
+                int open = 0;
                 using (Transaction tr = target.TransactionManager.StartTransaction())
                 {
                     Solid3d union = null;
+                    int clipFail = 0, uniteFail = 0;
                     foreach (var pair in clones.Primary)
                     {
                         var s = (Solid3d)tr.GetObject(pair.Value, OpenMode.ForWrite);
                         s.TransformBy(src.BlockToWcs);
-                        using (var bx = (Solid3d)template.Clone()) s.BooleanOperation(BooleanOperationType.BoolIntersect, bx);
+                        try { using (var bx = (Solid3d)template.Clone()) s.BooleanOperation(BooleanOperationType.BoolIntersect, bx); }
+                        catch (System.Exception) { clipFail++; continue; }   // bản chép vẫn bị xoá cuối
                         if (s.IsNull) continue;
-                        if (union == null) union = s;
-                        else union.BooleanOperation(BooleanOperationType.BoolUnite, s);
+                        if (union == null) { union = s; continue; }
+                        try { union.BooleanOperation(BooleanOperationType.BoolUnite, s); }
+                        catch (System.Exception) { uniteFail++; }
                     }
+                    Warn(res.Warnings, clipFail, "top plate solid(s) could not be clipped to the detail region and were skipped");
+                    Warn(res.Warnings, uniteFail, "top plate solid(s) could not be merged and were skipped");
                     if (union != null)
                     {
                         var pieces = new List<List<P2>>();
-                        using (Region r = union.GetSection(new Plane(new Point3d(0, 0, zCut), Vector3d.ZAxis)))
-                            if (r != null) Consume(ExplodeRegion(r), cv => { cv.TransformBy(toOut); pieces.Add(Sample2(cv)); });
-                        loops = SectionCurveRules.ChainLoops(pieces, JoinTol, out _);
+                        try
+                        {
+                            using (Region r = union.GetSection(new Plane(new Point3d(0, 0, zCut), Vector3d.ZAxis)))
+                                if (r != null) Consume(ExplodeRegion(r), cv => { cv.TransformBy(toOut); pieces.Add(Sample2(cv)); });
+                        }
+                        catch (System.Exception ex) { res.Warnings.Add("the top plate could not be sectioned: " + ex.Message); }
+                        loops = SectionCurveRules.ChainLoops(pieces, JoinTol, out open);
                     }
-                    clones.EraseAll(tr);
+                    Warn(res.Warnings, open, "top plate outline(s) did not close");
+                    Warn(res.Warnings, clones.EraseAll(tr), "temporary object(s) could not be erased");
                     tr.Commit();
                 }
-                done = true;
                 var best = loops.Where(l => l.Count >= 3).OrderByDescending(l => Math.Abs(SectionCurveRules.SignedArea(l))).FirstOrDefault();
-                if (best == null) return new List<P2>();
-                if (SectionCurveRules.SignedArea(best) < 0) best.Reverse();
-                return best;
+                if (best != null)
+                {
+                    if (SectionCurveRules.SignedArea(best) < 0) best.Reverse();
+                    res.Outline = best;
+                }
+                return res;
+            }
+            catch (System.Exception ex)
+            {
+                var wrapped = CleanupFailure(ex, clones.EraseLeftovers(target));
+                if (wrapped != null) throw wrapped;
+                throw;
             }
             finally
             {
                 template?.Dispose();
-                if (!done) clones.EraseLeftovers(target);
             }
+        }
+
+        static void Warn(List<string> warnings, int n, string text)
+        {
+            string w = SectionCleanupRules.Count(n, text);
+            if (w != null) warnings.Add(w);
         }
 
         // ─── Pipeline ──────────────────────────────────────────────────────────
@@ -203,10 +236,9 @@ namespace MCG_3DPanel.Commands.Detail
             var result = new SectionResult();
             if (items.Count == 0) return result;
 
-            var clones = new Clones();
+            var clones = new Clones(target);
             var members = new List<Member>();
             Solid3d template = null;
-            bool done = false;
             try
             {
                 template = MakeBox(job);
@@ -243,32 +275,36 @@ namespace MCG_3DPanel.Commands.Detail
                     if (clipFail > 0) result.Warnings.Add($"{clipFail} solid(s) could not be clipped to the detail region and were skipped");
                     if (footFail > 0) result.Warnings.Add($"{footFail} solid footprint(s) could not be read (weld-trace check skipped)");
 
-                    if (members.Count > 0) Generate(target, tr, job, members, result);
+                    if (members.Count > 0) Generate(target, tr, job, members, clones, result);
 
                     // 7. Xoá mọi đối tượng tạm
-                    int eraseFail = clones.EraseAll(tr);
-                    if (eraseFail > 0) result.Warnings.Add($"{eraseFail} temporary object(s) could not be erased");
+                    Warn(result.Warnings, clones.EraseAll(tr), "temporary object(s) could not be erased");
                     tr.Commit();
                 }
-                done = true;
                 return result;
+            }
+            catch (System.Exception ex)
+            {
+                result.DisposeCurves();
+                var wrapped = CleanupFailure(ex, clones.EraseLeftovers(target));
+                if (wrapped != null) throw wrapped;
+                throw;
             }
             finally
             {
                 template?.Dispose();
                 foreach (var m in members) foreach (var c in m.Seams) if (!c.IsDisposed) c.Dispose();
-                if (!done)
-                {
-                    result.DisposeCurves();
-                    clones.EraseLeftovers(target);
-                }
             }
         }
 
         /// <summary>Bước 3–6 trên các tấm đã cắt hộp (bản chép resident trong target).</summary>
-        static void Generate(Database target, Transaction tr, Job job, List<Member> members, SectionResult result)
+        static void Generate(Database target, Transaction tr, Job job, List<Member> members, Clones clones, SectionResult result)
         {
             var ms = (BlockTableRecord)tr.GetObject(SymbolUtilityServices.GetBlockModelSpaceId(target), OpenMode.ForWrite);
+            // khoá NOD có sẵn trước khi thêm Section (Section manager AutoCAD tự tạo khi chưa có)
+            var nodKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (DBDictionaryEntry e in (DBDictionary)tr.GetObject(target.NamedObjectsDictionaryId, OpenMode.ForRead))
+                nodKeys.Add(e.Key);
             var sec = new AcSection(new Point3dCollection { job.SecP1, job.SecP2 }, job.SecVertical);
             ms.AppendEntity(sec);
             tr.AddNewlyCreatedDBObject(sec, true);
@@ -285,10 +321,48 @@ namespace MCG_3DPanel.Commands.Detail
 
             GenerateOn(tr, job, sec, members, result);
 
-            // 7 (phần section): xoá section rồi settings của nó
-            sec.Erase();
-            var so = tr.GetObject(settingsId, OpenMode.ForWrite);
+            // 7 (phần section): settings TRƯỚC (có thể nằm trong extension dictionary của section ⇒ xoá section là xoá luôn), rồi section
+            var so = tr.GetObject(settingsId, OpenMode.ForWrite, true);
             if (!so.IsErased) so.Erase();
+            if (!sec.IsErased) sec.Erase();
+            RemoveNewNodEntries(tr, target, nodKeys, clones, result);
+        }
+
+        /// <summary>Khoá NOD do lần chạy này tạo (Section manager…) và nay rỗng ⇒ bỏ; khoá có sẵn không bao giờ đụng.</summary>
+        static void RemoveNewNodEntries(Transaction tr, Database target, HashSet<string> before, Clones clones, SectionResult result)
+        {
+            var nod = (DBDictionary)tr.GetObject(target.NamedObjectsDictionaryId, OpenMode.ForRead);
+            var added = new List<DBDictionaryEntry>();
+            foreach (DBDictionaryEntry e in nod) if (!before.Contains(e.Key)) added.Add(e);
+            int fail = 0;
+            foreach (var e in added)
+            {
+                try
+                {
+                    if (!clones.IsNew(e.Value)) continue;
+                    var obj = tr.GetObject(e.Value, OpenMode.ForWrite, true);
+                    if (obj.IsErased) continue;
+                    if (LiveItems(obj) > 0) continue;   // còn nội dung ⇒ giữ
+                    nod.UpgradeOpen();
+                    nod.Remove(e.Key);
+                    obj.Erase();
+                }
+                catch (System.Exception) { fail++; }
+            }
+            Warn(result.Warnings, fail, "temporary drawing dictionary entr(ies) could not be removed");
+        }
+
+        /// <summary>Số phần tử còn sống trong một đối tượng chứa (DBDictionary, Section manager); không phải đối tượng chứa ⇒ 0.</summary>
+        static int LiveItems(DBObject obj)
+        {
+            if (!(obj is System.Collections.IEnumerable en)) return 0;
+            int n = 0;
+            foreach (object x in en)
+            {
+                ObjectId id = x is ObjectId oid ? oid : x is DBDictionaryEntry de ? de.Value : ObjectId.Null;
+                if (id.IsNull || (!id.IsErased && id.IsValid)) n++;
+            }
+            return n;
         }
 
         static void GenerateOn(Transaction tr, Job job, AcSection sec, List<Member> members, SectionResult result)
@@ -454,6 +528,13 @@ namespace MCG_3DPanel.Commands.Detail
             public readonly Dictionary<ObjectId, ObjectId> Primary = new Dictionary<ObjectId, ObjectId>();
             readonly List<ObjectId> _dependents = new List<ObjectId>();
 
+            /// <summary>Handseed của target trước lần chạy: handle nhỏ hơn = bản ghi có sẵn, không bao giờ xoá.</summary>
+            public long Seed { get; }
+
+            public Clones(Database target) { Seed = target.Handseed.Value; }
+
+            public bool IsNew(ObjectId id) => SectionCleanupRules.CreatedThisRun(Seed, id.Handle.Value);
+
             public void Clone(Database target, Detail3DSource src, List<SolidItem> items)
             {
                 var ids = new ObjectIdCollection(items.Select(i => i.Id).ToArray());
@@ -483,32 +564,37 @@ namespace MCG_3DPanel.Commands.Detail
                 foreach (var id in Primary.Values.Concat(_dependents))
                 {
                     if (!id.IsValid || id.IsErased) continue;
+                    if (!IsNew(id)) continue;   // chặn độc lập với IsCloned: bản ghi có sẵn (layer, style…) không bao giờ bị xoá
                     try { tr.GetObject(id, OpenMode.ForWrite).Erase(); }
                     catch (System.Exception) { fail++; }
                 }
                 return fail;
             }
 
-            /// <summary>Đường lỗi: transaction chính đã huỷ; xoá phần WblockClone còn sót trong transaction riêng.</summary>
-            public void EraseLeftovers(Database target)
+            /// <summary>Đường lỗi: transaction chính đã huỷ; xoá phần WblockClone còn sót trong transaction riêng.
+            /// Trả mô tả lỗi dọn dẹp (null = sạch) để gắn vào lỗi gốc.</summary>
+            public string EraseLeftovers(Database target)
             {
-                if (Primary.Count == 0 && _dependents.Count == 0) return;
+                if (Primary.Count == 0 && _dependents.Count == 0) return null;
                 try
                 {
                     using (Transaction tr = target.TransactionManager.StartTransaction())
                     {
                         int fail = EraseAll(tr);
                         tr.Commit();
-                        if (fail > 0) System.Diagnostics.Debug.WriteLine($"[SectionEngine] cleanup: {fail} object(s) not erased");
+                        return fail > 0 ? $"{fail} temporary object(s) could not be erased" : null;
                     }
                 }
                 catch (System.Exception ex)
                 {
-                    // đang trên đường lỗi: không che lỗi gốc, chỉ ghi debug
-                    System.Diagnostics.Debug.WriteLine($"[SectionEngine] cleanup failed: {ex}");
+                    return "temporary objects could not be erased: " + ex.Message;
                 }
             }
         }
+
+        /// <summary>Đường lỗi: dọn dẹp; nếu dọn dẹp cũng lỗi thì bọc cả hai vào thông báo (lỗi gốc là InnerException), không thì ném lại nguyên lỗi gốc.</summary>
+        static System.Exception CleanupFailure(System.Exception original, string cleanup) =>
+            cleanup == null ? null : new InvalidOperationException(SectionCleanupRules.FailureMessage(original.Message, cleanup), original);
 
         /// <summary>File 3D đang mở trong AutoCAD ⇒ lock document đó khi đọc. Database phụ (không document) ⇒ null.</summary>
         static IDisposable LockSource(Database db)
