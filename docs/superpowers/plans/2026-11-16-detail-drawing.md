@@ -4,7 +4,7 @@
 
 **Goal:** Four commands, run in the 2D drawing, that cut detail plans, sections and detail views out of the panel's 3D solids and write them as Model Space blocks in the company's detail-sheet style.
 
-**Architecture:** All geometry comes from sectioning the solids of `<panel>_3D.dwg`, which is read in the background. The region is clipped by intersecting the solids with a box (rectangle or circle prism). After that, AutoCAD's `Section.GenerateSectionGeometry` returns the cut faces and the visible background curves. The rules are pure C# in `Services/Detail/` and are unit-tested: numbering, AM_8 offsets, cut-line frame, symbol decisions, the XData record, 3D-file matching and staleness. AutoCAD-bound code lives in `Commands/Detail/`. Its writer follows the Plan View pattern: one transaction, XData on every tool entity, nothing left behind on Esc or error.
+**Architecture:** All geometry comes from sectioning the solids of `<panel>_3D.dwg`, which is read in the background. The solids meeting the region are copied into the 2D drawing (`WblockCloneObjects`), clipped by a box (rectangle or circle prism), sectioned member by member for the cut faces, then united and imprinted with every member's edges so one hidden-line-removed section gives the visible curves. Temporary objects are erased. The rules are pure C# in `Services/Detail/` and are unit-tested: numbering, AM_8 offsets, cut-line frame, symbol decisions, the XData record, 3D-file matching and staleness. AutoCAD-bound code lives in `Commands/Detail/`. Its writer follows the Plan View pattern: one transaction, XData on every tool entity, nothing left behind on Esc or error.
 
 **Tech Stack:** C# / .NET 8, AutoCAD 2026 .NET API (Mechanical layers `Mechanical-AM_*`), WPF palette, xUnit (`tests/MCG_3DPanel.Tests`, net8.0-windows).
 
@@ -288,10 +288,12 @@ public sealed class Detail3DSource : IDisposable {
   public string FilePath { get; }
   public Matrix3d PlanTo3D { get; }   // = srcRef3D.BlockTransform * assyRef2D.BlockTransform.Inverse()
   public double TopPlateThickness { get; }
-  public IReadOnlyList<SolidItem> Solids { get; } // non-resident clones in 3D WCS (block-ref transform applied), Deleted rows skipped
-  public void Dispose();               // disposes clones + side Database (not an open document's db)
+  public Database SourceDb { get; }    // side Database, or the open 3D document's Database
+  public Matrix3d BlockToWcs { get; }  // MCG3D_* block reference BlockTransform in the 3D file
+  public IReadOnlyList<SolidItem> Solids { get; } // solids of the MCG3D_* block (ids in SourceDb, NOT clones), Deleted rows skipped
+  public void Dispose();               // disposes the side Database (never an open document's db)
 }
-public sealed class SolidItem { public Solid3d Solid; public string Type; public string Handle; }
+public sealed class SolidItem { public ObjectId Id; public Extents3d Extents; /* 3D WCS, BlockToWcs applied */ public string Type; public string Handle; }
 ```
 - Rules:
   - Candidate files are `<panel>_3D*.dwg` in the 2D drawing's folder, where panel = `_Assy` name without `_Assy`, sanitized as in `Panel3DPath.Target`.
@@ -314,17 +316,25 @@ public sealed class SolidItem { public Solid3d Solid; public string Type; public
 public sealed class CutFace   { public string Type; public string Handle; public List<P2> Outline; /* closed, section-plane 2D coords */ public double MinSigned, MaxSigned; }
 public sealed class EdgeCurve { public Curve Curve; /* 2D in section-plane coords, Z=0, not db-resident */ public bool OnBoundary; /* lies on the clip box side ⇒ break line */ public string Type; public string Handle; }
 public sealed class SectionResult { public List<CutFace> Cut = new(); public List<EdgeCurve> Visible = new(); public List<ParallelPlate> Parallel = new(); /* Section only */ }
-static SectionResult SectionEngine.Plan(Detail3DSource src, DetailRegion regionPlan);           // plane Z=-1, look -Z, box = region prism Z∈[-1, -(maxDepth)]; output coords = plan coords
-static SectionResult SectionEngine.Section(Detail3DSource src, DetailRegion regionPlan, SectionFrame f); // box = region prism ∩ slab(Start..End, 0..Depth along Look), Z all; output = SectionFrame.ToSection coords
-static List<P2>      SectionEngine.TopPlateOutline(Detail3DSource src, DetailRegion regionPlan); // TopPlate cut at Z=+t/2, clipped (for AM_7)
+static SectionResult SectionEngine.Plan(Database target, Detail3DSource src, DetailRegion regionPlan);         // plane Z=-1, look -Z, box = region prism Z∈[-1, -(maxDepth)]; output coords = plan coords
+static SectionResult SectionEngine.Section(Database target, Detail3DSource src, DetailRegion regionPlan, SectionFrame f); // box = region prism ∩ slab(Start..End, 0..Depth along Look), Z all; output = SectionFrame.ToSection coords
+static List<P2>      SectionEngine.TopPlateOutline(Database target, Detail3DSource src, DetailRegion regionPlan); // TopPlate cut at Z=+t/2, clipped (for AM_7)
 ```
 - Rules:
+- Pipeline (from the spike, see "Spike results (Task 1)"; `target` = the 2D drawing's Database, document locked):
+  1. `src.SourceDb.WblockCloneObjects(ids of the solids whose Extents meet the box, target Model Space, map, Ignore, false)`. Never `Clone()` a solid across databases (`eWrongDatabase`), and never section inside a Database that is disposed while its output is still used (AutoCAD crash 0xC0000005).
+  2. In one transaction on `target`: `TransformBy(src.BlockToWcs)` each copy, intersect it with the box (`BoolIntersect`), erase empty ones.
+  3. Per member: a database-resident `Section` (State Plane, `SectionSettings.CurrentSectionType = Section2d`) → `GenerateSectionGeometry` → **cut faces** (`intersectionBoundary`/`intersectionFill`) with that member's Type/Handle, plus the member's own projected edges (background + curveTangency) kept only for attribution in step 6.
+  4. Collect every member's Brep edges as curves (`Curve.CreateFromGeCurve`, falling back to a `Line` between the edge end points).
+  5. `BoolUnite` all clipped members into one, then `ImprintEntity` each collected edge on it (failures are expected on a few edges: count them, don't stop).
+  6. On the union, with `SetHiddenLine(Section2d, BackgroundGeometry, false)`: **Visible = background + curveTangency** (the joint lines between plates come back as tangency lines). Ignore the union's intersectionBoundary (imprinted edges duplicate it). Each visible curve gets the Type/Handle of the member whose own projected edges (step 3) cover it within 0.5 mm, otherwise "".
+  7. Erase every temporary object (copies, union, Section and its settings object) and commit. Output entities are non-resident and owned by `target`.
   - Only solids whose extents meet the box are processed.
   - The TopPlate is excluded from `Plan` (the Detail Plan shows structure; the plate edge comes from `TopPlateOutline`). It is included in `Section`.
   - `OnBoundary` = every point of the curve within 0.5 mm of a box side face that is **not** the section plane.
   - Region conversion: Spline ⇒ polyline approximation with chord error 0.1 mm.
   - Each `CutFace` gets the min/max signed extent of its **unclipped** solid along the look direction. This feeds `IsContinuous`.
-- `Parallel` (feeds the `$` rule) lists every non-HP solid that the plane does **not** cut but that lies inside the box, and whose plan footprint is parallel to the cut line within 1°. The footprint is the solid's cut at Z = −(its height)/2 run through `MinAreaRect`. `Visible` = at least one non-boundary `EdgeCurve` of that solid. `OutlineA/B` = the end points of its longest such curve.
+- `Parallel` (feeds the `$` rule) lists every non-HP solid that the plane does **not** cut but that lies inside the box, and whose plan footprint is parallel to the cut line within 1°. The footprint is the solid's cut at Z = −(its height)/2 run through `MinAreaRect`. `Visible` = at least one non-boundary `EdgeCurve` attributed to that solid (step 6). `OutlineA/B` = the end points of its longest such curve.
 - `CutMember` (Task 7) is built in the composer from each `CutFace`:
   - Thickness = `MinAreaRect(Outline).width`;
   - CutCenter = rectangle centre;
@@ -478,3 +488,23 @@ static DetailRecord DetailWriter.Read(Entity e);                    // null if a
   - K10: a region with no structure.
 - [ ] **Step 3: `deploy.bat` and `dotnet test tests/MCG_3DPanel.Tests`.** Expected: Build succeeded; all tests pass.
 - [ ] **Step 4: Commit** `feat(detail): Create Drawing menu items for details`.
+
+## Spike results (Task 1)
+
+Run by the engineer in AutoCAD 2026 (25.1), 2026-11-17, on `Plan - CAS-0062239.dwg` (7D-16P) with `7D-16P_Assy_3D.dwg`, region ≈ 1500–2300 × 1400–1750 at the panel's top-left corner (DET.1). Seven runs.
+
+| Approach | Result |
+|---|---|
+| A: non-resident `Section` on non-resident clones | Works (20/20 plan, 9–16 of 9–16 vertical). Background **includes hidden lines** (no settings without a database). |
+| B: clones appended to a scratch `Database` / to the read 3D Database | `eWrongDatabase` at `AppendEntity` both times: a `Clone()` of a solid from another database can't be appended. |
+| B: `WblockCloneObjects` into a scratch `Database`, section there | Works, but the output entities belong to the scratch database; disposing it before drawing them **crashed AutoCAD (0xC0000005)**. |
+| B: `WblockCloneObjects` into the 2D drawing, resident `Section`, `SetHiddenLine(Section2d, Background, false)` | Works. Hidden lines removed **only within each solid**: plan 120 vs 123 lines, vertical 77 vs 92. Engineer: plan still shows lines hidden by other members. |
+| C: B + `BoolUnite` of all clipped solids, section the union | Engineer: **no hidden lines**, but the joint lines between plates are lost. Union 20–30 ms, generate 30–90 ms. |
+| D: C + `ImprintEntity` of every member's Brep edges before sectioning | Engineer: **joint lines back, no hidden lines.** 324 edges collected (54 ms), 322 imprinted (2–4 `eGeneralModelingFailure`, harmless), imprint ~120–190 ms, generate 30–60 ms. Joint lines come back as **curveTangency** lines (61 vs 16). |
+
+Other findings:
+- Output types: Line, Arc, Ellipse (HP bulb), Hatch for fills; no Region/Spline seen. Background curves are already projected onto the section plane (plan Z = plane Z; vertical: constant Y = plane).
+- Cut plane at Z = −1 and Z = −2 give the same counts; −1 is fine.
+- The union's intersectionBoundary drops joints (58 vs 62) and the imprinted union duplicates it (114): take cut faces per member.
+- Time: whole spike ≈ 1.5–4.7 s with several redundant passes; `ReadDwgFile` ≈ 0.45 s; the box clip ≈ 0.25 s for 326 solids (extents pre-filter keeps 12–20).
+- **Decision (Task 10): approach D** as written in Task 10's pipeline. Task 9 hands over ids in the source Database, not clones.

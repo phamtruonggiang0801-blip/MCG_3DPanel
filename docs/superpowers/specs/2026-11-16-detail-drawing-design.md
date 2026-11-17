@@ -117,6 +117,10 @@ Both Detail Plan and Section are **sections of the 3D solids**:
 - Keep only solids whose extents meet the region (performance).
 - Use AutoCAD's `Section` object + `GenerateSectionGeometry`, which returns the cut boundary and the background
   (visible, hidden-line removed) geometry.
+- **No hidden lines, in plan or section** (engineer, 2026-11-17, after the spike). AutoCAD removes hidden lines only
+  inside one solid, so the visible background is taken from the **union** of the clipped solids, with every member's
+  edges **imprinted** on it first so the joint lines between plates stay. Cut faces are still taken member by member
+  (they are never hidden, and the members must stay identifiable).
   - **Detail Plan / Detail View**: horizontal plane just below the top plate, looking at the structure; depth = whole
     structure height. Region = rectangle/circle.
   - **Section**: vertical plane on the cut line, looking toward the chosen side; length = part of the cut line inside
