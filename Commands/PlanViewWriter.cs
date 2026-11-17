@@ -110,6 +110,7 @@ namespace MCG_3DPanel.Commands
                     if (id == assyRef) continue;
                     var ent = (Entity)tr.GetObject(id, OpenMode.ForRead);
                     var e = Describe(tr, ent, btrHandle, out Point3d at);
+                    if (e != null) e.HasDetailMark = HasDetailMark(ent);   // biên / nhãn / tiêu đề Detail: không đếm, không xoá
                     if (e == null || at.X < fx0 || at.X > fx1 || at.Y < fy0 || at.Y > fy1) continue;
                     if (HandDrawnRules.IsReplaceable(e, panel, known, plate)) r.Add(id);
                 }
@@ -422,6 +423,14 @@ namespace MCG_3DPanel.Commands
                     at = br.Position; return new PvExisting { Type = "BlockRef", BlockName = BlockName(tr, br), HasOwnMark = own, InModelSpace = true };
             }
             return null;
+        }
+
+        /// <summary>Có XData MCG3D_DETAIL (Detail Drawing ghi) — Plan View không bao giờ coi là phần vẽ tay.</summary>
+        private static bool HasDetailMark(Entity ent)
+        {
+            ResultBuffer rb = ent.GetXDataForApplication(MCG_3DPanel.Commands.Detail.DetailWriter.App);
+            if (rb == null) return false;
+            rb.Dispose(); return true;
         }
 
         private static bool IsOwn(Entity ent, string btrHandle)
