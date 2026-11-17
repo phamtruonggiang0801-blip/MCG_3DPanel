@@ -24,6 +24,7 @@ namespace MCG_3DPanel.Commands.Detail
         static Database _host; // database file 3D đã đọc (nguồn WblockCloneObjects cho B)
         static Database _target; // bản vẽ 2D đang mở
         static SecOut _lastC = new SecOut(); // kết quả cách C của lần RunStage gần nhất
+        static SecOut _lastD = new SecOut(); // cách D: C + in lại cạnh từng tấm
         static ObjectIdCollection _srcIds = new ObjectIdCollection();
         static Matrix3d _srcXf = Matrix3d.Identity;
 
@@ -116,6 +117,7 @@ namespace MCG_3DPanel.Commands.Detail
                 if (plan.A != null) Collect(plan.A, Matrix3d.Displacement(new Vector3d(20000, 0, 0)), drawList);
                 if (plan.B != null) Collect(plan.B, Matrix3d.Displacement(new Vector3d(20000, 10000, 0)), drawList);
                 Collect(_lastC, Matrix3d.Displacement(new Vector3d(20000, 20000, 0)), drawList); // C: +20000 Y
+                Collect(_lastD, Matrix3d.Displacement(new Vector3d(20000, 30000, 0)), drawList); // D: +30000 Y
 
                 // Thử thêm mặt cắt Z = −2 (chỉ log, không vẽ) — xem mặt cắt trùng mặt hộp có làm hỏng boundary không
                 Log("---- PLAN variant (plane Z=-2, same clipped solids, log only) ----");
@@ -123,7 +125,7 @@ namespace MCG_3DPanel.Commands.Detail
                 var plan2 = RunStage("PLAN@-2", planClip, planPts2, Vector3d.YAxis, -Vector3d.ZAxis, (x0, x1, y0, y1, -5000, -1));
                 plan2.A?.DisposeAll();
                 plan2.B?.DisposeAll();
-                _lastC.DisposeAll();
+                _lastC.DisposeAll(); _lastD.DisposeAll();
                 foreach (var s in planClip) s.Dispose();
 
                 // 5. Mặt cắt đứng: mặt phẳng qua đường giữa (trái→phải), nhìn +Y, hộp Y mid..top, Z −5000..+100
@@ -140,6 +142,7 @@ namespace MCG_3DPanel.Commands.Detail
                 if (vert.A != null) Collect(vert.A, VertMap(-10000), drawList);
                 if (vert.B != null) Collect(vert.B, VertMap(-20000), drawList);
                 Collect(_lastC, VertMap(-30000), drawList); // C: -30000 Y
+                Collect(_lastD, VertMap(-40000), drawList); // D: -40000 Y
                 foreach (var s in vClip) s.Dispose();
 
                 // 6. Vẽ vào bản vẽ hiện tại (kỹ sư đóng không lưu)
@@ -169,7 +172,7 @@ namespace MCG_3DPanel.Commands.Detail
                     }
                     tr.Commit();
                 }
-                Log($"Drawn {drawn} entities (failed {drawFail}), {sw.ElapsedMilliseconds} ms. Plan A at +20000 X, plan B +10000 Y, plan C +20000 Y; vertical A -10000 Y, vertical B -20000 Y, vertical C -30000 Y (all +20000 X).");
+                Log($"Drawn {drawn} entities (failed {drawFail}), {sw.ElapsedMilliseconds} ms. Plan A at +20000 X, plan B +10000 Y, plan C +20000 Y, plan D +30000 Y; vertical A -10000 Y, B -20000 Y, C -30000 Y, D -40000 Y (all +20000 X).");
                 foreach (var o in new[] { plan.A, plan.B, vert.A, vert.B })
                     o?.Fill.ForEach(e => { try { e.Dispose(); } catch { } });
             }
@@ -278,7 +281,7 @@ namespace MCG_3DPanel.Commands.Detail
             // B: WblockCloneObjects solid gốc (file 3D) -> CHÍNH bản vẽ 2D; cắt hộp + Section ở đó; output thuộc bản vẽ 2D;
             // xoá solid tạm + Section rồi commit. (Database tạm riêng => output dính database bị huỷ => crash 0xC0000005.)
             SecOut outB = new SecOut(), outB2 = new SecOut();
-            _lastC = new SecOut();
+            _lastC = new SecOut(); _lastD = new SecOut();
             sw.Restart();
             try
             {
@@ -322,6 +325,39 @@ namespace MCG_3DPanel.Commands.Detail
                     foreach (var id in ids) Generate(secB, (Entity)tr.GetObject(id, OpenMode.ForRead), outB2);
                     // C: gộp mọi solid đã cắt hộp thành 1 khối (BoolUnite) rồi cắt với HiddenLine = false
                     //    => AutoCAD bỏ cả nét bị solid KHÁC che. Đổi lại: mặt phẳng trùng nhau giữa 2 tấm bị hợp nhất (mất nét mối nối phẳng).
+                    // D: lấy cạnh của từng solid TRƯỚC khi gộp (để in lại đường nối sau khi gộp)
+                    var swD = Stopwatch.StartNew();
+                    var seamCurves = new List<Curve>();
+                    int edgeFail = 0;
+                    foreach (var id in ids)
+                    {
+                        try
+                        {
+                            using (var brep = new Autodesk.AutoCAD.BoundaryRepresentation.Brep((Solid3d)tr.GetObject(id, OpenMode.ForRead)))
+                                foreach (var e in brep.Edges)
+                                {
+                                    try
+                                    {
+                                        using (var gc = e.Curve)
+                                        {
+                                            Curve ent = null;
+                                            try { ent = Curve.CreateFromGeCurve(gc); } catch { }
+                                            if (ent == null && gc is ExternalCurve3d ext && ext.IsNativeCurve)
+                                            {
+                                                var nc = ext.NativeCurve;
+                                                if (nc is LinearEntity3d) ent = new Line(gc.StartPoint, gc.EndPoint);
+                                                else { try { ent = Curve.CreateFromGeCurve(nc); } catch { } }
+                                            }
+                                            if (ent == null) ent = new Line(gc.StartPoint, gc.EndPoint);
+                                            seamCurves.Add(ent);
+                                        }
+                                    }
+                                    catch { edgeFail++; }
+                                }
+                        }
+                        catch { edgeFail++; }
+                    }
+                    Log($"  [{tag}/D] edges collected {seamCurves.Count}, failed {edgeFail}, {swD.ElapsedMilliseconds} ms");
                     ConfigureSettings(tag + "/C", tr, secB, hidden: false);
                     var swC = Stopwatch.StartNew();
                     int uniteFail = 0;
@@ -337,6 +373,19 @@ namespace MCG_3DPanel.Commands.Detail
                         swC.Restart();
                         Generate(secB, u, _lastC);
                         Log($"  [{tag}/C] generate on union: {swC.ElapsedMilliseconds} ms");
+                        // D: in (imprint) cạnh từng tấm lên khối gộp -> đường nối thành cạnh thật, vẫn bị bỏ khi bị che
+                        swD.Restart();
+                        int imp = 0, impFail = 0; string impErr = null;
+                        foreach (var c in seamCurves)
+                        {
+                            try { u.ImprintEntity(c); imp++; }
+                            catch (System.Exception ex) { impFail++; if (impErr == null) impErr = ex.Message; }
+                            finally { c.Dispose(); }
+                        }
+                        Log($"  [{tag}/D] imprint ok {imp}, failed {impFail} (first: {impErr}), {swD.ElapsedMilliseconds} ms");
+                        swD.Restart();
+                        Generate(secB, u, _lastD);
+                        Log($"  [{tag}/D] generate on imprinted union: {swD.ElapsedMilliseconds} ms");
                     }
                     foreach (var id in ids) tr.GetObject(id, OpenMode.ForWrite).Erase();
                     secB.Erase();
@@ -355,6 +404,8 @@ namespace MCG_3DPanel.Commands.Detail
             outB2.DisposeAll();
             Log($"  [{tag}] C (union of all clipped solids, HiddenLine=false):");
             LogCounts(tag + "/C", _lastC);
+            Log($"  [{tag}] D (union + imprinted edges of every solid, HiddenLine=false):");
+            LogCounts(tag + "/D", _lastD);
             if (outB.FirstError != null) Log($"  [{tag}] B first exception: {outB.FirstError}");
             return (outA, outB);
         }
