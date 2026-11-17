@@ -4,7 +4,7 @@ namespace MCG_3DPanel.Services.PlanView
 {
     // ⚠️ File THUẦN C# — KHÔNG using Autodesk.* (link sang tests/MCG_3DPanel.Tests).
 
-    /// <summary>1 nét trong định nghĩa block. Kind "Line" (2 điểm) | "Polyline" (kín) | "Solid" (4 điểm) | "MText" | "BlockRef".
+    /// <summary>1 nét trong định nghĩa block. Kind "Line" (2 điểm) | "Polyline" (kín) | "Solid" (4 điểm) | "MText" | "BlockRef" | "Leader" (có mũi tên).
     /// Color 256 = ByLayer.</summary>
     public sealed class ShapeItem
     {
@@ -19,6 +19,8 @@ namespace MCG_3DPanel.Services.PlanView
         public double Rotation { get; set; }
         public string Block { get; set; }
         public double LtScale { get; set; } = 1;
+        /// <summary>Leader: dim style ưu tiên (thiếu ⇒ AM_ISO ⇒ dim style hiện hành).</summary>
+        public string DimStyle { get; set; }
     }
 
     public sealed class LayerSpec
@@ -57,6 +59,12 @@ namespace MCG_3DPanel.Services.PlanView
             {
                 P("Mechanical-AM_8", 0.5, (-19.9995, -1.0149), (20.0005, -1.0149), (20.0005, -9.0149), (-19.9995, -9.0149)),
             },
+            // Tờ Detail (dump 7D-16P): 2 leader ngược chiều, có mũi tên, dim style AM_ISO$7 — ký hiệu "tấm liên tục" trên mặt cắt.
+            ["Continious symbol"] = new List<ShapeItem>
+            {
+                new ShapeItem { Kind = "Leader", Layer = "Mechanical-AM_5", Points = { (-59.0088, 0), (12.5307, 0) }, DimStyle = "AM_ISO$7" },
+                new ShapeItem { Kind = "Leader", Layer = "Mechanical-AM_5", Points = { (41.5316, 0), (-30.3533, 0) }, DimStyle = "AM_ISO$7" },
+            },
             ["M.D1"] = Diagonal("D1"),
             ["M.D2"] = Diagonal("D2"),
             ["Measurements_Tolerances vFuture"] = new List<ShapeItem>
@@ -83,6 +91,7 @@ namespace MCG_3DPanel.Services.PlanView
             ["Mechanical-AM_0"] = new LayerSpec { Name = "Mechanical-AM_0", Color = 7, Linetype = "Continuous", LineweightHundredths = 40 },
             ["Mechanical-AM_3"] = new LayerSpec { Name = "Mechanical-AM_3", Color = 6, Linetype = "AM_ISO02W050", LineweightHundredths = 35 },
             ["Mechanical-AM_4"] = new LayerSpec { Name = "Mechanical-AM_4", Color = 3, Linetype = "Continuous", LineweightHundredths = 25 },
+            ["Mechanical-AM_5"] = new LayerSpec { Name = "Mechanical-AM_5", Color = 3, Linetype = "Continuous", LineweightHundredths = 25 },
             ["Mechanical-AM_6"] = new LayerSpec { Name = "Mechanical-AM_6", Color = 2, Linetype = "Continuous", LineweightHundredths = 35 },
             ["Mechanical-AM_8"] = new LayerSpec { Name = "Mechanical-AM_8", Color = 1, Linetype = "Continuous", LineweightHundredths = 25 },
             ["Mechanical-AM_7"] = new LayerSpec { Name = "Mechanical-AM_7", Color = 4, Linetype = "AM_ISO08W050", LineweightHundredths = 25 },

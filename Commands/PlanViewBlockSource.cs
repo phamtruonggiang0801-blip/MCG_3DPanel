@@ -170,6 +170,16 @@ namespace MCG_3DPanel.Commands
                             TextStyleId = SymbolTables.HasLive(ts, "STANDARD") ? SymbolTables.Live(ts, "STANDARD") : db.Textstyle,
                         };
                         break;
+                    case "Leader":
+                        var ld = new Leader();
+                        foreach (var q in s.Points) ld.AppendVertex(new Point3d(q.Item1, q.Item2, 0));
+                        var ds = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
+                        ObjectId style = SymbolTables.Live(ds, s.DimStyle ?? "");
+                        if (style.IsNull) style = SymbolTables.Live(ds, "AM_ISO");
+                        if (!style.IsNull) ld.DimensionStyle = style;
+                        ld.HasArrowHead = true;
+                        e = ld;
+                        break;
                     default:   // BlockRef — block lồng đã được vẽ/chép trước (Prepare xếp thứ tự)
                         e = new BlockReference(Point3d.Origin, SymbolTables.Require(bt, s.Block, "Block")) { Rotation = s.Rotation };
                         break;
