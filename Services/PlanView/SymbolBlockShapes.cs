@@ -21,6 +21,9 @@ namespace MCG_3DPanel.Services.PlanView
         public double LtScale { get; set; } = 1;
         /// <summary>Leader: dim style ưu tiên (thiếu ⇒ AM_ISO ⇒ dim style hiện hành).</summary>
         public string DimStyle { get; set; }
+        /// <summary>AttDef: tag + prompt; Text = giá trị mặc định; Points[0] = điểm căn (alignment), Attach = kiểu căn.</summary>
+        public string Tag { get; set; }
+        public string Prompt { get; set; }
     }
 
     public sealed class LayerSpec
@@ -64,6 +67,13 @@ namespace MCG_3DPanel.Services.PlanView
             {
                 new ShapeItem { Kind = "Leader", Layer = "Mechanical-AM_5", Points = { (-59.0088, 0), (12.5307, 0) }, DimStyle = "AM_ISO$7" },
                 new ShapeItem { Kind = "Leader", Layer = "Mechanical-AM_5", Points = { (41.5316, 0), (-30.3533, 0) }, DimStyle = "AM_ISO$7" },
+            },
+            // Title detail (dump bản vẽ kỹ sư 2026-11-18): chỉ 5 attribute, layer 0; chèn scale 10 ở tờ Detail 1:10.
+            ["DETAIL TITLE"] = new List<ShapeItem>
+            {
+                new ShapeItem { Kind = "AttDef", Layer = "0", Color = 161, Tag = "TITLE", Prompt = "NAMEOFDETAIL", Text = "DETAIL",
+                    Height = 3.5, Attach = "BottomCenter", Points = { (-0.0169, -0.74) } },
+                Note(-1.74), Note(-6.74), Note(-11.74), Note(-16.74),
             },
             ["M.D1"] = Diagonal("D1"),
             ["M.D2"] = Diagonal("D2"),
@@ -123,6 +133,10 @@ namespace MCG_3DPanel.Services.PlanView
 
         private static ShapeItem L(string layer, double x0, double y0, double x1, double y1, double lts)
             => new ShapeItem { Kind = "Line", Layer = layer, Points = { (x0, y0), (x1, y1) }, LtScale = lts };
+        private static ShapeItem Note(double y)
+            => new ShapeItem { Kind = "AttDef", Layer = "0", Color = 2, Tag = "NOTE", Prompt = "NOTE", Text = "", Height = 2.5,
+                Attach = "TopCenter", Points = { (-0.0462, y) } };
+
         private static ShapeItem L3(double x0, double y0, double x1, double y1)
             => new ShapeItem { Kind = "Line", Layer = "Mechanical-AM_3", Color = 32, Points = { (x0, y0), (x1, y1) } };
         private static ShapeItem S3(params (double, double)[] p)

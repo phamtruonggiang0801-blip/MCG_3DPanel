@@ -165,8 +165,13 @@ namespace MCG_3DPanel.Commands.Detail
             }
         }
 
-        /// <summary>Tiêu đề MText AM_1 h50, căn giữa dưới khung bao của reference, cách <paramref name="below"/>.
-        /// Chép XData MCG3D_DETAIL của reference (Tag reference trước).</summary>
+        /// <summary>Block tiêu đề như bản vẽ tay (dump 2026-11-18): reference "DETAIL TITLE" (TITLE + 4 dòng NOTE) layer 0, scale 10.</summary>
+        public const string TitleBlock = "DETAIL TITLE";
+        const double TitleScale = 10, TitleTop = 2.76;   // đỉnh chữ TITLE trên điểm chèn (đơn vị block): −0.74 + 3.5
+
+        /// <summary>Tiêu đề = block <see cref="TitleBlock"/> căn giữa dưới khung bao của reference, đỉnh chữ cách
+        /// <paramref name="below"/>; TITLE = <paramref name="text"/> (gạch chân "%%U"), NOTE để trống. Chép XData MCG3D_DETAIL của
+        /// reference (Tag reference trước). Block phải có sẵn (caller bổ sung trước).</summary>
         public static void AddTitle(Transaction tr, BlockReference br, string text, double below = 150)
         {
             var db = br.Database;
@@ -174,23 +179,31 @@ namespace MCG_3DPanel.Commands.Detail
             Point3d lo, hi;
             try { var ext = br.GeometricExtents; lo = ext.MinPoint; hi = ext.MaxPoint; }
             catch (Autodesk.AutoCAD.Runtime.Exception) { lo = hi = br.Position; }
-            var t = new MText();
-            t.SetDatabaseDefaults(db);
-            // MText không hiểu %%U (chỉ DBText) ⇒ gạch chân bằng \L
-            t.Contents = text != null && text.StartsWith("%%U", StringComparison.OrdinalIgnoreCase)
-                ? "{\\L" + text.Substring(3) + "}" : text ?? "";
-            t.TextHeight = 50;
-            t.Attachment = AttachmentPoint.TopCenter;
-            t.Location = new Point3d((lo.X + hi.X) / 2, lo.Y - below, 0);
-            t.Layer = "Mechanical-AM_1";
-            var ts = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
-            ObjectId style = SymbolTables.Live(ts, TextStyle);
-            if (!style.IsNull) t.TextStyleId = style;
+            string title = text ?? "";
+            if (!title.StartsWith("%%U", StringComparison.OrdinalIgnoreCase)) title = "%%U" + title;
+
+            var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+            ObjectId tid = SymbolTables.Require(bt, TitleBlock, "Block");
+            var tref = new BlockReference(new Point3d((lo.X + hi.X) / 2, lo.Y - below - TitleTop * TitleScale, 0), tid)
+            {
+                ScaleFactors = new Scale3d(TitleScale),
+            };
+            tref.SetDatabaseDefaults(db);
+            tref.Layer = "0";
             var owner = (BlockTableRecord)tr.GetObject(br.OwnerId, OpenMode.ForWrite);
-            owner.AppendEntity(t);
-            tr.AddNewlyCreatedDBObject(t, true);
+            owner.AppendEntity(tref);
+            tr.AddNewlyCreatedDBObject(tref, true);
+            foreach (ObjectId id in (BlockTableRecord)tr.GetObject(tid, OpenMode.ForRead))
+            {
+                if (!(tr.GetObject(id, OpenMode.ForRead) is AttributeDefinition ad) || ad.Constant) continue;
+                var ar = new AttributeReference();
+                ar.SetAttributeFromBlock(ad, tref.BlockTransform);
+                ar.TextString = string.Equals(ad.Tag, "TITLE", StringComparison.OrdinalIgnoreCase) ? title : ad.TextString;
+                tref.AttributeCollection.AppendAttribute(ar);
+                tr.AddNewlyCreatedDBObject(ar, true);
+            }
             ResultBuffer xd = br.GetXDataForApplication(App);
-            if (xd != null) using (xd) t.XData = xd;
+            if (xd != null) using (xd) tref.XData = xd;
         }
 
         /// <summary>XData MCG3D_DETAIL = JSON của <paramref name="rec"/>, cắt chuỗi 255 ký tự. Entity phải nằm trong bản vẽ.</summary>

@@ -50,6 +50,26 @@ namespace MCG_3DPanel.Services.Detail
         public static P2 LabelShift(DetailRegion oldRegion, DetailRegion newRegion, double gap) =>
             DetailCommandRules.LabelAt(newRegion, gap) - DetailCommandRules.LabelAt(oldRegion, gap);
 
+        /// <summary>Độ dời Leader Note khi biên đổi: theo góc biên mà mũi tên (<paramref name="head"/>) đang chỉ — góc cùng vai trò
+        /// (cùng phía so với tâm) trên biên mới; tròn ⇒ điểm cùng hướng trên đường tròn mới. Khác loại biên ⇒ theo góc trên-phải.</summary>
+        public static P2 LabelShift(DetailRegion oldRegion, DetailRegion newRegion, P2 head)
+        {
+            if (oldRegion.IsCircle && newRegion.IsCircle)
+            {
+                var d = head - oldRegion.Center;
+                double l = d.Length;
+                if (l < 1e-9) return newRegion.Center - oldRegion.Center;
+                var u = d * (1 / l);
+                return (newRegion.Center + u * newRegion.Radius) - (oldRegion.Center + u * oldRegion.Radius);
+            }
+            if (oldRegion.IsCircle || newRegion.IsCircle) return LabelShift(oldRegion, newRegion, 0);
+            P2 oc = DetailCommandRules.Centre(oldRegion), nc = DetailCommandRules.Centre(newRegion);
+            P2 c = DetailCommandRules.LabelHead(oldRegion, head);
+            P2 v = c - oc;
+            P2 n = newRegion.Corners.OrderByDescending(k => (k - nc).Dot(v)).First();
+            return n - c;
+        }
+
         /// <summary>Gốc block section mới (toạ độ section) giữ nguyên ánh xạ plan → block khi đầu trái đường cắt dời theo vùng:
         /// x mới = x cũ + (Start cũ − Start mới)·Right; y (cao độ) giữ. Thiếu khung ⇒ null (dùng tâm hình).</summary>
         public static P2? SectionBase(P2 oldBase, SectionFrame oldFrame, SectionFrame newFrame)

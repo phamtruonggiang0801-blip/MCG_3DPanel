@@ -180,6 +180,16 @@ namespace MCG_3DPanel.Commands
                         ld.HasArrowHead = true;
                         e = ld;
                         break;
+                    case "AttDef":
+                        var tst = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
+                        var at = new Point3d(s.Points[0].Item1, s.Points[0].Item2, 0);
+                        var ad = new AttributeDefinition(at, s.Text ?? "", s.Tag, s.Prompt ?? s.Tag,
+                            SymbolTables.HasLive(tst, "STANDARD") ? SymbolTables.Live(tst, "STANDARD") : db.Textstyle)
+                        { Height = s.Height };
+                        ad.Justify = (AttachmentPoint)Enum.Parse(typeof(AttachmentPoint), s.Attach);
+                        ad.AlignmentPoint = at;   // căn ≠ BaseLeft ⇒ vị trí = điểm căn
+                        e = ad;
+                        break;
                     default:   // BlockRef — block lồng đã được vẽ/chép trước (Prepare xếp thứ tự)
                         e = new BlockReference(Point3d.Origin, SymbolTables.Require(bt, s.Block, "Block")) { Rotation = s.Rotation };
                         break;

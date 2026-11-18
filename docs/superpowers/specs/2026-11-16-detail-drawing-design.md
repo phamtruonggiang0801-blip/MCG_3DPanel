@@ -54,11 +54,19 @@ of the palette and as command-line commands:
 2. Tool resolves the panel under the rectangle, reads its 3D file, builds `<panel>_DET.n` (next free n).
 3. The block follows the cursor; user clicks the insertion point. Inserted at **scale 1**.
 4. The Plan View is **not modified** except: the `AM_7` rectangle is kept and the detail name is added as a leader note
-   (as the AMNOTE leader notes of the samples, `AM_5`): arrow at the top-right corner, 45° out, shelf under the name
-   (DBText h 150). `%%U<name>` (AM_1, h 50) is placed under the inserted block.
+   like the AMNOTE leader note of the samples (dump 2026-11-18: `AM_5`, MText `DET.1` h 150 colour 2): right after the
+   rectangle is drawn the user picks where the name goes (preview follows the cursor). Arrow at the boundary corner
+   nearest that point, break at the point, shelf running away from the boundary, name on the shelf (50 from the break,
+   40 above). The title under the inserted block is the block `DETAIL TITLE` (as the samples: attributes TITLE + 4 ×
+   NOTE, layer 0, scale 10), TITLE = `%%UDETAIL n`. The block is drawn by the tool when missing (not in CAS.dwt).
 
-Name prompt `Detail name <DETAIL n>:` (Enter = suggestion), no scale prompt (engineer 2026-11-18). The name is text
-only; block names and section numbers keep `DET.n`.
+Name prompt `Detail name <DET.n>:` (Enter = suggestion), no scale prompt (engineer 2026-11-18). The leader note shows
+the name; the title turns `DET.x` into `DETAIL x` (other names as typed). Block names and section numbers keep `DET.n`.
+Section titles use the same `DETAIL TITLE` block (`%%UnA-nA`).
+
+**Deleting a section:** erase its block reference (and title), then run Update Details: section marks are only
+redrawn for section blocks that still have a reference. Changing a section = delete it and make a new one.
+
 
 ### 2. Section Detail
 
@@ -164,8 +172,9 @@ Rejected:
 | Fitting `tv` blocks (from 2D) | `AM_2` |
 | Break where the region boundary cuts through material | `AM_4`, linetype `amzigzag` |
 | Section mark arrows + letter | `AM_10` (text h 30); arrows linetype `Continuous` (AM_10 is dashed) |
-| Titles | `AM_1` (text h 50) |
+| Titles | block `DETAIL TITLE`, layer 0, scale 10 (attribute TITLE, underlined) |
 | Continuous symbol + thickness text | `AM_5` (block `Continious symbol`, text) |
+| Detail name on the plan (leader note) | `AM_5`: Leader (AM_ISO) + MText h 150 colour 2 |
 | Weld trace mark `$` | `AM_10`, MText h 35 |
 
 In a section, the far face of the clip box (parallel to the cut) does not make breaks: its edges project onto the picture without depth and would wrongly mark lines in front as breaks (9B-9B, 2026-11-18).
@@ -243,6 +252,3 @@ In a section, the far face of the clip box (parallel to the cut) does not make b
 - Section mark arrow block: reuse the samples' arrow block shape (anonymous `A$C…` in samples) — drawn by the tool if
   absent.
 - Performance on large panels (7D-17C ≈ 15 m).
-
-**Joined lines (engineer 2026-11-18):** visible lines and break lines that share end points are joined into polylines
-(arcs kept as bulges; splines / ellipses stay separate; branch points end a polyline), on the same layer as before.

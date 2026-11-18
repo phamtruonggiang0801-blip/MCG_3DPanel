@@ -103,6 +103,16 @@ namespace MCG_3DPanel.Tests
         // ─── Dời nhãn / giữ gốc section ────────────────────────────────────────
 
         [Fact]
+        public void LabelShift_FollowsTheCornerTheLeaderPointsAt()
+        {
+            // mũi tên ở góc trên-trái (0,50); khung mới rộng sang trái + cao lên ⇒ góc trên-trái mới (-40,80)
+            var s = DetailUpdateRules.LabelShift(Rect(0, 0, 100, 50), Rect(-40, 0, 100, 80), new P2(0, 50));
+            Assert.Equal(-40, s.X, 6); Assert.Equal(30, s.Y, 6);
+            var c = DetailUpdateRules.LabelShift(DetailRegion.FromCircle(new P2(0, 0), 100), DetailRegion.FromCircle(new P2(10, 0), 200), new P2(0, 100));
+            Assert.Equal(10, c.X, 6); Assert.Equal(100, c.Y, 6);
+        }
+
+        [Fact]
         public void LabelShift_FollowsTopRightCorner()
         {
             var s = DetailUpdateRules.LabelShift(Rect(0, 0, 100, 50), Rect(0, 0, 160, 80), 50);

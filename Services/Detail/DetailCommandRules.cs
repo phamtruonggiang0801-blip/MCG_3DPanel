@@ -48,27 +48,46 @@ namespace MCG_3DPanel.Services.Detail
             return new P2(corner.X + gap, corner.Y + gap);
         }
 
-        /// <summary>Leader chỉ vào biên như Leader Note (AMNOTE) trên 5 mẫu: mũi tên tại góc trên-phải của biên, chéo 45° ra ngoài
-        /// <paramref name="rise"/> rồi đoạn ngang đỡ chữ dài bằng chữ + 2·<paramref name="gap"/>; chữ (trái-dưới) nằm trên đoạn ngang.</summary>
-        public static (P2 Head, P2 Elbow, P2 End, P2 Text) LabelLeader(DetailRegion r, double textWidth, double rise, double gap)
+        /// <summary>Tên ở Leader Note trên plan: gõ (bỏ "%%U", trim) hoặc rỗng ⇒ "DET.n" như Leader Note của mẫu (dump 2026-11-18).</summary>
+        public static string LabelName(string typed, int n)
         {
-            P2 head = LabelAt(r, 0);
-            P2 elbow = new P2(head.X + rise, head.Y + rise);
-            return (head, elbow, new P2(elbow.X + textWidth + 2 * gap, elbow.Y), new P2(elbow.X + gap, elbow.Y + gap));
+            string t = (typed ?? "").Trim();
+            if (t.StartsWith("%%U", StringComparison.OrdinalIgnoreCase)) t = t.Substring(3).Trim();
+            return t.Length == 0 ? DetailNaming.PlanLabel(n) : t;
         }
 
-        /// <summary>Tên gõ không có "%%U" (chữ ở leader); rỗng ⇒ "DETAIL n".</summary>
-        public static string PlainName(string title, int n)
+        /// <summary>TITLE của block DETAIL TITLE (gạch chân): "DET.x" ⇒ "%%UDETAIL x" như mẫu tay; tên khác giữ nguyên.</summary>
+        public static string TitleOf(string label)
         {
-            string t = string.IsNullOrWhiteSpace(title) ? DetailNaming.DetailTitle(n) : title.Trim();
-            return t.StartsWith("%%U", StringComparison.OrdinalIgnoreCase) ? t.Substring(3) : t;
+            string t = (label ?? "").Trim();
+            if (t.StartsWith("DET.", StringComparison.OrdinalIgnoreCase) && t.Length > 4) t = "DETAIL " + t.Substring(4).Trim();
+            return "%%U" + t;
         }
 
-        /// <summary>Tiêu đề Detail View: tên gõ (rỗng ⇒ "DETAIL n") có "%%U" phía trước (không lặp nếu đã gõ).</summary>
-        public static string ViewTitle(string typed, int n)
+        /// <summary>Đầu mũi tên của Leader Note: góc biên gần điểm chọn nhất (tròn ⇒ điểm trên đường tròn theo hướng điểm chọn).</summary>
+        public static P2 LabelHead(DetailRegion r, P2 pick)
         {
-            if (string.IsNullOrWhiteSpace(typed)) return DetailNaming.DetailTitle(n);
-            return typed.StartsWith("%%U", StringComparison.OrdinalIgnoreCase) ? typed : "%%U" + typed;
+            if (r.IsCircle)
+            {
+                var d = pick - r.Center;
+                double l = d.Length;
+                return l < 1e-9 ? new P2(r.Center.X + r.Radius, r.Center.Y) : r.Center + d * (r.Radius / l);
+            }
+            return r.Corners.OrderBy(c => (c - pick).Length).First();
+        }
+
+        /// <summary>Leader Note như mẫu: mũi tên tại <see cref="LabelHead"/>, gãy tại điểm người dùng chọn (<paramref name="pick"/>),
+        /// đoạn ngang đỡ chữ chạy RA XA biên (điểm chọn bên trái đầu mũi tên ⇒ sang trái). Chữ dài <paramref name="textWidth"/>, cách
+        /// điểm gãy <paramref name="gap"/>, nằm trên đoạn ngang <paramref name="lift"/>. <c>TextCorner</c> = góc trái-dưới của chữ.</summary>
+        public static (P2 Head, P2 Elbow, P2 End, P2 TextCorner, bool Left) LabelLeader(DetailRegion r, P2 pick, double textWidth,
+            double gap, double lift)
+        {
+            P2 head = LabelHead(r, pick);
+            bool left = pick.X < head.X;
+            double run = textWidth + 2 * gap;
+            P2 end = new P2(pick.X + (left ? -run : run), pick.Y);
+            P2 text = new P2(left ? pick.X - gap - textWidth : pick.X + gap, pick.Y + lift);
+            return (head, pick, end, text, left);
         }
 
         /// <summary>Câu hỏi Continue/Cancel khi file 3D có thể đã cũ; Fresh/Unknown ⇒ null (không hỏi).</summary>

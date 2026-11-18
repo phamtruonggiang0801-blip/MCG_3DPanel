@@ -202,63 +202,6 @@ namespace MCG_3DPanel.Services.Detail
             return c;
         }
 
-        /// <summary>Nối các đoạn (thẳng hoặc cung: <c>Bulge</c> của polyline từ A tới B) chung đầu mút (≤ <paramref name="tol"/>)
-        /// thành chuỗi polyline. Chuỗi dừng ở đầu tự do và nút rẽ nhánh (≥ 3 đoạn), vòng kín ⇒ <c>Closed</c>. Đảo chiều đoạn ⇒
-        /// đổi dấu bulge. <c>Bulges[i]</c> thuộc đoạn Pts[i] → Pts[i+1] (kín: đoạn cuối → Pts[0]).</summary>
-        public static List<(List<P2> Pts, List<double> Bulges, bool Closed)> Chain(IList<(P2 A, P2 B, double Bulge)> segs, double tol)
-        {
-            var res = new List<(List<P2>, List<double>, bool)>();
-            int n = segs?.Count ?? 0;
-            if (n == 0) return res;
-            // Gom đầu mút thành nút
-            var nodes = new List<P2>();
-            int Node(P2 p)
-            {
-                for (int k = 0; k < nodes.Count; k++) if ((nodes[k] - p).Length <= tol) return k;
-                nodes.Add(p);
-                return nodes.Count - 1;
-            }
-            var ends = new (int a, int b)[n];
-            for (int i = 0; i < n; i++) ends[i] = (Node(segs[i].A), Node(segs[i].B));
-            var inc = new List<int>[nodes.Count];
-            for (int k = 0; k < nodes.Count; k++) inc[k] = new List<int>();
-            for (int i = 0; i < n; i++)
-            {
-                if (ends[i].a == ends[i].b) continue;   // đoạn suy biến
-                inc[ends[i].a].Add(i); inc[ends[i].b].Add(i);
-            }
-            var used = new bool[n];
-            for (int i = 0; i < n; i++) if (ends[i].a == ends[i].b) used[i] = true;
-
-            (List<P2>, List<double>, bool) Walk(int start, int first)
-            {
-                var pts = new List<P2> { nodes[start] };
-                var bul = new List<double>();
-                int at = start, seg = first;
-                while (true)
-                {
-                    used[seg] = true;
-                    bool fwd = ends[seg].a == at;
-                    int next = fwd ? ends[seg].b : ends[seg].a;
-                    bul.Add(fwd ? segs[seg].Bulge : -segs[seg].Bulge);
-                    if (next == start) return (pts, bul, true);
-                    pts.Add(nodes[next]);
-                    at = next;
-                    if (inc[at].Count != 2) return (pts, bul, false);
-                    int other = inc[at][0] == seg ? inc[at][1] : inc[at][0];
-                    if (used[other]) return (pts, bul, false);
-                    seg = other;
-                }
-            }
-            // Chuỗi hở: bắt đầu từ đầu tự do / nút rẽ nhánh
-            for (int k = 0; k < nodes.Count; k++)
-                if (inc[k].Count != 2)
-                    foreach (int s in inc[k]) if (!used[s]) res.Add(Walk(k, s));
-            // Còn lại: vòng kín
-            for (int i = 0; i < n; i++) if (!used[i]) res.Add(Walk(ends[i].a, i));
-            return res;
-        }
-
         /// <summary>Vòng <paramref name="i"/> là lỗ khoét: đỉnh đầu nằm trong một vòng khác lớn hơn (Top Plate có lỗ ⇒ section ra
         /// vòng ngoài + vòng lỗ).</summary>
         public static bool IsHole(IList<List<P2>> loops, int i)
