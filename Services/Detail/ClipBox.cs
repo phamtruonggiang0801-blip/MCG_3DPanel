@@ -10,7 +10,7 @@ namespace MCG_3DPanel.Services.Detail
     public sealed class ClipBox
     {
         /// <summary>Mặt đứng: điểm trên mặt + pháp tuyến hướng vào trong (đơn vị).</summary>
-        public sealed class Face { public P2 Point; public P2 Normal; public bool IsSection; }
+        public sealed class Face { public P2 Point; public P2 Normal; public bool IsSection, IsBack; }
 
         public readonly List<Face> Sides = new List<Face>();
         public bool HasCircle;
@@ -54,8 +54,11 @@ namespace MCG_3DPanel.Services.Detail
             double ll = look.Length;
             var n = look * (1 / ll);
             foreach (var f in b.Sides)
+            {
                 if (f.Normal.Dot(n) > 1 - 1e-9 && Math.Abs((f.Point - start).Dot(n)) < CoplanarTol)
                     f.IsSection = true;
+                else if (f.Normal.Dot(n) < -1 + 1e-6) f.IsBack = true;   // mặt xa song song mặt cắt
+            }
             return b;
         }
 
@@ -129,8 +132,10 @@ namespace MCG_3DPanel.Services.Detail
             return !(maxX < b.minX || minX > b.maxX || maxY < b.minY || minY > b.maxY || maxZ < ZMin || minZ > ZMax);
         }
 
-        /// <summary>Mọi điểm nằm trong tol của CÙNG một mặt hộp không phải mặt cắt ⇒ đường biên (break line).</summary>
-        public bool OnSideFace(IList<(P2 xy, double z)> pts, double tol)
+        /// <summary>Mọi điểm nằm trong tol của CÙNG một mặt hộp không phải mặt cắt ⇒ đường biên (break line).
+        /// <paramref name="includeBack"/> = false: bỏ mặt xa song song mặt cắt — cạnh trên đó chiếu lên hình mất độ sâu nên
+        /// trùng nhầm nét thấy phía trước (9B-9B, kỹ sư 2026-11-18).</summary>
+        public bool OnSideFace(IList<(P2 xy, double z)> pts, double tol, bool includeBack = true)
         {
             if (pts == null || pts.Count == 0) return false;
             bool All(Func<P2, double, bool> near)
@@ -140,7 +145,7 @@ namespace MCG_3DPanel.Services.Detail
             }
             foreach (var f in Sides)
             {
-                if (f.IsSection) continue;
+                if (f.IsSection || (f.IsBack && !includeBack)) continue;
                 if (All((xy, z) => Math.Abs((xy - f.Point).Dot(f.Normal)) <= tol)) return true;
             }
             if (HasCircle && All((xy, z) => Math.Abs((xy - Center).Length - Radius) <= tol)) return true;

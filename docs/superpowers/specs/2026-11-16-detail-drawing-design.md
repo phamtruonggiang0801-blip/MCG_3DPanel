@@ -156,6 +156,8 @@ Rejected:
 | Wire-guide path (from 2D) | `AM_7`, width 3 |
 | Fitting `tv` blocks (from 2D) | `AM_2` |
 | Break where the region boundary cuts through material | `AM_4`, linetype `amzigzag` |
+
+In a section, the far face of the clip box (parallel to the cut) does not make breaks: its edges project onto the picture without depth and would wrongly mark lines in front as breaks (9B-9B, 2026-11-18).
 | Section mark arrows + letter | `AM_10` (text h 30); arrows linetype `Continuous` (AM_10 is dashed) |
 | Titles | `AM_1` (text h 50) |
 | Continuous symbol + thickness text | `AM_5` (block `Continious symbol`, text) |
@@ -174,7 +176,9 @@ Rejected:
   2026-11-18 (7A-7A review): the lines that get `$` are **joint lines between two parallel plates** (also when the
   thickness changes, e.g. 10 → 6) and **end lines** of a parallel plate. No `$` for face plates, deck plate, flanges,
   HP or FB, nor for an end line that meets an HP/FB (it coincides with the HP/FB edge). Horizontal lines (top/bottom
-  edges) never get one; the same line found twice gets one `$`.
+  edges) never get one. An end line that runs on in line with an HP/FB edge and touches it (a wall ending under a
+  hanging HP, 9A-9A) counts as meeting the HP. Lines closer than 40 mm get one `$`: the joint line wins over the
+  plate's own bevel-start line (1:4 chamfer, 9B-9B), else the longest.
 - **Section mark arrows** sit **outside** the DET picture: the cut line is extended past the extents of the DET
   content by 250 (samples: 240–330), arrows at those ends.
 - **AM_8** also applies to cut HP webs in the Detail Plan (*my call*: everything cut gets marked).

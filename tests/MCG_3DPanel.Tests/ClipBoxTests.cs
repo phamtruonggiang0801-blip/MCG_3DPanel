@@ -83,6 +83,8 @@ public class ClipBoxTests
         Assert.False(b.OnSideFace(Pts((10, 50, -10), (150, 50, -10)), 0.5));   // trên mặt cắt
         Assert.True(b.OnSideFace(Pts((0, 60, -10), (0, 90, -200)), 0.5));      // đầu slab x=0
         Assert.True(b.OnSideFace(Pts((20, 100, -10), (120, 100, -10)), 0.5));  // mặt sau
+        Assert.False(b.OnSideFace(Pts((20, 100, -10), (120, 100, -10)), 0.5, includeBack: false));   // 9B-9B: bỏ mặt xa
+        Assert.True(b.OnSideFace(Pts((0, 60, -10), (0, 90, -200)), 0.5, includeBack: false));       // đầu slab vẫn là biên
         Assert.True(b.OnSideFace(Pts((20, 60, 30), (120, 80, 30)), 0.5));      // mặt trên
         Assert.False(b.OnSideFace(Pts((20, 60, -10), (120, 80, -10)), 0.5));
     }

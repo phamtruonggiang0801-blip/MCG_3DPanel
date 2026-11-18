@@ -432,7 +432,7 @@ namespace MCG_3DPanel.Commands.Detail
                             try
                             {
                                 var pts = Sample3(ent);
-                                if (job.Box.OnSideFace(pts.Select(p => (new P2(p.X, p.Y), p.Z)).ToList(), Tol))
+                                if (job.Box.OnSideFace(pts.Select(p => (new P2(p.X, p.Y), p.Z)).ToList(), Tol, includeBack: false))
                                     boundary.Add(pts.Select(p => XY(p.TransformBy(job.ToOut))).ToList());
                             }
                             catch (System.Exception) { edgeFail++; }
@@ -535,12 +535,19 @@ namespace MCG_3DPanel.Commands.Detail
             // "$" (kỹ sư 2026-11-18): nét đứng của tấm song song — nét nối giữa hai tấm song song và nét đầu tấm; không cho
             // face plate / tấm boong / HP / FB, không cho đầu tấm nối vào HP/FB. Mỗi nét một "$".
             var right = new P2(job.Right3.X, job.Right3.Y);
-            var candidates = new List<IList<P2>>();
-            foreach (var m in live)
+            var parallel = live.Where(m => !m.Cut && m.FootAxis != null && SectionSymbolRules.TakesWeldTrace(m.Item.Type)
+                                           && SectionCurveRules.IsParallel(m.FootAxis.Value, right, ParallelDeg)).ToList();
+            var candidates = new List<(IList<P2>, bool)>();
+            foreach (var m in parallel)
             {
-                if (m.Cut || m.FootAxis == null || !SectionSymbolRules.TakesWeldTrace(m.Item.Type)) continue;
-                if (!SectionCurveRules.IsParallel(m.FootAxis.Value, right, ParallelDeg)) continue;
-                candidates.AddRange(result.Visible.Where(v => v.Handle == m.Item.Handle && !v.OnBoundary).Select(v => (IList<P2>)Sample2(v.Curve)));
+                // nét NỐI = cũng là cạnh của một tấm song song khác (khác với nét bắt đầu vát của chính tấm)
+                var otherEdges = parallel.Where(o => !ReferenceEquals(o, m)).SelectMany(o => o.Edges2D).Select(e => (IList<P2>)e).ToList();
+                foreach (var v in result.Visible.Where(v => v.Handle == m.Item.Handle && !v.OnBoundary))
+                {
+                    var pts = Sample2(v.Curve);
+                    bool joint = otherEdges.Count > 0 && SectionCurveRules.Covers(SectionCurveRules.Densify(pts, CoverStep), otherEdges, Tol);
+                    candidates.Add((pts, joint));
+                }
             }
             if (candidates.Count == 0) return;
             var blockers = live.Where(o => o.Item.Type == nameof(PartType.HP) || o.Item.Type == nameof(PartType.FlatBar))
