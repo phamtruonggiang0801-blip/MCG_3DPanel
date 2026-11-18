@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 
 namespace MCG_3DPanel.Services.Detail
@@ -18,13 +19,17 @@ namespace MCG_3DPanel.Services.Detail
         public double CutLength;
     }
 
-    /// <summary>Tấm song song với mặt cắt (dùng đặt dấu $).</summary>
+    /// <summary>Tấm đứng song song với mặt cắt (nhìn thấy mặt tấm): đặt "$" + "(t)" (kỹ sư 2026-11-18).</summary>
     public sealed class ParallelPlate
     {
         public string Type;
         public bool Visible;
-        /// <summary>Đoạn viền nhìn thấy dài nhất, toạ độ section.</summary>
-        public P2 OutlineA, OutlineB;
+        /// <summary>Chiều dày (khoảng dọc hướng nhìn).</summary>
+        public double Thickness;
+        /// <summary>Nét đặt "$": nét đầu tấm + nét nối với tấm song song khác (nét đứng), toạ độ section.</summary>
+        public List<(P2 A, P2 B)> Marks = new List<(P2 A, P2 B)>();
+        /// <summary>Khung bao mặt tấm, toạ độ section (đặt "(t)").</summary>
+        public P2 FaceMin, FaceMax;
     }
 
     public static class SectionSymbolRules
@@ -56,17 +61,19 @@ namespace MCG_3DPanel.Services.Detail
             return (m.CutCenter, r);
         }
 
-        /// <summary>Dấu $: tâm chữ ĐÚNG trung điểm nét A–B (nét đi xuyên qua chữ, như 26 dấu $ trên bản vẽ tay);
-        /// <paramref name="gap"/> &gt; 0 đẩy sang bên phải chiều A→B. null nếu tấm ẩn.</summary>
-        public static P2? WeldTracePlacement(ParallelPlate p, double gap = 0)
+        /// <summary>Dấu $: tâm chữ ĐÚNG trung điểm nét A–B (nét đi xuyên qua chữ, như 26 dấu $ trên bản vẽ tay).</summary>
+        public static P2 WeldTracePlacement(P2 a, P2 b) => (a + b) * 0.5;
+
+        /// <summary>Tấm song song đứng (mặt tấm hiện trên section): cao hơn dày. Face plate / tấm boong nằm ngang ⇒ false
+        /// (không đặt "$" / "(t)" — kỹ sư 2026-11-18).</summary>
+        public static bool IsUprightPlate(double faceHeight, double thickness) => faceHeight > thickness;
+
+        /// <summary>Nét được đặt "$" (nét đầu tấm / nét nối 2 tấm song song): nét đứng, lệch phương ngang ≥ <paramref name="minDeg"/>.</summary>
+        public static bool IsMarkLine(P2 a, P2 b, double minDeg = 30)
         {
-            if (!p.Visible) return null;
-            P2 mid = (p.OutlineA + p.OutlineB) * 0.5;
-            P2 d = p.OutlineB - p.OutlineA;
+            P2 d = b - a;
             double len = d.Length;
-            if (len < 1e-9) return mid;
-            P2 right = new P2(d.Y / len, -d.X / len);
-            return mid + right * gap;
+            return len > 1e-9 && Math.Abs(d.Y) / len >= Math.Sin(minDeg * Math.PI / 180);
         }
     }
 }

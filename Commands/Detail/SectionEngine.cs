@@ -533,21 +533,39 @@ namespace MCG_3DPanel.Commands.Detail
         static void FindParallel(Job job, List<Member> live, SectionResult result)
         {
             var right = new P2(job.Right3.X, job.Right3.Y);
+            // Tấm đứng song song mặt cắt (face plate / tấm nằm ngang bị loại — kỹ sư 2026-11-18)
+            var plates = new List<(Member M, List<IList<P2>> Edges, P2 Min, P2 Max)>();
             foreach (var m in live)
             {
-                if (m.Cut || m.Item.Type == nameof(PartType.HP) || m.FootAxis == null) continue;
+                if (m.Cut || m.Item.Type == nameof(PartType.HP) || m.FootAxis == null || m.Edges2D.Count == 0) continue;
                 if (!SectionCurveRules.IsParallel(m.FootAxis.Value, right, ParallelDeg)) continue;
-                var mine = result.Visible.Where(v => v.Handle == m.Item.Handle && !v.OnBoundary).ToList();
-                // Chỉ nét RIÊNG của tấm (vd nét đầu tấm): bỏ nét trùng cạnh tấm khác (mép trên/dưới nằm sát tấm boong,
-                // face plate…) — spec mẫu 1B-1B, kỹ sư 2026-11-18. Không còn nét riêng ⇒ không đặt $.
-                var others = live.Where(o => !ReferenceEquals(o, m)).SelectMany(o => o.Edges2D).Select(e => (IList<P2>)e).ToList();
-                mine = mine.Where(v => !SectionCurveRules.Covers(SectionCurveRules.Densify(Sample2(v.Curve), CoverStep), others, Tol)).ToList();
-                var p = new ParallelPlate { Type = m.Item.Type, Visible = mine.Count > 0 };
-                if (p.Visible)
+                var pts = m.Edges2D.SelectMany(e => e).ToList();
+                var min = new P2(pts.Min(p => p.X), pts.Min(p => p.Y));
+                var max = new P2(pts.Max(p => p.X), pts.Max(p => p.Y));
+                if (!SectionSymbolRules.IsUprightPlate(max.Y - min.Y, m.MaxSigned - m.MinSigned)) continue;
+                plates.Add((m, m.Edges2D.ToList(), min, max));
+            }
+            if (plates.Count == 0) return;
+
+            // Nét "$" = nét đầu tấm + nét nối giữa 2 tấm song song: nằm trên viền tấm, KHÔNG trùng cạnh tấm loại khác
+            // (mép trên/dưới sát tấm boong, face plate, tấm cắt…), nét đứng.
+            var set = new HashSet<Member>(plates.Select(p => p.M));
+            var others = live.Where(o => !set.Contains(o)).SelectMany(o => o.Edges2D).ToList();
+            var lines = result.Visible.Where(v => !v.OnBoundary)
+                .Select(v => (A: XY(v.Curve.StartPoint), B: XY(v.Curve.EndPoint), Dense: SectionCurveRules.Densify(Sample2(v.Curve), CoverStep)))
+                .ToList();
+            foreach (var (m, edges, min, max) in plates)
+            {
+                var p = new ParallelPlate
                 {
-                    var longest = mine.OrderByDescending(v => Length(v.Curve)).First().Curve;
-                    p.OutlineA = XY(longest.StartPoint);
-                    p.OutlineB = XY(longest.EndPoint);
+                    Type = m.Item.Type, Thickness = Math.Round(m.MaxSigned - m.MinSigned, 1), FaceMin = min, FaceMax = max,
+                };
+                foreach (var l in lines)
+                {
+                    if (!SectionCurveRules.Covers(l.Dense, edges, Tol)) continue;
+                    p.Visible = true;
+                    if (!SectionSymbolRules.IsMarkLine(l.A, l.B) || SectionCurveRules.Covers(l.Dense, others, Tol)) continue;
+                    p.Marks.Add((l.A, l.B));
                 }
                 result.Parallel.Add(p);
             }

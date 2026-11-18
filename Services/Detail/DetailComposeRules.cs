@@ -303,30 +303,44 @@ namespace MCG_3DPanel.Services.Detail
         /// <summary>Bề rộng ước lượng của MText 1 dòng (STANDARD): 0.8·h mỗi ký tự.</summary>
         public static double TextWidth(string s, double h) => (s?.Length ?? 0) * 0.8 * h;
 
-        /// <summary>Tâm chữ "(t)" cho ký hiệu Continuous tại <paramref name="at"/> trên tấm đứng: sát mặt tấm (trái/phải),
-        /// trên/dưới mũi tên, lùi dần dọc tấm (trong chiều dài vết cắt) tới chỗ khung chữ không chạm nét nào
-        /// (<paramref name="segments"/>) và không đè chữ/ký hiệu đã đặt (<paramref name="taken"/>). Không còn chỗ trống ⇒ vị trí đầu.</summary>
-        public static P2 ThicknessTextPlace(P2 at, double thickness, double cutLength, double w, double h,
+        /// <summary>Tâm chữ "(t)" của vùng tấm song song [min, max]: gần tâm vùng nhất (ưu tiên giữ ngang giữa chiều cao, dời
+        /// ngang trước), khung chữ nằm trong vùng, không chạm nét (<paramref name="segments"/>) và không đè chữ/ký hiệu đã đặt
+        /// (<paramref name="taken"/>). Không còn chỗ trống ⇒ tâm vùng (kỹ sư 2026-11-18: chỉ ghi cho vùng tấm song song).</summary>
+        public static P2 RegionTextPlace(P2 min, P2 max, double w, double h,
             IList<(P2 A, P2 B)> segments, IList<(P2 Min, P2 Max)> taken)
         {
-            const double pad = 4, faceGap = 6, arrowClear = 7;
-            double side = thickness / 2 + faceGap + w / 2;
-            double first = h / 2 + arrowClear, step = h / 2 + 5;
-            double limit = Math.Max(first, cutLength / 2 - h / 2);
-            P2? fallback = null;
-            for (double a = first; a <= limit + 1e-9; a += step)
-                foreach (double sa in new[] { 1.0, -1.0 })
-                    foreach (double ss in new[] { 1.0, -1.0 })
-                    {
-                        var c = at + new P2(ss * side, sa * a);
-                        if (fallback == null) fallback = c;
-                        var bmin = new P2(c.X - w / 2 - pad, c.Y - h / 2 - pad);
-                        var bmax = new P2(c.X + w / 2 + pad, c.Y + h / 2 + pad);
-                        if (taken != null && taken.Any(t => bmin.X < t.Max.X && bmax.X > t.Min.X && bmin.Y < t.Max.Y && bmax.Y > t.Min.Y)) continue;
-                        if (segments != null && segments.Any(s => SegmentHitsBox(s.A, s.B, bmin, bmax))) continue;
-                        return c;
-                    }
-            return fallback ?? at;
+            const double pad = 4;
+            var c0 = (min + max) * 0.5;
+            double sx = Math.Max(w / 4, 5), sy = Math.Max(h / 2, 5);
+            int nx = (int)Math.Ceiling((max.X - min.X) / 2 / sx), ny = (int)Math.Ceiling((max.Y - min.Y) / 2 / sy);
+            var cands = new List<P2>();
+            for (int i = -nx; i <= nx; i++)
+                for (int j = -ny; j <= ny; j++)
+                    cands.Add(new P2(c0.X + i * sx, c0.Y + j * sy));
+            foreach (var c in cands.OrderBy(c => Math.Pow(c.X - c0.X, 2) + 9 * Math.Pow(c.Y - c0.Y, 2)))
+            {
+                var bmin = new P2(c.X - w / 2 - pad, c.Y - h / 2 - pad);
+                var bmax = new P2(c.X + w / 2 + pad, c.Y + h / 2 + pad);
+                if (bmin.X < min.X || bmax.X > max.X || bmin.Y < min.Y || bmax.Y > max.Y) continue;
+                if (taken != null && taken.Any(t => bmin.X < t.Max.X && bmax.X > t.Min.X && bmin.Y < t.Max.Y && bmax.Y > t.Min.Y)) continue;
+                if (segments != null && segments.Any(s => SegmentHitsBox(s.A, s.B, bmin, bmax))) continue;
+                return c;
+            }
+            return c0;
+        }
+
+        /// <summary>Bỏ nét "$" trùng nhau (nét nối 2 tấm song song thuộc cả 2 tấm, nét bị chia khúc): nét song song cùng
+        /// đường (trung điểm cách nét kia ≤ tol) và chồng nhau ⇒ giữ nét dài hơn.</summary>
+        public static List<(P2 A, P2 B)> DedupMarks(IEnumerable<(P2 A, P2 B)> lines, double tol)
+        {
+            var res = new List<(P2 A, P2 B)>();
+            foreach (var l in lines.OrderByDescending(l => (l.B - l.A).Length))
+            {
+                var mid = (l.A + l.B) * 0.5;
+                if (res.Any(r => SectionCurveRules.DistanceToSegment(mid, r.A, r.B) <= tol)) continue;
+                res.Add(l);
+            }
+            return res;
         }
 
         /// <summary>Đoạn AB có điểm chung với hình chữ nhật [min, max] (Liang–Barsky).</summary>

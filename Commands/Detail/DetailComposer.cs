@@ -84,12 +84,11 @@ namespace MCG_3DPanel.Commands.Detail
                 var segs = Segments(ents);
                 var taken = new List<(P2 Min, P2 Max)>();
 
-                // "$": 1 cho mỗi tấm song song mặt cắt nhìn thấy, tâm chữ trên trung điểm nét
-                foreach (var pp in r.Parallel)
+                // "$": mỗi nét đầu tấm / nét nối của tấm đứng song song mặt cắt, tâm chữ trên trung điểm nét (kỹ sư 2026-11-18)
+                var marks = DetailComposeRules.DedupMarks(r.Parallel.Where(pp => pp.Visible).SelectMany(pp => pp.Marks), MarkDedupTol);
+                foreach (var (a, b) in marks)
                 {
-                    var at = SectionSymbolRules.WeldTracePlacement(pp);
-                    if (at == null) continue;
-                    var p = at.Value + shift;
+                    var p = SectionSymbolRules.WeldTracePlacement(a, b) + shift;
                     ents.Add(Text("$", p, WeldTextH, AM10));
                     taken.Add(Box(p, DetailComposeRules.TextWidth("$", WeldTextH), WeldTextH));
                 }
@@ -99,7 +98,6 @@ namespace MCG_3DPanel.Commands.Detail
                 if (members.Count > 0)
                 {
                     ObjectId sym = BlockId(ContinuousBlock);
-                    var placed = new List<(CutMember m, P2 p)>();
                     foreach (var m in members)
                     {
                         var (at, rot) = SectionSymbolRules.ContinuousPlacement(m);
@@ -111,17 +109,17 @@ namespace MCG_3DPanel.Commands.Detail
                         // 2 mũi tên của block: −59…41.5 dọc trục X block
                         var ux = new P2(Math.Cos(rot), Math.Sin(rot));
                         segs.Add((p + ux * -SymbolReachMinus, p + ux * SymbolReachPlus));
-                        placed.Add((m, p));
                     }
-                    // "(t)": sát mặt tấm, không đè nét / chữ / ký hiệu khác
-                    foreach (var (m, p) in placed)
-                    {
-                        string txt = SectionSymbolRules.ThicknessText(m.Thickness);
-                        double w = DetailComposeRules.TextWidth(txt, ThickTextH);
-                        var c = DetailComposeRules.ThicknessTextPlace(p, m.Thickness, m.CutLength, w, ThickTextH, segs, taken);
-                        ents.Add(Text("{\\L" + txt + "}", c, ThickTextH, AM5));
-                        taken.Add(Box(c, w, ThickTextH));
-                    }
+                }
+
+                // "(t)": chỉ cho vùng tấm đứng song song (có ngoặc), gần tâm vùng, không đè nét / chữ / ký hiệu — tấm cắt không ghi
+                foreach (var pp in r.Parallel.Where(pp => pp.Visible && pp.Thickness > 0))
+                {
+                    string txt = SectionSymbolRules.ThicknessText(pp.Thickness);
+                    double w = DetailComposeRules.TextWidth(txt, ThickTextH);
+                    var c = DetailComposeRules.RegionTextPlace(pp.FaceMin + shift, pp.FaceMax + shift, w, ThickTextH, segs, taken);
+                    ents.Add(Text("{\\L" + txt + "}", c, ThickTextH, AM5));
+                    taken.Add(Box(c, w, ThickTextH));
                 }
                 return ents;
             }
@@ -494,7 +492,7 @@ namespace MCG_3DPanel.Commands.Detail
 
         static P2 XY(Point3d p) => new P2(p.X, p.Y);
 
-        const double WeldTextH = 35, ThickTextH = 30, SymbolReachMinus = 59.01, SymbolReachPlus = 41.53;
+        const double WeldTextH = 35, ThickTextH = 30, SymbolReachMinus = 59.01, SymbolReachPlus = 41.53, MarkDedupTol = 1.0;
 
         static (P2 Min, P2 Max) Box(P2 c, double w, double h) => (new P2(c.X - w / 2, c.Y - h / 2), new P2(c.X + w / 2, c.Y + h / 2));
 

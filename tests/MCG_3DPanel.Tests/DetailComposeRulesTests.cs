@@ -194,25 +194,53 @@ public class DetailComposeRulesTests
     }
 
     [Fact]
-    public void ThicknessText_BesidePlate_AboveArrow_WhenFree()
+    public void RegionText_CentreOfRegion_WhenFree()
     {
-        // Tấm đứng dày 10 tại x=0, cao 374; chữ rộng 144, cao 30
-        var c = DetailComposeRules.ThicknessTextPlace(new P2(0, 0), 10, 374, 144, 30, new List<(P2, P2)>(), new List<(P2, P2)>());
-        Assert.Equal(5 + 6 + 72, c.X, 6);   // sát mặt phải tấm
-        Assert.Equal(15 + 7, c.Y, 6);       // ngay trên mũi tên
+        // Vùng vách 10 trong 7A-7A: x −611.5…215.9, y −180…194; chữ "(10.0)" rộng 144, cao 30
+        var c = DetailComposeRules.RegionTextPlace(new P2(-611.5, -180), new P2(215.9, 194), 144, 30, new List<(P2, P2)>(), new List<(P2, P2)>());
+        Assert.Equal(-197.8, c.X, 6);
+        Assert.Equal(7, c.Y, 6);
     }
 
     [Fact]
-    public void ThicknessText_AvoidsLinesAndTakenBoxes()
+    public void RegionText_AvoidsCutPlatesAndSymbols_StaysInRegion()
     {
-        // Nét ngang cắt qua chỗ đầu tiên (y=22) bên phải; chữ đã đặt chiếm bên trái phía trên
-        var segs = new List<(P2, P2)> { (new P2(-500, 22), new P2(500, 22)) };
-        var taken = new List<(P2, P2)> { (new P2(-300, -100), new P2(-10, 200)) };
-        var c = DetailComposeRules.ThicknessTextPlace(new P2(0, 0), 10, 374, 144, 30, segs, taken);
-        Assert.True(c.X > 0);
-        Assert.True(Math.Abs(c.Y - 22) >= 15 + 4);
-        Assert.False(DetailComposeRules.SegmentHitsBox(new P2(-500, 22), new P2(500, 22), new P2(c.X - 76, c.Y - 19), new P2(c.X + 76, c.Y + 19)));
-        Assert.True(Math.Abs(c.Y) <= 187);   // trong chiều dài tấm
+        // 2 tấm cắt đứng (x −284.8 và −141.5) + mũi tên Continuous ở y=7 chắn quanh tâm vùng
+        var segs = new List<(P2, P2)>
+        {
+            (new P2(-284.8, -180), new P2(-284.8, 194)), (new P2(-278.3, -180), new P2(-278.3, 194)),
+            (new P2(-141.5, -180), new P2(-141.5, 194)), (new P2(-131.5, -180), new P2(-131.5, 194)),
+            (new P2(-323, 7), new P2(-222, 7)), (new P2(-178, 7), new P2(-77, 7)),
+        };
+        var taken = new List<(P2, P2)>();
+        var c = DetailComposeRules.RegionTextPlace(new P2(-611.5, -180), new P2(215.9, 194), 144, 30, segs, taken);
+        var bmin = new P2(c.X - 76, c.Y - 19); var bmax = new P2(c.X + 76, c.Y + 19);
+        Assert.DoesNotContain(segs, s => DetailComposeRules.SegmentHitsBox(s.Item1, s.Item2, bmin, bmax));
+        Assert.True(bmin.X >= -611.5 && bmax.X <= 215.9 && bmin.Y >= -180 && bmax.Y <= 194);
+        Assert.True(Math.Abs(c.Y - 7) <= 30);   // vẫn quanh giữa chiều cao (lệch ≤ 1 hàng chữ)
+    }
+
+    [Fact]
+    public void RegionText_NoRoom_FallsBackToCentre()
+    {
+        var c = DetailComposeRules.RegionTextPlace(new P2(0, 0), new P2(50, 20), 144, 30, null, null);
+        Assert.Equal(25, c.X, 6);
+        Assert.Equal(10, c.Y, 6);
+    }
+
+    [Fact]
+    public void DedupMarks_JointSharedByTwoPlates_OneMark_SplitPiecesKept()
+    {
+        var lines = new List<(P2, P2)>
+        {
+            (new P2(215.9, -180), new P2(215.9, 194)),   // nét nối, của tấm 10
+            (new P2(215.9, 194), new P2(215.9, -180)),   // cùng nét, của tấm 6 (ngược chiều)
+            (new P2(215.9, 0), new P2(215.9, 100)),      // khúc nằm trong nét dài
+            (new P2(-611.5, -180), new P2(-611.5, 74)),  // nét đầu vách
+            (new P2(-611.5, 120), new P2(-611.5, 194)),  // khúc khác cùng đường, không chồng
+        };
+        var r = DetailComposeRules.DedupMarks(lines, 1.0);
+        Assert.Equal(3, r.Count);
     }
 
     [Fact]
