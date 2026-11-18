@@ -63,6 +63,10 @@ namespace MCG_3DPanel.Commands.Detail
         const double ZMargin = 10.0;     // mm: hộp vượt solid theo Z để đáy/đỉnh hộp không trùng mặt solid
         const double PlanCutFallback = -1.0;   // mặt cắt Detail Plan khi không có Top Plate
         const double ParallelDeg = 1.0;
+        // Lọc nét khuất bỏ sót (OcclusionRules): bước thử, bỏ 2 đầu, lệch ngang tia, tia bắt đầu trước mặt, vượt mặt cắt
+        const double OccStep = 20.0, OccInset = 0.5, OccSide = 0.3, OccEps = 0.5, OccFar = 10.0;
+        const double OccSeamDeg = 10.0, OccMinLen = 1.0;
+        const int OccRefine = 7;
 
         sealed class Job
         {
@@ -474,38 +478,52 @@ namespace MCG_3DPanel.Commands.Detail
             }
 
             var memberEdges = live.Select(m => (IList<IList<P2>>)m.Edges2D).ToList();
-            int next = 0;
-            try
+            void Emit(Curve c, List<P2> pts)
             {
-                for (; next < raw.Count; next++)
+                c.SetDatabaseDefaults(sec.Database);   // không trỏ tới layer/linetype chép tạm (bị xoá ở bước 7)
+                var dense = SectionCurveRules.Densify(pts, CoverStep);
+                int who = SectionCurveRules.Attribute(dense, memberEdges, Tol);
+                result.Visible.Add(new EdgeCurve
                 {
-                    Curve c = raw[next];
-                    c.TransformBy(job.ToOut);
-                    Flatten(c);
-                    var pts = Sample2(c);
-                    if (c is Spline)
-                    {
-                        var pl = ToPolyline(pts);
-                        c.Dispose();
-                        raw[next] = c = pl;
-                    }
-                    c.SetDatabaseDefaults(sec.Database);   // không trỏ tới layer/linetype chép tạm (bị xoá ở bước 7)
-                    var dense = SectionCurveRules.Densify(pts, CoverStep);
-                    int who = SectionCurveRules.Attribute(dense, memberEdges, Tol);
-                    result.Visible.Add(new EdgeCurve
-                    {
-                        Curve = c,
-                        OnBoundary = SectionCurveRules.Covers(dense, boundary, Tol),
-                        Type = who < 0 ? "" : live[who].Item.Type,
-                        Handle = who < 0 ? "" : live[who].Item.Handle,
-                    });
-                }
+                    Curve = c,
+                    OnBoundary = SectionCurveRules.Covers(dense, boundary, Tol),
+                    Type = who < 0 ? "" : live[who].Item.Type,
+                    Handle = who < 0 ? "" : live[who].Item.Handle,
+                });
             }
-            catch
+
+            // 6b. Nét tiếp tuyến (vd bầu HP) không qua bước bỏ nét khuất của AutoCAD ⇒ tự kiểm bằng tia (kỹ sư 2026-11-18, 6A-6A)
+            var solids = new[] { union }.Concat(apart.Select(m => (Solid3d)tr.GetObject(m.Id, OpenMode.ForRead)));
+            int next = 0;
+            using (var occ = new Occluder(job, solids, live.SelectMany(m => m.Seams)))
             {
-                // đường chưa vào result: giải phóng ngay (result do Run giải phóng)
-                for (int i = next; i < raw.Count; i++) if (!raw[i].IsDisposed) raw[i].Dispose();
-                throw;
+                try
+                {
+                    for (; next < raw.Count; next++)
+                    {
+                        Curve c = raw[next];
+                        c.TransformBy(job.ToOut);
+                        Flatten(c);
+                        var pts = Sample2(c);
+                        if (c is Spline)
+                        {
+                            var pl = ToPolyline(pts);
+                            c.Dispose();
+                            raw[next] = c = pl;
+                        }
+                        var parts = occ.Clip(c, pts);
+                        if (parts == null) { Emit(c, pts); continue; }
+                        c.Dispose();
+                        foreach (var p in parts) Emit(p, Sample2(p));
+                    }
+                }
+                catch
+                {
+                    // đường chưa vào result: giải phóng ngay (result do Run giải phóng)
+                    for (int i = next; i < raw.Count; i++) if (!raw[i].IsDisposed) raw[i].Dispose();
+                    throw;
+                }
+                Warn(result.Warnings, occ.Failures, "hidden-line check(s) failed; some hidden lines may still show");
             }
 
             if (job.IsSection) FindParallel(job, live, result);
@@ -830,5 +848,118 @@ namespace MCG_3DPanel.Commands.Detail
         }
 
         static P2 XY(Point3d p) => new P2(p.X, p.Y);
+
+        /// <summary>Bỏ phần nét bị solid che (toạ độ ra). Độ sâu nét = cạnh Brep 3D chạy dọc nó (gần nhất); tia từ ngay trước
+        /// điểm đó bắn về phía người nhìn tới quá mặt cắt; trúng khối gộp/khối rời ⇒ khuất. Thử thêm 2 tia lệch ngang ±OccSide
+        /// (nét nằm sát mép tấm khác: tia giữa lướt mặt tấm đó). Không tìm được độ sâu / lỗi ⇒ giữ nét.</summary>
+        sealed class Occluder : IDisposable
+        {
+            readonly List<Autodesk.AutoCAD.BoundaryRepresentation.Brep> breps = new List<Autodesk.AutoCAD.BoundaryRepresentation.Brep>();
+            readonly List<IList<P3>> seams = new List<IList<P3>>();
+            readonly Matrix3d inv;
+            readonly double sgn;
+            readonly bool enabled;
+            public int Failures;
+
+            public Occluder(Job job, IEnumerable<Solid3d> solids, IEnumerable<Curve> seamCurves)
+            {
+                Vector3d v = job.View.TransformBy(job.ToOut).GetNormal();
+                if (Math.Abs(v.Z) < 0.999) return;   // hướng nhìn không vuông góc mặt bản vẽ ⇒ không lọc
+                sgn = v.Z < 0 ? 1 : -1;               // độ gần = sgn · Zra (mặt cắt ở Z = 0)
+                inv = job.ToOut.Inverse();
+                foreach (var c in seamCurves)
+                {
+                    try
+                    {
+                        seams.Add(Sample3(c).Select(p => { var o = p.TransformBy(job.ToOut); return new P3(o.X, o.Y, sgn * o.Z); }).ToList());
+                    }
+                    catch (System.Exception) { Failures++; }
+                }
+                foreach (var s in solids)
+                {
+                    try { breps.Add(new Autodesk.AutoCAD.BoundaryRepresentation.Brep(s)); }
+                    catch (System.Exception) { Failures++; }
+                }
+                enabled = breps.Count > 0 && seams.Count > 0;
+            }
+
+            /// <summary>null = giữ nguyên <paramref name="c"/>; danh sách (có thể rỗng) = các khúc thấy thay cho c.</summary>
+            public List<Curve> Clip(Curve c, List<P2> pts)
+            {
+                if (!enabled || pts.Count < 2) return null;
+                double len = OcclusionRules.Length(pts);
+                if (len < 1e-6) return null;
+                var spans = OcclusionRules.VisibleSpans(len, s =>
+                {
+                    var (p, d) = OcclusionRules.At(pts, s);
+                    return VisibleAt(p, d);
+                }, OccStep, OccInset, OccRefine, OccMinLen);
+                if (spans.Count == 1 && spans[0].S0 <= 1e-9 && spans[0].S1 >= len - 1e-9) return null;
+                if (spans.Count == 0) return new List<Curve>();
+                if (c.Closed) return null;   // nét kín khuất một phần: giữ nguyên (hiếm; tách kín dễ sai)
+                try { return Split(c, len, spans); }
+                catch (System.Exception) { Failures++; return null; }
+            }
+
+            static List<Curve> Split(Curve c, double len, List<(double S0, double S1)> spans)
+            {
+                double total = Length(c), k = total / len;
+                var ps = new DoubleCollection();
+                foreach (var (a, b) in spans)
+                {
+                    if (a > 1e-6) ps.Add(c.GetParameterAtDistance(Math.Min(a * k, total)));
+                    if (b < len - 1e-6) ps.Add(c.GetParameterAtDistance(Math.Min(b * k, total)));
+                }
+                var keep = new List<Curve>();
+                if (ps.Count == 0) return null;
+                foreach (DBObject o in c.GetSplitCurves(ps))
+                {
+                    var piece = (Curve)o;
+                    double pl = Length(piece);
+                    Point3d mid = piece.GetPointAtDist(pl / 2);
+                    double s = c.GetDistAtPoint(c.GetClosestPointTo(mid, false)) / k;
+                    if (pl >= OccMinLen && spans.Any(sp => s >= sp.S0 && s <= sp.S1)) keep.Add(piece);
+                    else piece.Dispose();
+                }
+                return keep;
+            }
+
+            bool VisibleAt(P2 q, P2 dir)
+            {
+                double? w = OcclusionRules.SeamNearness(q, dir, seams, Tol, OccSeamDeg);
+                if (w == null) return true;
+                if (!Blocked(q, w.Value)) return true;
+                var n = new P2(-dir.Y, dir.X);
+                double nl = n.Length;
+                if (nl < 1e-12) return false;
+                n = n * (OccSide / nl);
+                return !Blocked(q + n, w.Value) || !Blocked(q - n, w.Value);
+            }
+
+            bool Blocked(P2 p, double near)
+            {
+                double w0 = near + OccEps, w1 = Math.Max(w0, 0) + OccFar;
+                Point3d a = new Point3d(p.X, p.Y, sgn * w0).TransformBy(inv);
+                Point3d b = new Point3d(p.X, p.Y, sgn * w1).TransformBy(inv);
+                using (var seg = new LineSegment3d(a, b))
+                    foreach (var br in breps)
+                    {
+                        Autodesk.AutoCAD.BoundaryRepresentation.Hit[] hits;
+                        try { hits = br.GetLineContainment(seg, 1); }
+                        catch (System.Exception) { Failures++; continue; }
+                        if (hits == null) continue;
+                        bool any = false;
+                        foreach (var h in hits) { if (!h.IsNull) any = true; h.Dispose(); }
+                        if (any) return true;
+                    }
+                return false;
+            }
+
+            public void Dispose()
+            {
+                foreach (var b in breps) b.Dispose();
+                breps.Clear();
+            }
+        }
     }
 }

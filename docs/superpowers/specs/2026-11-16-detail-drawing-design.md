@@ -121,6 +121,10 @@ Both Detail Plan and Section are **sections of the 3D solids**:
   inside one solid, so the visible background is taken from the **union** of the clipped solids, with every member's
   edges **imprinted** on it first so the joint lines between plates stay. Cut faces are still taken member by member
   (they are never hidden, and the members must stay identifiable).
+  AutoCAD does **not** hide tangency lines (e.g. the bulb lines of an HP behind a web wall, seen in 6A-6A on
+  2026-11-18), so every visible line is checked again: its depth comes from the member's 3D edge running along it,
+  and a ray from just in front of that point toward the viewer that hits the union (or an un-merged solid) means the
+  part is hidden and is cut away. Lines with no matching 3D edge, or a failed check, are kept.
   - **Detail Plan / Detail View**: horizontal plane just below the top plate, looking at the structure; depth = whole
     structure height. Region = rectangle/circle.
   - **Section**: vertical plane on the cut line, looking toward the chosen side; length = part of the cut line inside
