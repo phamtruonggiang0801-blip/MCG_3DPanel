@@ -166,16 +166,15 @@ Rejected:
 - **HP in sections**: true cross-section from 3D (not the `HP_xxx_sv` block).
 - **Continuous symbol** — sections only: one for every **upright** plate (web, FB, bracket; not HP) cut by the plane
   **and continuing on both sides** of it — never the deck plate or face plates (engineer 2026-11-18: as the samples,
-  where all 47 symbols are horizontal, rotation 180°). Arrow line perpendicular to the plate at mid height. **No
-  thickness text on cut plates** (engineer 2026-11-18). Members ending at, or interrupted at, the plane get nothing.
-- **Upright parallel plates** — sections only: a plate **parallel to the section plane**, seen face-on behind the cut
-  (taller than thick; face plates / deck plate lying flat are excluded — engineer 2026-11-18):
-  - **`$` weld trace** **centred on** the middle of every one of its visible **upright** lines (≥ 30° from horizontal)
-    that is its **end line** or a **joint with another parallel plate** (as the samples: `(6.0) $ 10.0 $ 20.0` in 3C-3C).
-    Lines lying on an edge of any other kind of member (deck plate, face plate, cut plates…) are skipped; a joint shared
-    by two plates gets one `$`. An end line that meets an HP or FB (flat bar) gets no `$` (engineer 2026-11-18).
-  - **thickness text**, always in parentheses, `(10.0)`, one per plate, inside its face region near the centre (mid
-    height first), moved until it touches no line, symbol or text.
+  where all 47 symbols are horizontal, rotation 180°). Arrow line perpendicular to the plate at mid height; thickness
+  text always in parentheses, `(10.0)`, right beside the plate it belongs to, just above/below the arrow, moved along
+  the plate until it touches no line, symbol or text. Members ending at, or interrupted at, the plane get nothing.
+- **`$` weld trace** — sections only, **one `$` per vertical visible line** of a plate parallel to the section
+  plane, **centred on** the middle of that line (the line runs through the `$`, as all 26 in the samples). Engineer
+  2026-11-18 (7A-7A review): the lines that get `$` are **joint lines between two parallel plates** (also when the
+  thickness changes, e.g. 10 → 6) and **end lines** of a parallel plate. No `$` for face plates, deck plate, flanges,
+  HP or FB, nor for an end line that meets an HP/FB (it coincides with the HP/FB edge). Horizontal lines (top/bottom
+  edges) never get one; the same line found twice gets one `$`.
 - **Section mark arrows** sit **outside** the DET picture: the cut line is extended past the extents of the DET
   content by 250 (samples: 240–330), arrows at those ends.
 - **AM_8** also applies to cut HP webs in the Detail Plan (*my call*: everything cut gets marked).
@@ -212,7 +211,7 @@ Rejected:
 9. Update Details button (regenerate block contents in place).
 10. UI: items in Create Drawing ▾, command names above, stale-3D warning, shared DET numbering.
 11. Update follows the `AM_7` boundary as it is now on the plan (moved/resized ⇒ new region).
-12. `$` on the end lines and joints of upright plates parallel to the section plane; `(t)` only for those plates (2026-11-18).
+12. `$`: one per vertical joint/end line of a plate parallel to the section plane (not at HP/FB), centred on it.
 
 ## Left to the builder
 

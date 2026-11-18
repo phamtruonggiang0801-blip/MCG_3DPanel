@@ -1,6 +1,7 @@
 using System;
-using System.Collections.Generic;
 using System.Globalization;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace MCG_3DPanel.Services.Detail
 {
@@ -19,17 +20,13 @@ namespace MCG_3DPanel.Services.Detail
         public double CutLength;
     }
 
-    /// <summary>Tấm đứng song song với mặt cắt (nhìn thấy mặt tấm): đặt "$" + "(t)" (kỹ sư 2026-11-18).</summary>
+    /// <summary>Tấm song song với mặt cắt (dùng đặt dấu $).</summary>
     public sealed class ParallelPlate
     {
         public string Type;
         public bool Visible;
-        /// <summary>Chiều dày (khoảng dọc hướng nhìn).</summary>
-        public double Thickness;
-        /// <summary>Nét đặt "$": nét đầu tấm + nét nối với tấm song song khác (nét đứng), toạ độ section.</summary>
-        public List<(P2 A, P2 B)> Marks = new List<(P2 A, P2 B)>();
-        /// <summary>Khung bao mặt tấm, toạ độ section (đặt "(t)").</summary>
-        public P2 FaceMin, FaceMax;
+        /// <summary>Đoạn viền nhìn thấy dài nhất, toạ độ section.</summary>
+        public P2 OutlineA, OutlineB;
     }
 
     public static class SectionSymbolRules
@@ -61,32 +58,50 @@ namespace MCG_3DPanel.Services.Detail
             return (m.CutCenter, r);
         }
 
-        /// <summary>Dấu $: tâm chữ ĐÚNG trung điểm nét A–B (nét đi xuyên qua chữ, như 26 dấu $ trên bản vẽ tay).</summary>
-        public static P2 WeldTracePlacement(P2 a, P2 b) => (a + b) * 0.5;
+        /// <summary>Dấu $: tâm chữ ĐÚNG trung điểm nét A–B (nét đi xuyên qua chữ, như 26 dấu $ trên bản vẽ tay);
+        /// <paramref name="gap"/> &gt; 0 đẩy sang bên phải chiều A→B. null nếu tấm ẩn.</summary>
+        /// <summary>Loại tấm song song mặt cắt được đặt "$": không phải HP/FB và không phải tấm nằm ngang
+        /// (tấm boong, face plate, flange) — kỹ sư 2026-11-18.</summary>
+        public static bool TakesWeldTrace(string type) =>
+            type != "HP" && type != "FlatBar" && type != "TopPlate" && type != "FacePlate" && type != "Flange";
 
-        /// <summary>Tấm song song đứng (mặt tấm hiện trên section): cao hơn dày. Face plate / tấm boong nằm ngang ⇒ false
-        /// (không đặt "$" / "(t)" — kỹ sư 2026-11-18).</summary>
-        public static bool IsUprightPlate(double faceHeight, double thickness) => faceHeight > thickness;
-
-        /// <summary>Đoạn A–B chạm một viền trong <paramref name="outlines"/> (đầu đoạn nằm trên viền, hoặc đỉnh viền nằm trên đoạn).
-        /// Dùng bỏ "$" ở nét đầu tấm nối với HP / FB (kỹ sư 2026-11-18).</summary>
-        public static bool Touches(P2 a, P2 b, IEnumerable<IList<P2>> outlines, double tol)
+        /// <summary>Nét đặt "$" (kỹ sư 2026-11-18): nét ĐỨNG (lệch trục Y ≤ maxDeg) của tấm song song — nét nối giữa hai tấm
+        /// song song hoặc nét đầu tấm — trừ nét trùng cạnh HP/FB (<paramref name="blockers"/>). Nét cùng chỗ (trung điểm cách
+        /// ≤ sameTol theo X — vd một nét nối bị che đứt làm hai khúc) chỉ giữ khúc dài nhất. Nét ngắn hơn minLen bị bỏ.</summary>
+        public static List<(P2 A, P2 B)> WeldTraceLines(IEnumerable<IList<P2>> candidates, IList<IList<P2>> blockers,
+            double tol = 0.5, double step = 2.0, double maxDeg = 30, double minLen = 20, double sameTol = 1.0)
         {
-            foreach (var o in outlines)
+            double cosMax = Math.Cos(maxDeg * Math.PI / 180);
+            var lines = new List<(P2 A, P2 B)>();
+            foreach (var c in candidates)
             {
-                if (o.Count == 0) continue;
-                if (SectionCurveRules.DistanceToPolyline(a, o) <= tol || SectionCurveRules.DistanceToPolyline(b, o) <= tol) return true;
-                foreach (var p in o) if (SectionCurveRules.DistanceToSegment(p, a, b) <= tol) return true;
+                if (c.Count < 2) continue;
+                P2 a = c[0], b = c[c.Count - 1];
+                var d = b - a;
+                double len = d.Length;
+                if (len < minLen || Math.Abs(d.Y) / len < cosMax) continue;
+                if (blockers.Count > 0 && SectionCurveRules.Covers(SectionCurveRules.Densify(c, step), blockers, tol)) continue;
+                lines.Add(a.Y <= b.Y ? (a, b) : (b, a));
             }
-            return false;
+            var keep = new List<(P2 A, P2 B)>();
+            foreach (var l in lines.OrderByDescending(l => (l.B - l.A).Length))
+            {
+                double mx = (l.A.X + l.B.X) / 2;
+                bool dup = keep.Any(k => Math.Abs((k.A.X + k.B.X) / 2 - mx) <= sameTol);
+                if (!dup) keep.Add(l);
+            }
+            return keep;
         }
 
-        /// <summary>Nét được đặt "$" (nét đầu tấm / nét nối 2 tấm song song): nét đứng, lệch phương ngang ≥ <paramref name="minDeg"/>.</summary>
-        public static bool IsMarkLine(P2 a, P2 b, double minDeg = 30)
+        public static P2? WeldTracePlacement(ParallelPlate p, double gap = 0)
         {
-            P2 d = b - a;
+            if (!p.Visible) return null;
+            P2 mid = (p.OutlineA + p.OutlineB) * 0.5;
+            P2 d = p.OutlineB - p.OutlineA;
             double len = d.Length;
-            return len > 1e-9 && Math.Abs(d.Y) / len >= Math.Sin(minDeg * Math.PI / 180);
+            if (len < 1e-9) return mid;
+            P2 right = new P2(d.Y / len, -d.X / len);
+            return mid + right * gap;
         }
     }
 }

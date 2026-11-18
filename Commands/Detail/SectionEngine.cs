@@ -532,48 +532,21 @@ namespace MCG_3DPanel.Commands.Detail
         /// <summary>Tấm không phải HP, mặt cắt không cắt qua, nằm trong hộp, footprint song song đường cắt trong 1°.</summary>
         static void FindParallel(Job job, List<Member> live, SectionResult result)
         {
+            // "$" (kỹ sư 2026-11-18): nét đứng của tấm song song — nét nối giữa hai tấm song song và nét đầu tấm; không cho
+            // face plate / tấm boong / HP / FB, không cho đầu tấm nối vào HP/FB. Mỗi nét một "$".
             var right = new P2(job.Right3.X, job.Right3.Y);
-            // Tấm đứng song song mặt cắt (face plate / tấm nằm ngang bị loại — kỹ sư 2026-11-18)
-            var plates = new List<(Member M, List<IList<P2>> Edges, P2 Min, P2 Max)>();
+            var candidates = new List<IList<P2>>();
             foreach (var m in live)
             {
-                if (m.Cut || m.Item.Type == nameof(PartType.HP) || m.FootAxis == null || m.Edges2D.Count == 0) continue;
+                if (m.Cut || m.FootAxis == null || !SectionSymbolRules.TakesWeldTrace(m.Item.Type)) continue;
                 if (!SectionCurveRules.IsParallel(m.FootAxis.Value, right, ParallelDeg)) continue;
-                var pts = m.Edges2D.SelectMany(e => e).ToList();
-                var min = new P2(pts.Min(p => p.X), pts.Min(p => p.Y));
-                var max = new P2(pts.Max(p => p.X), pts.Max(p => p.Y));
-                if (!SectionSymbolRules.IsUprightPlate(max.Y - min.Y, m.MaxSigned - m.MinSigned)) continue;
-                plates.Add((m, m.Edges2D.ToList(), min, max));
+                candidates.AddRange(result.Visible.Where(v => v.Handle == m.Item.Handle && !v.OnBoundary).Select(v => (IList<P2>)Sample2(v.Curve)));
             }
-            if (plates.Count == 0) return;
-
-            // Nét "$" = nét đầu tấm + nét nối giữa 2 tấm song song: nằm trên viền tấm, KHÔNG trùng cạnh tấm loại khác
-            // (mép trên/dưới sát tấm boong, face plate, tấm cắt…), nét đứng.
-            var set = new HashSet<Member>(plates.Select(p => p.M));
-            var others = live.Where(o => !set.Contains(o)).SelectMany(o => o.Edges2D).ToList();
-            // Nét đầu tấm nối với HP / FB: không đặt "$" (kỹ sư 2026-11-18); nét nối 2 tấm song song vẫn đặt
-            var hpFb = live.Where(o => o.Item.Type == nameof(PartType.HP) || o.Item.Type == nameof(PartType.FlatBar))
-                .SelectMany(o => o.Edges2D).ToList();
-            var lines = result.Visible.Where(v => !v.OnBoundary)
-                .Select(v => (A: XY(v.Curve.StartPoint), B: XY(v.Curve.EndPoint), Dense: SectionCurveRules.Densify(Sample2(v.Curve), CoverStep)))
-                .ToList();
-            foreach (var (m, edges, min, max) in plates)
-            {
-                var p = new ParallelPlate
-                {
-                    Type = m.Item.Type, Thickness = Math.Round(m.MaxSigned - m.MinSigned, 1), FaceMin = min, FaceMax = max,
-                };
-                foreach (var l in lines)
-                {
-                    if (!SectionCurveRules.Covers(l.Dense, edges, Tol)) continue;
-                    p.Visible = true;
-                    if (!SectionSymbolRules.IsMarkLine(l.A, l.B) || SectionCurveRules.Covers(l.Dense, others, Tol)) continue;
-                    bool joint = plates.Any(q => !ReferenceEquals(q.M, m) && SectionCurveRules.Covers(l.Dense, q.Edges, Tol));
-                    if (!joint && SectionSymbolRules.Touches(l.A, l.B, hpFb, Tol)) continue;
-                    p.Marks.Add((l.A, l.B));
-                }
-                result.Parallel.Add(p);
-            }
+            if (candidates.Count == 0) return;
+            var blockers = live.Where(o => o.Item.Type == nameof(PartType.HP) || o.Item.Type == nameof(PartType.FlatBar))
+                .SelectMany(o => o.Edges2D).Select(e => (IList<P2>)e).ToList();
+            foreach (var (a, b) in SectionSymbolRules.WeldTraceLines(candidates, blockers, Tol, CoverStep))
+                result.Parallel.Add(new ParallelPlate { Visible = true, OutlineA = a, OutlineB = b });
         }
 
         // ─── Chép / xoá tạm ────────────────────────────────────────────────────
