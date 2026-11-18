@@ -178,7 +178,8 @@ In a section, the far face of the clip box (parallel to the cut) does not make b
   thickness changes, e.g. 10 → 6) and **end lines** of a parallel plate. No `$` for face plates, deck plate, flanges,
   HP or FB, nor for an end line that meets an HP/FB (it coincides with the HP/FB edge). Horizontal lines (top/bottom
   edges) never get one. An end line that runs on in line with an HP/FB edge and touches it (a wall ending under a
-  hanging HP, 9A-9A) counts as meeting the HP. Lines closer than 40 mm get one `$`: the joint line wins over the
+  hanging HP, 9A-9A) counts as meeting the HP. An end line against a cut plate (on or touching its cut outline, 9B-9B)
+  gets no `$` either. Lines closer than 40 mm get one `$`: the joint line wins over the
   plate's own bevel-start line (1:4 chamfer, 9B-9B), else the longest.
 - **Section mark arrows** sit **outside** the DET picture: the cut line is extended past the extents of the DET
   content by 250 (samples: 240–330), arrows at those ends.

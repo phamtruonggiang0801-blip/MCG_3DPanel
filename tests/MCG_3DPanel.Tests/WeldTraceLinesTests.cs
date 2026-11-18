@@ -12,6 +12,14 @@ namespace MCG_3DPanel.Tests
         static IEnumerable<(IList<P2>, bool)> C(params IList<P2>[] ls) { foreach (var l in ls) yield return (l, false); }
 
         [Fact]
+        public void EndAgainstCutPlate_Skipped()
+        {
+            // 9B-9B: đầu tấm song song x = -82.5 trùng mép vết cắt của vách dày 10 (-82.5..-72.5)
+            var cut = new List<IList<P2>> { new List<P2> { new P2(-82.5, -180), new P2(-72.5, -180), new P2(-72.5, 194), new P2(-82.5, 194), new P2(-82.5, -180) } };
+            Assert.Empty(SectionSymbolRules.WeldTraceLines(C(L(-82.5, -180, -82.5, 194)), cut));
+        }
+
+        [Fact]
         public void EndUnderHangingHp_Skipped()
         {
             // 9A-9A: đầu vách x = -611.5 chạy -180 → 74, HP bị cắt treo từ 74 → 194 cùng đường thẳng

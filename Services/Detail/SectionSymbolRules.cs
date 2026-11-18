@@ -66,7 +66,8 @@ namespace MCG_3DPanel.Services.Detail
             type != "HP" && type != "FlatBar" && type != "TopPlate" && type != "FacePlate" && type != "Flange";
 
         /// <summary>Nét đặt "$" (kỹ sư 2026-11-18): nét ĐỨNG (lệch trục Y ≤ maxDeg) của tấm song song — nét nối giữa hai tấm
-        /// song song hoặc nét đầu tấm — trừ đầu tấm nối HP/FB: nét trùng cạnh HP/FB, hoặc thẳng hàng và chạm cạnh HP/FB
+        /// song song hoặc nét đầu tấm — trừ đầu tấm nối HP/FB hay tì vào tấm bị cắt (<paramref name="blockers"/> = cạnh HP/FB +
+        /// viền vết cắt): nét trùng cạnh đó, hoặc thẳng hàng và chạm cạnh đó
         /// (vd đầu vách chạy dưới HP treo ở 9A-9A). Nét gần nhau (trung điểm cách ≤ nearTol theo X — vd nét nối bị che đứt,
         /// hay nét bắt đầu vát 1:4 cách mối nối 16 mm ở 9B-9B) chỉ giữ một: ưu tiên nét NỐI (<c>Joint</c> = trùng cạnh tấm
         /// song song khác), rồi nét dài nhất. Nét ngắn hơn minLen bị bỏ.</summary>

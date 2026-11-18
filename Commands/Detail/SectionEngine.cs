@@ -552,6 +552,8 @@ namespace MCG_3DPanel.Commands.Detail
             if (candidates.Count == 0) return;
             var blockers = live.Where(o => o.Item.Type == nameof(PartType.HP) || o.Item.Type == nameof(PartType.FlatBar))
                 .SelectMany(o => o.Edges2D).Select(e => (IList<P2>)e).ToList();
+            // đầu tấm tì vào tấm bị cắt (nét trùng / chạm viền vết cắt) cũng không "$" — kỹ sư 2026-11-18, 9B-9B x = -82.5
+            blockers.AddRange(result.Cut.Where(c => c.Outline != null && c.Outline.Count >= 3).Select(c => (IList<P2>)Closed(c.Outline)));
             foreach (var (a, b) in SectionSymbolRules.WeldTraceLines(candidates, blockers, Tol, CoverStep))
                 result.Parallel.Add(new ParallelPlate { Visible = true, OutlineA = a, OutlineB = b });
         }
