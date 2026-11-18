@@ -551,6 +551,9 @@ namespace MCG_3DPanel.Commands.Detail
             // (mép trên/dưới sát tấm boong, face plate, tấm cắt…), nét đứng.
             var set = new HashSet<Member>(plates.Select(p => p.M));
             var others = live.Where(o => !set.Contains(o)).SelectMany(o => o.Edges2D).ToList();
+            // Nét đầu tấm nối với HP / FB: không đặt "$" (kỹ sư 2026-11-18); nét nối 2 tấm song song vẫn đặt
+            var hpFb = live.Where(o => o.Item.Type == nameof(PartType.HP) || o.Item.Type == nameof(PartType.FlatBar))
+                .SelectMany(o => o.Edges2D).ToList();
             var lines = result.Visible.Where(v => !v.OnBoundary)
                 .Select(v => (A: XY(v.Curve.StartPoint), B: XY(v.Curve.EndPoint), Dense: SectionCurveRules.Densify(Sample2(v.Curve), CoverStep)))
                 .ToList();
@@ -565,6 +568,8 @@ namespace MCG_3DPanel.Commands.Detail
                     if (!SectionCurveRules.Covers(l.Dense, edges, Tol)) continue;
                     p.Visible = true;
                     if (!SectionSymbolRules.IsMarkLine(l.A, l.B) || SectionCurveRules.Covers(l.Dense, others, Tol)) continue;
+                    bool joint = plates.Any(q => !ReferenceEquals(q.M, m) && SectionCurveRules.Covers(l.Dense, q.Edges, Tol));
+                    if (!joint && SectionSymbolRules.Touches(l.A, l.B, hpFb, Tol)) continue;
                     p.Marks.Add((l.A, l.B));
                 }
                 result.Parallel.Add(p);

@@ -173,7 +173,7 @@ Rejected:
   - **`$` weld trace** **centred on** the middle of every one of its visible **upright** lines (≥ 30° from horizontal)
     that is its **end line** or a **joint with another parallel plate** (as the samples: `(6.0) $ 10.0 $ 20.0` in 3C-3C).
     Lines lying on an edge of any other kind of member (deck plate, face plate, cut plates…) are skipped; a joint shared
-    by two plates gets one `$`.
+    by two plates gets one `$`. An end line that meets an HP or FB (flat bar) gets no `$` (engineer 2026-11-18).
   - **thickness text**, always in parentheses, `(10.0)`, one per plate, inside its face region near the centre (mid
     height first), moved until it touches no line, symbol or text.
 - **Section mark arrows** sit **outside** the DET picture: the cut line is extended past the extents of the DET

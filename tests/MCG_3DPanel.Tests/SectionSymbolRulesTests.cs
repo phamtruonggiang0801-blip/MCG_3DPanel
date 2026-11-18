@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using MCG_3DPanel.Services.Detail;
 using Xunit;
 
@@ -43,6 +44,29 @@ namespace MCG_3DPanel.Tests
         [InlineData(6, 1343, false)]   // tấm boong
         public void UprightPlate(double faceH, double t, bool expected) =>
             Assert.Equal(expected, SectionSymbolRules.IsUprightPlate(faceH, t));
+
+        [Fact]
+        public void Touches_EndLineMeetingHp()
+        {
+            // 7A-7A: nét đầu vách x=−611.5, y −180…74; HP cắt ngay phía trên (viền từ y=74)
+            var hp = new List<IList<P2>> { new List<P2> { new P2(-611.5, 194), new P2(-611.5, 74), new P2(-633.5, 79), new P2(-617.5, 194) } };
+            Assert.True(SectionSymbolRules.Touches(new P2(-611.5, -180), new P2(-611.5, 74), hp, 0.5));
+        }
+
+        [Fact]
+        public void Touches_FarJoint_False()
+        {
+            var hp = new List<IList<P2>> { new List<P2> { new P2(-611.5, 194), new P2(-611.5, 74), new P2(-633.5, 79) } };
+            Assert.False(SectionSymbolRules.Touches(new P2(215.9, -180), new P2(215.9, 194), hp, 0.5));
+        }
+
+        [Fact]
+        public void Touches_HpVertexOnLineMiddle()
+        {
+            // FB cắt chạm giữa nét đầu tấm
+            var fb = new List<IList<P2>> { new List<P2> { new P2(0, 50), new P2(80, 50), new P2(80, 56), new P2(0, 56) } };
+            Assert.True(SectionSymbolRules.Touches(new P2(0, -100), new P2(0, 150), fb, 0.5));
+        }
 
         [Theory]
         [InlineData(0, -180, 0, 74, true)]       // nét đầu / nét nối đứng

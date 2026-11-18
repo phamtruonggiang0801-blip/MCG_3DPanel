@@ -68,6 +68,19 @@ namespace MCG_3DPanel.Services.Detail
         /// (không đặt "$" / "(t)" — kỹ sư 2026-11-18).</summary>
         public static bool IsUprightPlate(double faceHeight, double thickness) => faceHeight > thickness;
 
+        /// <summary>Đoạn A–B chạm một viền trong <paramref name="outlines"/> (đầu đoạn nằm trên viền, hoặc đỉnh viền nằm trên đoạn).
+        /// Dùng bỏ "$" ở nét đầu tấm nối với HP / FB (kỹ sư 2026-11-18).</summary>
+        public static bool Touches(P2 a, P2 b, IEnumerable<IList<P2>> outlines, double tol)
+        {
+            foreach (var o in outlines)
+            {
+                if (o.Count == 0) continue;
+                if (SectionCurveRules.DistanceToPolyline(a, o) <= tol || SectionCurveRules.DistanceToPolyline(b, o) <= tol) return true;
+                foreach (var p in o) if (SectionCurveRules.DistanceToSegment(p, a, b) <= tol) return true;
+            }
+            return false;
+        }
+
         /// <summary>Nét được đặt "$" (nét đầu tấm / nét nối 2 tấm song song): nét đứng, lệch phương ngang ≥ <paramref name="minDeg"/>.</summary>
         public static bool IsMarkLine(P2 a, P2 b, double minDeg = 30)
         {
