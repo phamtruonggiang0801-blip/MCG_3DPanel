@@ -168,10 +168,17 @@ In a section, the far face of the clip box (parallel to the cut) does not make b
 - **HP in sections**: true cross-section from 3D (not the `HP_xxx_sv` block).
 - **Continuous symbol** — sections only: one for every **upright** plate (web, FB, bracket; not HP) cut by the plane
   **and continuing on both sides** of it — never the deck plate or face plates (engineer 2026-11-18: as the samples,
-  where all 47 symbols are horizontal, rotation 180°). Arrow line perpendicular to the plate at mid height; thickness
-  text always in parentheses, `(10.0)`, right beside the plate it belongs to, just above/below the arrow, moved along
-  the plate until it touches no line, symbol or text. Members ending at, or interrupted at, the plane get nothing.
-  Thickness text is written **only for cut plates**, never for parallel plates seen behind (engineer 2026-11-18).
+  where all 47 symbols are horizontal, rotation 180°). Arrow line perpendicular to the plate at mid height. Members
+  ending at, or interrupted at, the plane get nothing. **No thickness text** beside cut plates: the cut already shows
+  the thickness.
+- **Thickness text `(t)`** — sections only (engineer 2026-11-18): written **only for plates whose thickness the
+  section does not show**, i.e. plates **parallel** to the section plane seen behind it, the same plates that get
+  `$` (not face plates, deck, flanges, HP, FB). Oblique plates seen behind, HP/FB seen side-on, cut plates: none.
+  Value = the plate's real thickness (width of its 3D footprint), always in parentheses, e.g. `(10.0)`, underlined,
+  `AM_5`, h 30. One per plate, inside the **visible** part of its face, as near the centre and mid height as
+  possible: a spot counts only when rays at the text centre and its 4 corners all hit that plate's front face first
+  (not a plate in front, not a hole), then the first such spot whose box touches no line, symbol or text. A plate
+  with no visible spot gets no text. The "10.0 →|" leader labels in some hand drawings are not made.
 - **`$` weld trace** — sections only, **one `$` per vertical visible line** of a plate parallel to the section
   plane, **centred on** the middle of that line (the line runs through the `$`, as all 26 in the samples). Engineer
   2026-11-18 (7A-7A review): the lines that get `$` are **joint lines between two parallel plates** (also when the
@@ -212,7 +219,7 @@ In a section, the far face of the clip box (parallel to the cut) does not make b
 4. Everything in 3D is shown (collar, scallop, snip…).
 5. Visible lines beyond the cut → `AM_0` in both plan and section.
 6. Section depth to the DET boundary; HP as true section.
-7. `thk_sym` dropped; Continuous symbol + `(t)` + `$` rules as above.
+7. `thk_sym` dropped; Continuous symbol, `(t)` (parallel plates only) and `$` rules as above.
 8. Insert scale is 1 (no frame-scale detection).
 9. Update Details button (regenerate block contents in place).
 10. UI: items in Create Drawing ▾, command names above, stale-3D warning, shared DET numbering.

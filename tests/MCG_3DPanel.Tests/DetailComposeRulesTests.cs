@@ -194,25 +194,40 @@ public class DetailComposeRulesTests
     }
 
     [Fact]
-    public void ThicknessText_BesidePlate_AboveArrow_WhenFree()
+    public void LabelSpots_CentreFirst_StayInsideFace()
     {
-        // Tấm đứng dày 10 tại x=0, cao 374; chữ rộng 144, cao 30
-        var c = DetailComposeRules.ThicknessTextPlace(new P2(0, 0), 10, 374, 144, 30, new List<(P2, P2)>(), new List<(P2, P2)>());
-        Assert.Equal(5 + 6 + 72, c.X, 6);   // sát mặt phải tấm
-        Assert.Equal(15 + 7, c.Y, 6);       // ngay trên mũi tên
+        // mặt vách 10A-10A: x -611.5…215.9, y -180…194; chữ "(10.0)" rộng 144, cao 30
+        var min = new P2(-611.5, -180); var max = new P2(215.9, 194);
+        var spots = DetailComposeRules.LabelSpots(min, max, 144, 30);
+        Assert.Equal(-197.8, spots[0].X, 6);
+        Assert.Equal(7, spots[0].Y, 6);
+        Assert.All(spots, c =>
+        {
+            Assert.True(c.X - 76 >= min.X - 1e-9 && c.X + 76 <= max.X + 1e-9);
+            Assert.True(c.Y - 19 >= min.Y - 1e-9 && c.Y + 19 <= max.Y + 1e-9);
+        });
+        // giữ ngang giữa chiều cao: dời ngang 1 bước (36) xếp trước dời đứng 1 bước (15)
+        Assert.Equal(7, spots[1].Y, 6);
     }
 
     [Fact]
-    public void ThicknessText_AvoidsLinesAndTakenBoxes()
+    public void LabelSpots_FaceTooSmall_OnlyCentre()
     {
-        // Nét ngang cắt qua chỗ đầu tiên (y=22) bên phải; chữ đã đặt chiếm bên trái phía trên
-        var segs = new List<(P2, P2)> { (new P2(-500, 22), new P2(500, 22)) };
-        var taken = new List<(P2, P2)> { (new P2(-300, -100), new P2(-10, 200)) };
-        var c = DetailComposeRules.ThicknessTextPlace(new P2(0, 0), 10, 374, 144, 30, segs, taken);
-        Assert.True(c.X > 0);
-        Assert.True(Math.Abs(c.Y - 22) >= 15 + 4);
-        Assert.False(DetailComposeRules.SegmentHitsBox(new P2(-500, 22), new P2(500, 22), new P2(c.X - 76, c.Y - 19), new P2(c.X + 76, c.Y + 19)));
-        Assert.True(Math.Abs(c.Y) <= 187);   // trong chiều dài tấm
+        var spots = DetailComposeRules.LabelSpots(new P2(0, 0), new P2(100, 20), 144, 30);
+        Assert.Single(spots);
+        Assert.Equal(50, spots[0].X, 6);
+    }
+
+    [Fact]
+    public void FreeSpot_SkipsLinesAndTaken_FallsBackToFirst()
+    {
+        var spots = new List<P2> { new P2(0, 0), new P2(200, 0), new P2(400, 0) };
+        var segs = new List<(P2, P2)> { (new P2(0, -100), new P2(0, 100)) };          // nét đứng qua chỗ 1
+        var taken = new List<(P2, P2)> { (new P2(150, -10), new P2(250, 10)) };      // "$" ở chỗ 2
+        Assert.Equal(400, DetailComposeRules.FreeSpot(spots, 144, 30, segs, taken)!.Value.X, 6);
+        var all = new List<(P2, P2)> { (new P2(-1000, 0), new P2(1000, 0)) };
+        Assert.Equal(0, DetailComposeRules.FreeSpot(spots, 144, 30, all, null)!.Value.X, 6);
+        Assert.Null(DetailComposeRules.FreeSpot(new List<P2>(), 144, 30, null, null));
     }
 
     [Fact]

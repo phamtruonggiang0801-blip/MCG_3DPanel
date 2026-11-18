@@ -99,7 +99,6 @@ namespace MCG_3DPanel.Commands.Detail
                 if (members.Count > 0)
                 {
                     ObjectId sym = BlockId(ContinuousBlock);
-                    var placed = new List<(CutMember m, P2 p)>();
                     foreach (var m in members)
                     {
                         var (at, rot) = SectionSymbolRules.ContinuousPlacement(m);
@@ -111,17 +110,18 @@ namespace MCG_3DPanel.Commands.Detail
                         // 2 mũi tên của block: −59…41.5 dọc trục X block
                         var ux = new P2(Math.Cos(rot), Math.Sin(rot));
                         segs.Add((p + ux * -SymbolReachMinus, p + ux * SymbolReachPlus));
-                        placed.Add((m, p));
                     }
-                    // "(t)": sát mặt tấm, không đè nét / chữ / ký hiệu khác
-                    foreach (var (m, p) in placed)
-                    {
-                        string txt = SectionSymbolRules.ThicknessText(m.Thickness);
-                        double w = DetailComposeRules.TextWidth(txt, ThickTextH);
-                        var c = DetailComposeRules.ThicknessTextPlace(p, m.Thickness, m.CutLength, w, ThickTextH, segs, taken);
-                        ents.Add(Text("{\\L" + txt + "}", c, ThickTextH, AM5));
-                        taken.Add(Box(c, w, ThickTextH));
-                    }
+                }
+
+                // "(t)": chỉ cho tấm song song nhìn thấy (tấm cắt đã thể hiện chiều dày) — trong mặt tấm, không đè nét/chữ/ký hiệu
+                foreach (var lb in r.Labels)
+                {
+                    double w = DetailComposeRules.TextWidth(lb.Text, ThickTextH);
+                    var spots = lb.Spots.Select(s => s + shift).ToList();
+                    var c = DetailComposeRules.FreeSpot(spots, w, ThickTextH, segs, taken);
+                    if (c == null) continue;
+                    ents.Add(Text("{\\L" + lb.Text + "}", c.Value, ThickTextH, AM5));
+                    taken.Add(Box(c.Value, w, ThickTextH));
                 }
                 return ents;
             }
@@ -494,7 +494,7 @@ namespace MCG_3DPanel.Commands.Detail
 
         static P2 XY(Point3d p) => new P2(p.X, p.Y);
 
-        const double WeldTextH = 35, ThickTextH = 30, SymbolReachMinus = 59.01, SymbolReachPlus = 41.53;
+        const double WeldTextH = 35, ThickTextH = DetailComposeRules.ThicknessTextH, SymbolReachMinus = 59.01, SymbolReachPlus = 41.53;
 
         static (P2 Min, P2 Max) Box(P2 c, double w, double h) => (new P2(c.X - w / 2, c.Y - h / 2), new P2(c.X + w / 2, c.Y + h / 2));
 

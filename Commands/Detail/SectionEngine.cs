@@ -34,6 +34,7 @@ namespace MCG_3DPanel.Commands.Detail
         public List<CutFace> Cut = new List<CutFace>();
         public List<EdgeCurve> Visible = new List<EdgeCurve>();
         public List<ParallelPlate> Parallel = new List<ParallelPlate>();   // chỉ Section
+        public List<ThicknessLabel> Labels = new List<ThicknessLabel>();   // chỉ Section: "(t)" cho tấm song song nhìn thấy
         public List<string> Warnings = new List<string>();
 
         /// <summary>Giải phóng các đường chưa đưa vào bản vẽ.</summary>
@@ -65,8 +66,12 @@ namespace MCG_3DPanel.Commands.Detail
         const double ParallelDeg = 1.0;
         // Lọc nét khuất bỏ sót (OcclusionRules): bước thử, bỏ 2 đầu, lệch ngang tia, tia bắt đầu trước mặt, vượt mặt cắt
         const double OccStep = 20.0, OccInset = 0.5, OccSide = 0.3, OccEps = 0.5, OccFar = 10.0;
-        const double OccSeamDeg = 10.0, OccMinLen = 1.0;
+        const double OccSeamDeg = 10.0, OccMinLen = 1.0, OccDeep = 100000.0;
+        const int OccMaxHits = 64;
         const int OccRefine = 7;
+        // "(t)": số ứng viên thử tối đa / giữ lại, lệch độ sâu cho phép so mặt trước tấm, lùi góc khung chữ vào trong
+        const int LabelTry = 200, LabelKeep = 12;
+        const double LabelDepthTol = 1.0, LabelInset = 2.0;
 
         sealed class Job
         {
@@ -88,6 +93,7 @@ namespace MCG_3DPanel.Commands.Detail
             public ObjectId Id;               // bản chép trong target
             public double MinSigned, MaxSigned;
             public P2? FootAxis;              // Section: trục dài footprint (XY 3D)
+            public double FootWidth;          // Section: bề rộng footprint = chiều dày tấm đứng
             public bool Cut;
             public readonly List<IList<P2>> Edges2D = new List<IList<P2>>();   // cạnh chiếu riêng (gán đường thấy)
             public readonly List<Curve> Seams = new List<Curve>();             // cạnh Brep 3D (in lên khối gộp)
@@ -268,7 +274,7 @@ namespace MCG_3DPanel.Commands.Detail
                         (m.MinSigned, m.MaxSigned) = SignedRange(s, job.PlaneOrigin, job.Look3);
                         if (job.IsSection && item.Type != nameof(PartType.HP))
                         {
-                            try { m.FootAxis = FootAxis(s, (item.Extents.MinPoint.Z + item.Extents.MaxPoint.Z) / 2); }
+                            try { (m.FootAxis, m.FootWidth) = FootAxis(s, (item.Extents.MinPoint.Z + item.Extents.MaxPoint.Z) / 2); }
                             catch (System.Exception) { footFail++; }
                         }
                         try
@@ -523,14 +529,14 @@ namespace MCG_3DPanel.Commands.Detail
                     for (int i = next; i < raw.Count; i++) if (!raw[i].IsDisposed) raw[i].Dispose();
                     throw;
                 }
+                if (job.IsSection) FindParallel(job, live, result, occ);   // trước Warn: "(t)" cũng bắn tia
                 Warn(result.Warnings, occ.Failures, "hidden-line check(s) failed; some hidden lines may still show");
             }
 
-            if (job.IsSection) FindParallel(job, live, result);
         }
 
         /// <summary>Tấm không phải HP, mặt cắt không cắt qua, nằm trong hộp, footprint song song đường cắt trong 1°.</summary>
-        static void FindParallel(Job job, List<Member> live, SectionResult result)
+        static void FindParallel(Job job, List<Member> live, SectionResult result, Occluder occ)
         {
             // "$" (kỹ sư 2026-11-18): nét đứng của tấm song song — nét nối giữa hai tấm song song và nét đầu tấm; không cho
             // face plate / tấm boong / HP / FB, không cho đầu tấm nối vào HP/FB. Mỗi nét một "$".
@@ -549,6 +555,9 @@ namespace MCG_3DPanel.Commands.Detail
                     candidates.Add((pts, joint));
                 }
             }
+            // "(t)" (kỹ sư 2026-11-18): chỉ cho tấm KHÔNG thể hiện chiều dày trên mặt cắt = tấm song song nhìn thấy (không cho
+            // tấm cắt, tấm xiên, HP/FB, tấm nằm ngang)
+            foreach (var m in parallel) AddLabel(m, occ, result);
             if (candidates.Count == 0) return;
             var blockers = live.Where(o => o.Item.Type == nameof(PartType.HP) || o.Item.Type == nameof(PartType.FlatBar))
                 .SelectMany(o => o.Edges2D).Select(e => (IList<P2>)e).ToList();
@@ -556,6 +565,31 @@ namespace MCG_3DPanel.Commands.Detail
             blockers.AddRange(result.Cut.Where(c => c.Outline != null && c.Outline.Count >= 3).Select(c => (IList<P2>)Closed(c.Outline)));
             foreach (var (a, b) in SectionSymbolRules.WeldTraceLines(candidates, blockers, Tol, CoverStep))
                 result.Parallel.Add(new ParallelPlate { Visible = true, OutlineA = a, OutlineB = b });
+        }
+
+        /// <summary>Chữ "(t)" của tấm song song <paramref name="m"/>: chiều dày = bề rộng footprint (thật, không phóng đại như vết
+        /// cắt xiên); chỗ đặt = ứng viên trong khung hình chiếu của tấm mà tia tại tâm và 4 góc khung chữ đều trúng mặt trước của
+        /// chính tấm (không bị tấm khác che, không rơi vào lỗ). Không còn chỗ nào thấy ⇒ không ghi.</summary>
+        static void AddLabel(Member m, Occluder occ, SectionResult result)
+        {
+            if (m.FootWidth <= 0 || m.Edges2D.Count == 0) return;
+            var pts = m.Edges2D.SelectMany(e => e).ToList();
+            if (pts.Count == 0) return;
+            var min = new P2(pts.Min(p => p.X), pts.Min(p => p.Y));
+            var max = new P2(pts.Max(p => p.X), pts.Max(p => p.Y));
+            string text = SectionSymbolRules.ThicknessText(m.FootWidth);
+            double h = DetailComposeRules.ThicknessTextH, w = DetailComposeRules.TextWidth(text, h);
+            double? front = occ.Front(m.Seams);
+            var label = new ThicknessLabel { Text = text };
+            int tried = 0;
+            foreach (var c in DetailComposeRules.LabelSpots(min, max, w, h))
+            {
+                if (tried++ >= LabelTry || label.Spots.Count >= LabelKeep) break;
+                double dx = w / 2 - LabelInset, dy = h / 2 - LabelInset;
+                var probe = new[] { c, c + new P2(-dx, -dy), c + new P2(dx, -dy), c + new P2(dx, dy), c + new P2(-dx, dy) };
+                if (probe.All(p => occ.OnFace(p, front))) label.Spots.Add(c);
+            }
+            if (label.Spots.Count > 0) result.Labels.Add(label);
         }
 
         // ─── Chép / xoá tạm ────────────────────────────────────────────────────
@@ -727,16 +761,17 @@ namespace MCG_3DPanel.Commands.Detail
         }
 
         /// <summary>Trục dài footprint: cắt ngang solid (chưa cắt hộp) ở Z giữa → MinAreaRect.</summary>
-        static P2? FootAxis(Solid3d s, double z)
+        static (P2? axis, double width) FootAxis(Solid3d s, double z)
         {
             var pts = new List<P2>();
             using (Region r = s.GetSection(new Plane(new Point3d(0, 0, z), Vector3d.ZAxis)))
             {
-                if (r == null) return null;
+                if (r == null) return (null, 0);
                 Consume(ExplodeRegion(r), c => pts.AddRange(Sample3(c).Select(XY)));
             }
-            if (pts.Count < 3) return null;
-            return SectionMarkRules.MinAreaRect(pts).axis;
+            if (pts.Count < 3) return (null, 0);
+            var rect = SectionMarkRules.MinAreaRect(pts);
+            return (rect.axis, rect.width);
         }
 
         static List<Curve> ExplodeRegion(Region r)
@@ -861,7 +896,7 @@ namespace MCG_3DPanel.Commands.Detail
         {
             readonly List<Autodesk.AutoCAD.BoundaryRepresentation.Brep> breps = new List<Autodesk.AutoCAD.BoundaryRepresentation.Brep>();
             readonly List<IList<P3>> seams = new List<IList<P3>>();
-            readonly Matrix3d inv;
+            readonly Matrix3d inv, toOut;
             readonly double sgn;
             readonly bool enabled;
             public int Failures;
@@ -872,6 +907,7 @@ namespace MCG_3DPanel.Commands.Detail
                 if (Math.Abs(v.Z) < 0.999) return;   // hướng nhìn không vuông góc mặt bản vẽ ⇒ không lọc
                 sgn = v.Z < 0 ? 1 : -1;               // độ gần = sgn · Zra (mặt cắt ở Z = 0)
                 inv = job.ToOut.Inverse();
+                toOut = job.ToOut;
                 foreach (var c in seamCurves)
                 {
                     try
@@ -941,6 +977,60 @@ namespace MCG_3DPanel.Commands.Detail
                 return !Blocked(q + n, w.Value) || !Blocked(q - n, w.Value);
             }
 
+
+            /// <summary>Độ gần của mặt trước tấm (điểm gần người nhìn nhất trên các cạnh 3D của nó); không lọc được ⇒ null.</summary>
+            public double? Front(IEnumerable<Curve> memberSeams)
+            {
+                if (!enabled) return null;
+                double? best = null;
+                foreach (var c in memberSeams)
+                {
+                    try
+                    {
+                        foreach (var p in Sample3(c))
+                        {
+                            double w = sgn * p.TransformBy(toOut).Z;
+                            if (best == null || w > best) best = w;
+                        }
+                    }
+                    catch (System.Exception) { Failures++; }
+                }
+                return best;
+            }
+
+            /// <summary>Tia tại <paramref name="p"/> trúng solid đầu tiên ở đúng độ gần <paramref name="front"/> (±LabelDepthTol).
+            /// Không lọc được (hướng nhìn xiên, không có mặt trước) ⇒ true.</summary>
+            public bool OnFace(P2 p, double? front)
+            {
+                if (!enabled || front == null) return true;
+                double? hit = NearestHit(p);
+                return hit != null && Math.Abs(hit.Value - front.Value) <= LabelDepthTol;
+            }
+
+            double? NearestHit(P2 p)
+            {
+                Point3d a = new Point3d(p.X, p.Y, sgn * OccFar).TransformBy(inv);
+                Point3d b = new Point3d(p.X, p.Y, -sgn * OccDeep).TransformBy(inv);
+                double? best = null;
+                using (var seg = new LineSegment3d(a, b))
+                    foreach (var br in breps)
+                    {
+                        Autodesk.AutoCAD.BoundaryRepresentation.Hit[] hits;
+                        try { hits = br.GetLineContainment(seg, OccMaxHits); }
+                        catch (System.Exception) { Failures++; continue; }
+                        if (hits == null) continue;
+                        foreach (var h in hits)
+                        {
+                            if (!h.IsNull)
+                            {
+                                double w = sgn * h.Point.TransformBy(toOut).Z;
+                                if (best == null || w > best) best = w;
+                            }
+                            h.Dispose();
+                        }
+                    }
+                return best;
+            }
             bool Blocked(P2 p, double near)
             {
                 double w0 = near + OccEps, w1 = Math.Max(w0, 0) + OccFar;

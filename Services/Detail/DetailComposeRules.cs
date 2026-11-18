@@ -303,30 +303,41 @@ namespace MCG_3DPanel.Services.Detail
         /// <summary>Bề rộng ước lượng của MText 1 dòng (STANDARD): 0.8·h mỗi ký tự.</summary>
         public static double TextWidth(string s, double h) => (s?.Length ?? 0) * 0.8 * h;
 
-        /// <summary>Tâm chữ "(t)" cho ký hiệu Continuous tại <paramref name="at"/> trên tấm đứng: sát mặt tấm (trái/phải),
-        /// trên/dưới mũi tên, lùi dần dọc tấm (trong chiều dài vết cắt) tới chỗ khung chữ không chạm nét nào
-        /// (<paramref name="segments"/>) và không đè chữ/ký hiệu đã đặt (<paramref name="taken"/>). Không còn chỗ trống ⇒ vị trí đầu.</summary>
-        public static P2 ThicknessTextPlace(P2 at, double thickness, double cutLength, double w, double h,
-            IList<(P2 A, P2 B)> segments, IList<(P2 Min, P2 Max)> taken)
+        /// <summary>Chiều cao chữ chiều dày "(t)" (AM_5) — engine dùng để thử chỗ đặt, composer để vẽ.</summary>
+        public const double ThicknessTextH = 30;
+
+        /// <summary>Tâm ứng viên cho chữ "(t)" trong khung [min, max] của mặt tấm song song (kỹ sư 2026-11-18: chỉ ghi cho tấm
+        /// không thể hiện chiều dày trên mặt cắt): lưới bước w/4 × h/2, khung chữ + pad nằm trọn trong khung; ưu tiên gần tâm,
+        /// giữ ngang giữa chiều cao (lệch đứng tính gấp 3). Khung quá nhỏ ⇒ chỉ tâm.</summary>
+        public static List<P2> LabelSpots(P2 min, P2 max, double w, double h, double pad = 4)
         {
-            const double pad = 4, faceGap = 6, arrowClear = 7;
-            double side = thickness / 2 + faceGap + w / 2;
-            double first = h / 2 + arrowClear, step = h / 2 + 5;
-            double limit = Math.Max(first, cutLength / 2 - h / 2);
-            P2? fallback = null;
-            for (double a = first; a <= limit + 1e-9; a += step)
-                foreach (double sa in new[] { 1.0, -1.0 })
-                    foreach (double ss in new[] { 1.0, -1.0 })
-                    {
-                        var c = at + new P2(ss * side, sa * a);
-                        if (fallback == null) fallback = c;
-                        var bmin = new P2(c.X - w / 2 - pad, c.Y - h / 2 - pad);
-                        var bmax = new P2(c.X + w / 2 + pad, c.Y + h / 2 + pad);
-                        if (taken != null && taken.Any(t => bmin.X < t.Max.X && bmax.X > t.Min.X && bmin.Y < t.Max.Y && bmax.Y > t.Min.Y)) continue;
-                        if (segments != null && segments.Any(s => SegmentHitsBox(s.A, s.B, bmin, bmax))) continue;
-                        return c;
-                    }
-            return fallback ?? at;
+            var c0 = (min + max) * 0.5;
+            double hx = (max.X - min.X) / 2 - w / 2 - pad, hy = (max.Y - min.Y) / 2 - h / 2 - pad;
+            if (hx < 0 || hy < 0) return new List<P2> { c0 };
+            double sx = Math.Max(w / 4, 5), sy = Math.Max(h / 2, 5);
+            int nx = (int)Math.Floor(hx / sx), ny = (int)Math.Floor(hy / sy);
+            var res = new List<P2>();
+            for (int i = -nx; i <= nx; i++)
+                for (int j = -ny; j <= ny; j++)
+                    res.Add(new P2(c0.X + i * sx, c0.Y + j * sy));
+            return res.OrderBy(c => Math.Pow(c.X - c0.X, 2) + 9 * Math.Pow(c.Y - c0.Y, 2)).ToList();
+        }
+
+        /// <summary>Ứng viên đầu tiên mà khung chữ (+pad) không chạm nét (<paramref name="segments"/>) và không đè chữ / ký hiệu
+        /// đã đặt (<paramref name="taken"/>); không có ⇒ ứng viên đầu (đã chắc nằm trên mặt tấm thấy được); rỗng ⇒ null.</summary>
+        public static P2? FreeSpot(IList<P2> spots, double w, double h, IList<(P2 A, P2 B)> segments,
+            IList<(P2 Min, P2 Max)> taken, double pad = 4)
+        {
+            if (spots == null || spots.Count == 0) return null;
+            foreach (var c in spots)
+            {
+                var bmin = new P2(c.X - w / 2 - pad, c.Y - h / 2 - pad);
+                var bmax = new P2(c.X + w / 2 + pad, c.Y + h / 2 + pad);
+                if (taken != null && taken.Any(t => bmin.X < t.Max.X && bmax.X > t.Min.X && bmin.Y < t.Max.Y && bmax.Y > t.Min.Y)) continue;
+                if (segments != null && segments.Any(s => SegmentHitsBox(s.A, s.B, bmin, bmax))) continue;
+                return c;
+            }
+            return spots[0];
         }
 
         /// <summary>Đoạn AB có điểm chung với hình chữ nhật [min, max] (Liang–Barsky).</summary>

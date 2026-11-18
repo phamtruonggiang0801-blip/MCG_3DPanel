@@ -29,6 +29,14 @@ namespace MCG_3DPanel.Services.Detail
         public P2 OutlineA, OutlineB;
     }
 
+    /// <summary>Chữ chiều dày "(t)" của một tấm song song mặt cắt nhìn thấy: tâm ứng viên (toạ độ section) theo thứ tự ưu tiên,
+    /// engine đã kiểm mỗi chỗ đều nằm trên mặt tấm thấy được (không bị tấm khác che).</summary>
+    public sealed class ThicknessLabel
+    {
+        public string Text;
+        public List<P2> Spots = new List<P2>();
+    }
+
     public static class SectionSymbolRules
     {
         /// <summary>Tấm liên tục: không phải HP và nằm cả hai phía mặt phẳng cắt.</summary>
