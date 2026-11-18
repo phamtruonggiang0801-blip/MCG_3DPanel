@@ -66,17 +66,16 @@ namespace MCG_3DPanel.Tests
         // ─── Nhãn / tiêu đề ────────────────────────────────────────────────────
 
         [Fact]
-        public void IsLabelOf_SamePanelNumberAndText()
+        public void IsLabelOf_SamePanelAndNumber()
         {
             var det = Rec(DetailKind.Plan, "7D-16P", 1);
-            Assert.True(DetailUpdateRules.IsLabelOf(Rec(DetailKind.Plan, "7D-16P", 1), "DET.1", det));
-            Assert.True(DetailUpdateRules.IsLabelOf(Rec(DetailKind.View, "7D-16P", 1), " DET.1 ", Rec(DetailKind.View, "7D-16P", 1)));
-            Assert.False(DetailUpdateRules.IsLabelOf(Rec(DetailKind.Plan, "7D-16P", 1), "DET.12", det));
-            Assert.False(DetailUpdateRules.IsLabelOf(Rec(DetailKind.Plan, "7D-16P", 2), "DET.1", det));
-            Assert.False(DetailUpdateRules.IsLabelOf(Rec(DetailKind.Plan, "7D-16C", 1), "DET.1", det));
-            Assert.False(DetailUpdateRules.IsLabelOf(Rec(DetailKind.Section, "7D-16P", 1, "A"), "DET.1", det));
-            Assert.False(DetailUpdateRules.IsLabelOf(null, "DET.1", det));
-            Assert.False(DetailUpdateRules.IsLabelOf(Rec(DetailKind.Plan, "7D-16P", 1), "DET.1", Rec(DetailKind.Section, "7D-16P", 1, "A")));
+            Assert.True(DetailUpdateRules.IsLabelOf(Rec(DetailKind.Plan, "7D-16P", 1), det));
+            Assert.True(DetailUpdateRules.IsLabelOf(Rec(DetailKind.View, "7D-16P", 1), Rec(DetailKind.View, "7D-16P", 1)));
+            Assert.False(DetailUpdateRules.IsLabelOf(Rec(DetailKind.Plan, "7D-16P", 2), det));
+            Assert.False(DetailUpdateRules.IsLabelOf(Rec(DetailKind.Plan, "7D-16C", 1), det));
+            Assert.False(DetailUpdateRules.IsLabelOf(Rec(DetailKind.Section, "7D-16P", 1, "A"), det));
+            Assert.False(DetailUpdateRules.IsLabelOf(null, det));
+            Assert.False(DetailUpdateRules.IsLabelOf(Rec(DetailKind.Plan, "7D-16P", 1), Rec(DetailKind.Section, "7D-16P", 1, "A")));
         }
 
         [Fact]

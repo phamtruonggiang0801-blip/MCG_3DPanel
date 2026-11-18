@@ -49,14 +49,16 @@ of the palette and as command-line commands:
 
 ### 1. Detail Plan
 
-1. User draws a rectangle (closed polyline, layer `AM_7`) over the Plan View, then runs the command and picks it
-   (pre-selection accepted, like the Inventor tool).
+1. User runs the command and **draws** the rectangle (first corner, opposite corner; the tool adds it on `AM_7`).
+   `[Select]` picks an existing `AM_7` rectangle instead; a valid pre-selection is still accepted (engineer 2026-11-18).
 2. Tool resolves the panel under the rectangle, reads its 3D file, builds `<panel>_DET.n` (next free n).
 3. The block follows the cursor; user clicks the insertion point. Inserted at **scale 1**.
-4. The Plan View is **not modified** except: the user's `AM_7` rectangle is kept and the label `DET.n` is added next to
-   it. `%%UDETAIL n` (AM_1, h 50) is placed under the inserted block.
+4. The Plan View is **not modified** except: the `AM_7` rectangle is kept and the detail name is added as a leader note
+   (as the AMNOTE leader notes of the samples, `AM_5`): arrow at the top-right corner, 45° out, shelf under the name
+   (DBText h 150). `%%U<name>` (AM_1, h 50) is placed under the inserted block.
 
-No scale or name prompt.
+Name prompt `Detail name <DETAIL n>:` (Enter = suggestion), no scale prompt (engineer 2026-11-18). The name is text
+only; block names and section numbers keep `DET.n`.
 
 ### 2. Section Detail
 
@@ -77,7 +79,7 @@ Section Detail is **only** available on Detail Plans, not on Detail Views.
 3. Same engine as Detail Plan, clipped to the circle/rectangle. Block follows the cursor; click to insert at the given
    scale. Title = the name as typed (`%%U` underlined, AM_1 h 50). The tool does not know the sheet scale, so it does
    not append "(1:x)"; the user types it into the name if wanted (my call).
-4. Boundary kept on the plan with label `DET.n`.
+4. Boundary drawn like Detail Plan (`[Circle/Select]`), kept on the plan with the same leader note.
 
 ### 4. Update Details
 
@@ -151,8 +153,10 @@ Rejected:
 |---|---|
 | Outline of cut material | `AM_0` |
 | Section-mark lines inside cut material | `AM_8` |
-| Visible lines beyond the cut (Detail Plan **and** Section) | `AM_0` |
-| Top plate edge + cut-outs in Detail Plan / View (reference) | `AM_7`; where the region cuts the plate: `AM_4` `amzigzag` |
+| Visible lines beyond the cut — Section | `AM_0` |
+| Visible lines beyond the cut — Detail Plan / View (flange, HP bulb…) | `AM_4` (layer linetype Continuous), as the 5 samples (engineer 2026-11-18) |
+| Top plate edge in Detail Plan / View (reference) | `AM_7`; where the region cuts the plate: `AM_4` `amzigzag` |
+| Top plate cut-outs (holes) wholly inside the region | `AM_0` continuous; round ⇒ Circle (samples) |
 | Wire-guide path (from 2D) | `AM_7`, width 3 |
 | Fitting `tv` blocks (from 2D) | `AM_2` |
 | Break where the region boundary cuts through material | `AM_4`, linetype `amzigzag` |
@@ -217,7 +221,7 @@ In a section, the far face of the clip box (parallel to the cut) does not make b
 2. Detail Plan: no scale/name prompt; Detail View: scale (default 1) + name; no sections on Detail Views.
 3. Engine = approach A (3D solid sections).
 4. Everything in 3D is shown (collar, scallop, snip…).
-5. Visible lines beyond the cut → `AM_0` in both plan and section.
+5. Visible lines beyond the cut → `AM_0` in sections, `AM_4` in Detail Plan / View (2026-11-18).
 6. Section depth to the DET boundary; HP as true section.
 7. `thk_sym` dropped; Continuous symbol, `(t)` (parallel plates only) and `$` rules as above.
 8. Insert scale is 1 (no frame-scale detection).

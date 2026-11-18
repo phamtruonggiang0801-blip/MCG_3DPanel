@@ -202,6 +202,34 @@ namespace MCG_3DPanel.Services.Detail
             return c;
         }
 
+        /// <summary>Vòng <paramref name="i"/> là lỗ khoét: đỉnh đầu nằm trong một vòng khác lớn hơn (Top Plate có lỗ ⇒ section ra
+        /// vòng ngoài + vòng lỗ).</summary>
+        public static bool IsHole(IList<List<P2>> loops, int i)
+        {
+            var me = loops[i];
+            if (me == null || me.Count < 3) return false;
+            double a = Area(me);
+            for (int j = 0; j < loops.Count; j++)
+                if (j != i && loops[j] != null && loops[j].Count >= 3 && Area(loops[j]) > a && Inside(me[0], loops[j])) return true;
+            return false;
+        }
+
+        /// <summary>Vòng là đường tròn (≥ 8 đỉnh, mọi đỉnh cách tâm trung bình ≤ <paramref name="tol"/>) ⇒ tâm + bán kính;
+        /// lỗ tròn vẽ bằng Circle như mẫu tay thay vì polyline nhiều đỉnh.</summary>
+        public static bool IsCircle(IList<P2> loop, double tol, out P2 centre, out double radius)
+        {
+            centre = default; radius = 0;
+            if (loop == null || loop.Count < 8) return false;
+            double x = 0, y = 0;
+            foreach (var p in loop) { x += p.X; y += p.Y; }
+            centre = new P2(x / loop.Count, y / loop.Count);
+            double sum = 0;
+            foreach (var p in loop) sum += (p - centre).Length;
+            radius = sum / loop.Count;
+            foreach (var p in loop) if (Math.Abs((p - centre).Length - radius) > tol) return false;
+            return radius > tol;
+        }
+
         public static double Area(IList<P2> poly)
         {
             double s = 0;

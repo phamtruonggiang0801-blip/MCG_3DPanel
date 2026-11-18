@@ -24,12 +24,12 @@ namespace MCG_3DPanel.Services.Detail
 
         public static bool Changed(string before, string after) => !string.Equals(before, after, StringComparison.Ordinal);
 
-        /// <summary>DBText là nhãn "DET.n" của <paramref name="det"/> (Plan/View): bản ghi Plan/View cùng panel + số, chữ = DET.n.</summary>
-        public static bool IsLabelOf(DetailRecord textRec, string text, DetailRecord det)
+        /// <summary>DBText / Leader là nhãn của <paramref name="det"/> (Plan/View): bản ghi Plan/View cùng panel + số.</summary>
+        public static bool IsLabelOf(DetailRecord textRec, DetailRecord det)
         {
             if (textRec == null || det == null || det.Kind == DetailKind.Section || textRec.Kind == DetailKind.Section) return false;
-            return string.Equals(textRec.Panel, det.Panel, StringComparison.Ordinal) && textRec.Number == det.Number
-                && string.Equals((text ?? "").Trim(), DetailNaming.PlanLabel(det.Number), StringComparison.Ordinal);
+            // Không so chữ: tên do người dùng gõ (kỹ sư 2026-11-18); nhãn = DBText / Leader trong Model Space mang bản ghi
+            return string.Equals(textRec.Panel, det.Panel, StringComparison.Ordinal) && textRec.Number == det.Number;
         }
 
         /// <summary>Cùng 1 detail: loại, panel, số, chữ (section).</summary>

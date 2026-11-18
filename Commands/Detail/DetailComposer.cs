@@ -20,6 +20,7 @@ namespace MCG_3DPanel.Commands.Detail
         const string TextStyle = "STANDARD";
         const double DedupeTol = 0.05;
         const double BoundaryTol = 0.5;   // = SectionEngine.Tol: cạnh nằm trên biên vùng / hộp cắt
+        const double HoleRoundTol = 0.5;  // mm: vòng lỗ Top Plate nhận là tròn
         const short TextColor = 2;   // chữ ký hiệu trên mẫu: màu 2
 
         static Database Db => HostApplicationServices.WorkingDatabase;
@@ -42,14 +43,25 @@ namespace MCG_3DPanel.Commands.Detail
                 // Viền Top Plate: mép thật + lỗ khoét ⇒ AM_7; cạnh trên biên vùng (vùng cắt ngang tấm) ⇒ break AM_4,
                 // gộp chung với break của kết cấu để không vẽ chồng
                 var topBreaks = new List<(P2, P2)>();
-                foreach (var loop in topPlate ?? Enumerable.Empty<List<P2>>())
+                var loops = (topPlate ?? Enumerable.Empty<List<P2>>()).Where(l => l != null && l.Count >= 3)
+                    .Select(l => l.Select(p => p + shift).ToList()).ToList();
+                for (int i = 0; i < loops.Count; i++)
                 {
-                    if (loop == null || loop.Count < 3) continue;
-                    var (brk, edges) = DetailComposeRules.TopPlateRuns(loop.Select(p => p + shift).ToList(), dist, BoundaryTol);
+                    var (brk, edges) = DetailComposeRules.TopPlateRuns(loops[i], dist, BoundaryTol);
                     topBreaks.AddRange(brk);
-                    foreach (var e in edges) ents.Add(Poly(e.Pts, e.Closed, AM7));
+                    // Lỗ khoét nằm trọn trong vùng ⇒ nét liền AM_0 (5 mẫu: Circle AM_0), tròn ⇒ Circle; mép tấm ⇒ AM_7 (kỹ sư 2026-11-18)
+                    bool hole = brk.Count == 0 && DetailComposeRules.IsHole(loops, i);
+                    if (hole && DetailComposeRules.IsCircle(loops[i], HoleRoundTol, out P2 c, out double rad))
+                    {
+                        var circle = new Circle(new Point3d(c.X, c.Y, 0), Vector3d.ZAxis, rad);
+                        circle.SetDatabaseDefaults(Db);
+                        circle.Layer = AM0;
+                        ents.Add(circle);
+                        continue;
+                    }
+                    foreach (var e in edges) ents.Add(Poly(e.Pts, e.Closed, hole ? AM0 : AM7));
                 }
-                AddStructure(r, shift, ents, dist, topBreaks);
+                AddStructure(r, shift, ents, dist, topBreaks, AM4);
                 var m = Matrix3d.Displacement(new Vector3d(shift.X, shift.Y, 0));
                 foreach (var e in twoDItems ?? Enumerable.Empty<Entity>())
                 {
@@ -308,9 +320,10 @@ namespace MCG_3DPanel.Commands.Detail
 
         /// <summary>Vết cắt + AM_8 + đường thấy, đã gộp đoạn trùng. Cạnh vết cắt nằm trên biên vùng / hộp cắt
         /// (<paramref name="boundaryDist"/>, toạ độ đã dời) hoặc trùng break ⇒ AM_4 amzigzag, còn lại AM_0; đường thấy trên biên
-        /// ⇒ AM_4 amzigzag, bỏ phần đã có cạnh vết cắt break. Thiếu linetype ⇒ Continuous + ghi chú.</summary>
+        /// ⇒ AM_4 amzigzag, bỏ phần đã có cạnh vết cắt break. Đường thấy còn lại ⇒ <paramref name="seenLayer"/> (section AM_0; Detail Plan
+        /// AM_4 liền như 5 mẫu: Flange, bụng HP — kỹ sư 2026-11-18). Thiếu linetype ⇒ Continuous + ghi chú.</summary>
         static void AddStructure(SectionResult r, P2 shift, List<Entity> ents, Func<P2, double> boundaryDist,
-            IEnumerable<(P2, P2)> extraBreaks = null)
+            IEnumerable<(P2, P2)> extraBreaks = null, string seenLayer = AM0)
         {
             ObjectId zig = LinetypeId(Zigzag);
             bool anyBreak = false;
@@ -366,7 +379,7 @@ namespace MCG_3DPanel.Commands.Detail
                 Zig(pl);
             }
             var lines = DetailComposeRules.MergeCollinear(straight0, cutSolid.Concat(cutBreak).Concat(breaks), DedupeTol);
-            foreach (var s in lines) ents.Add(Line(s, AM0));
+            foreach (var s in lines) ents.Add(Line(s, seenLayer));
 
             // 4. Đường cong: trên biên ⇒ AM_4 (bỏ nếu nằm trọn trên cạnh vết cắt break), còn lại AM_0
             foreach (var (c, boundary) in curved)
@@ -378,8 +391,9 @@ namespace MCG_3DPanel.Commands.Detail
                     continue;
                 }
                 c.SetDatabaseDefaults(Db);
-                c.Layer = boundary ? AM4 : AM0;
+                c.Layer = boundary ? AM4 : seenLayer;
                 if (boundary) Zig(c);
+                else c.Linetype = "ByLayer";
             }
             if (anyBreak && zig.IsNull) r.Warnings.Add($"Linetype {Zigzag} is missing from the drawing; break lines are drawn Continuous.");
         }

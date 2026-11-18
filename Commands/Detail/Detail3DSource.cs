@@ -90,7 +90,9 @@ namespace MCG_3DPanel.Commands.Detail
                     }
                 }
 
-                var matches = Detail3DMatch.Matching(loaded.Select(l => l.Info), drawingPath, refHandle);
+                var matches = Detail3DMatch.Matching(loaded.Select(l => l.Info), drawingPath, refHandle)
+                    // Nhiều file khớp (vd bản chép "…_3D (2).dwg" giữ nguyên meta) ⇒ mới lưu nhất đứng đầu = mặc định khi hỏi
+                    .OrderByDescending(m => SafeWriteTime(m.Path)).ToList();
                 if (matches.Count == 0)
                 {
                     // Không báo "chưa có file" sai sự thật: nói file nào dựng từ bản vẽ khác / đọc lỗi.
@@ -187,6 +189,11 @@ namespace MCG_3DPanel.Commands.Detail
                 // Trả null (không phải panel) hay ném đều không để database phụ mồ côi.
                 if (!ok && l.Owned) DisposeQuietly(l.Db);
             }
+        }
+
+        private static DateTime SafeWriteTime(string path)
+        {
+            try { return File.GetLastWriteTime(path); } catch { return DateTime.MinValue; }
         }
 
         private static ObjectId ModelSpaceRef(Transaction tr, Database db, ObjectId btrId)

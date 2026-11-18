@@ -335,4 +335,26 @@ public class DetailComposeRulesTests
         Assert.Equal(4, breaks.Count);
         Assert.Empty(edges);
     }
+
+    static List<P2> Ring(double cx, double cy, double r, int n) =>
+        Enumerable.Range(0, n).Select(i => new P2(cx + r * Math.Cos(2 * Math.PI * i / n), cy + r * Math.Sin(2 * Math.PI * i / n))).ToList();
+
+    [Fact]
+    public void IsHole_LoopInsideBiggerLoop()
+    {
+        var loops = new List<List<P2>> { Rect(0, 0, 1000, 1000).ToList(), Ring(500, 500, 200, 64), Rect(2000, 0, 2100, 100).ToList() };
+        Assert.False(DetailComposeRules.IsHole(loops, 0));
+        Assert.True(DetailComposeRules.IsHole(loops, 1));
+        Assert.False(DetailComposeRules.IsHole(loops, 2));
+    }
+
+    [Fact]
+    public void IsCircle_RoundHoleYesRectangleNo()
+    {
+        Assert.True(DetailComposeRules.IsCircle(Ring(500, 400, 200, 64), 0.5, out P2 c, out double r));
+        Assert.Equal(500, c.X, 3); Assert.Equal(400, c.Y, 3); Assert.Equal(200, r, 3);
+        Assert.False(DetailComposeRules.IsCircle(Rect(0, 0, 100, 100).ToList(), 0.5, out _, out _));
+        var oval = Ring(0, 0, 200, 64).Select(p => new P2(p.X * 1.5, p.Y)).ToList();
+        Assert.False(DetailComposeRules.IsCircle(oval, 0.5, out _, out _));
+    }
 }

@@ -48,6 +48,22 @@ namespace MCG_3DPanel.Services.Detail
             return new P2(corner.X + gap, corner.Y + gap);
         }
 
+        /// <summary>Leader chỉ vào biên như Leader Note (AMNOTE) trên 5 mẫu: mũi tên tại góc trên-phải của biên, chéo 45° ra ngoài
+        /// <paramref name="rise"/> rồi đoạn ngang đỡ chữ dài bằng chữ + 2·<paramref name="gap"/>; chữ (trái-dưới) nằm trên đoạn ngang.</summary>
+        public static (P2 Head, P2 Elbow, P2 End, P2 Text) LabelLeader(DetailRegion r, double textWidth, double rise, double gap)
+        {
+            P2 head = LabelAt(r, 0);
+            P2 elbow = new P2(head.X + rise, head.Y + rise);
+            return (head, elbow, new P2(elbow.X + textWidth + 2 * gap, elbow.Y), new P2(elbow.X + gap, elbow.Y + gap));
+        }
+
+        /// <summary>Tên gõ không có "%%U" (chữ ở leader); rỗng ⇒ "DETAIL n".</summary>
+        public static string PlainName(string title, int n)
+        {
+            string t = string.IsNullOrWhiteSpace(title) ? DetailNaming.DetailTitle(n) : title.Trim();
+            return t.StartsWith("%%U", StringComparison.OrdinalIgnoreCase) ? t.Substring(3) : t;
+        }
+
         /// <summary>Tiêu đề Detail View: tên gõ (rỗng ⇒ "DETAIL n") có "%%U" phía trước (không lặp nếu đã gõ).</summary>
         public static string ViewTitle(string typed, int n)
         {

@@ -512,12 +512,23 @@ namespace MCG_3DPanel.Commands
             string ext = Path.GetExtension(file);
             if (!ext.Equals(".dwg", System.StringComparison.OrdinalIgnoreCase) && !ext.Equals(".dwt", System.StringComparison.OrdinalIgnoreCase)) return false;
             // Bit 8 (window) và 16 (view): file 3D đọc từ đĩa nên đổi khung nhìn (zoom, pan) không ảnh hưởng nội dung.
-            try { return (System.Convert.ToInt32(Application.GetSystemVariable("DBMOD")) & ~DBMOD_VIEW_ONLY) == 0; }
+            try { return (Dbmod(doc) & ~DBMOD_VIEW_ONLY) == 0; }
             catch (System.Exception ex)
             {
                 Debug.WriteLine($"{LOG_PREFIX} DBMOD: {ex.Message}");
                 return false;   // không đọc được ⇒ coi như chưa lưu, người dùng vẫn thấy thông báo
             }
+        }
+
+        /// <summary>DBMOD của CHÍNH <paramref name="doc"/>. Application.GetSystemVariable chỉ đọc bản vẽ đang active ⇒ file 3D mở nền
+        /// (Detail chạy trong file 2D) bị báo "chưa lưu" theo thay đổi của file 2D (kỹ sư 2026-11-18). Bản vẽ khác ⇒ COM GetVariable.</summary>
+        private static int Dbmod(Document doc)
+        {
+            if (doc == Application.DocumentManager.MdiActiveDocument)
+                return System.Convert.ToInt32(Application.GetSystemVariable("DBMOD"));
+            object acad = doc.GetAcadDocument();
+            object v = acad.GetType().InvokeMember("GetVariable", System.Reflection.BindingFlags.InvokeMethod, null, acad, new object[] { "DBMOD" });
+            return System.Convert.ToInt32(v);
         }
 
         /// <summary>Đọc tên block của từng panel từ bản vẽ nguồn (chỉ đọc) và tính file đích, TRƯỚC khi đổi document.</summary>

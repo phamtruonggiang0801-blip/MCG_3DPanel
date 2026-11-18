@@ -13,6 +13,24 @@ namespace MCG_3DPanel.Tests
         }
 
         [Fact]
+        public void LabelLeader_FromTopRightCornerOut45ThenShelf()
+        {
+            var g = DetailCommandRules.LabelLeader(Rect(0, 0, 100, 40), 500, 300, 30);
+            Assert.Equal(100, g.Head.X, 6); Assert.Equal(40, g.Head.Y, 6);
+            Assert.Equal(400, g.Elbow.X, 6); Assert.Equal(340, g.Elbow.Y, 6);
+            Assert.Equal(960, g.End.X, 6); Assert.Equal(340, g.End.Y, 6);
+            Assert.Equal(430, g.Text.X, 6); Assert.Equal(370, g.Text.Y, 6);
+        }
+
+        [Fact]
+        public void PlainName_DropsUnderlineDefaultsToDetailN()
+        {
+            Assert.Equal("DETAIL 3", DetailCommandRules.PlainName("%%UDETAIL 3", 3));
+            Assert.Equal("DETAIL 3", DetailCommandRules.PlainName("", 3));
+            Assert.Equal("DET.A", DetailCommandRules.PlainName(" DET.A ", 3));
+        }
+
+        [Fact]
         public void Centre_RectangleAndCircle()
         {
             var c = DetailCommandRules.Centre(Rect(0, 0, 100, 40));
