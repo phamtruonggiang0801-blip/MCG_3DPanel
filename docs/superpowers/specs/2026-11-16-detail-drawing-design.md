@@ -156,12 +156,12 @@ Rejected:
 | Wire-guide path (from 2D) | `AM_7`, width 3 |
 | Fitting `tv` blocks (from 2D) | `AM_2` |
 | Break where the region boundary cuts through material | `AM_4`, linetype `amzigzag` |
-
-In a section, the far face of the clip box (parallel to the cut) does not make breaks: its edges project onto the picture without depth and would wrongly mark lines in front as breaks (9B-9B, 2026-11-18).
 | Section mark arrows + letter | `AM_10` (text h 30); arrows linetype `Continuous` (AM_10 is dashed) |
 | Titles | `AM_1` (text h 50) |
 | Continuous symbol + thickness text | `AM_5` (block `Continious symbol`, text) |
 | Weld trace mark `$` | `AM_10`, MText h 35 |
+
+In a section, the far face of the clip box (parallel to the cut) does not make breaks: its edges project onto the picture without depth and would wrongly mark lines in front as breaks (9B-9B, 2026-11-18).
 
 - **AM_8 count** inside a cut plate of thickness t: `max(1, round(t / 6))` lines, evenly dividing t
   (6 → 1, 10 → 2, 12 → 2, 15 → 3, 20 → 3).
@@ -171,6 +171,7 @@ In a section, the far face of the clip box (parallel to the cut) does not make b
   where all 47 symbols are horizontal, rotation 180°). Arrow line perpendicular to the plate at mid height; thickness
   text always in parentheses, `(10.0)`, right beside the plate it belongs to, just above/below the arrow, moved along
   the plate until it touches no line, symbol or text. Members ending at, or interrupted at, the plane get nothing.
+  Thickness text is written **only for cut plates**, never for parallel plates seen behind (engineer 2026-11-18).
 - **`$` weld trace** — sections only, **one `$` per vertical visible line** of a plate parallel to the section
   plane, **centred on** the middle of that line (the line runs through the `$`, as all 26 in the samples). Engineer
   2026-11-18 (7A-7A review): the lines that get `$` are **joint lines between two parallel plates** (also when the

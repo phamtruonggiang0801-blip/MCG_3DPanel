@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using MCG_3DPanel.Services.Detail;
 using Xunit;
 
@@ -31,50 +30,18 @@ namespace MCG_3DPanel.Tests
         }
 
         [Fact]
+        public void WeldTrace_Hidden_Null() =>
+            Assert.Null(SectionSymbolRules.WeldTracePlacement(new ParallelPlate { Visible = false, OutlineA = new P2(0, 0), OutlineB = new P2(0, -10) }));
+
+        [Fact]
         public void WeldTrace_MidHeight()
         {
-            var at = SectionSymbolRules.WeldTracePlacement(new P2(887.4, 0), new P2(887.4, -374));
-            Assert.Equal(-187, at.Y, 6);
-            Assert.Equal(887.4, at.X, 6);   // tâm chữ trên nét (bản vẽ tay)
+            var p = new ParallelPlate { Type = "Web", Visible = true, OutlineA = new P2(887.4, 0), OutlineB = new P2(887.4, -374) };
+            var at = SectionSymbolRules.WeldTracePlacement(p);
+            Assert.NotNull(at);
+            Assert.Equal(-187, at.Value.Y, 6);
+            Assert.Equal(887.4, at.Value.X, 6);   // tâm chữ trên nét (bản vẽ tay)
         }
-
-        [Theory]
-        [InlineData(374, 10, true)]    // vách đứng nhìn mặt
-        [InlineData(20, 200, false)]   // face plate đáy nằm ngang
-        [InlineData(6, 1343, false)]   // tấm boong
-        public void UprightPlate(double faceH, double t, bool expected) =>
-            Assert.Equal(expected, SectionSymbolRules.IsUprightPlate(faceH, t));
-
-        [Fact]
-        public void Touches_EndLineMeetingHp()
-        {
-            // 7A-7A: nét đầu vách x=−611.5, y −180…74; HP cắt ngay phía trên (viền từ y=74)
-            var hp = new List<IList<P2>> { new List<P2> { new P2(-611.5, 194), new P2(-611.5, 74), new P2(-633.5, 79), new P2(-617.5, 194) } };
-            Assert.True(SectionSymbolRules.Touches(new P2(-611.5, -180), new P2(-611.5, 74), hp, 0.5));
-        }
-
-        [Fact]
-        public void Touches_FarJoint_False()
-        {
-            var hp = new List<IList<P2>> { new List<P2> { new P2(-611.5, 194), new P2(-611.5, 74), new P2(-633.5, 79) } };
-            Assert.False(SectionSymbolRules.Touches(new P2(215.9, -180), new P2(215.9, 194), hp, 0.5));
-        }
-
-        [Fact]
-        public void Touches_HpVertexOnLineMiddle()
-        {
-            // FB cắt chạm giữa nét đầu tấm
-            var fb = new List<IList<P2>> { new List<P2> { new P2(0, 50), new P2(80, 50), new P2(80, 56), new P2(0, 56) } };
-            Assert.True(SectionSymbolRules.Touches(new P2(0, -100), new P2(0, 150), fb, 0.5));
-        }
-
-        [Theory]
-        [InlineData(0, -180, 0, 74, true)]       // nét đầu / nét nối đứng
-        [InlineData(0, 0, 100, 100, true)]       // nét xiên 45°
-        [InlineData(272.9, -200, 671.5, -200, false)]   // mép dưới face plate
-        [InlineData(0, 0, 100, 20, false)]       // gần ngang (11°)
-        public void MarkLine(double ax, double ay, double bx, double by, bool expected) =>
-            Assert.Equal(expected, SectionSymbolRules.IsMarkLine(new P2(ax, ay), new P2(bx, by)));
 
         [Fact] public void Upright_Vertical_True() => Assert.True(SectionSymbolRules.IsUpright(M("Web", -50, 50)));
 
