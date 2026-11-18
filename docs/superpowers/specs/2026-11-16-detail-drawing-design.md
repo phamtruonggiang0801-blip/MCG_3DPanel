@@ -160,13 +160,18 @@ Rejected:
 - **AM_8 count** inside a cut plate of thickness t: `max(1, round(t / 6))` lines, evenly dividing t
   (6 → 1, 10 → 2, 12 → 2, 15 → 3, 20 → 3).
 - **HP in sections**: true cross-section from 3D (not the `HP_xxx_sv` block).
-- **Continuous symbol** — sections only: one for every plate (web, FB, bracket, face plate; not HP) cut by the plane
-  **and continuing on both sides** of it. Arrow line perpendicular to the plate at mid height; thickness text always in
-  parentheses, `(10.0)`. Members ending at, or interrupted at, the plane get nothing.
+- **Continuous symbol** — sections only: one for every **upright** plate (web, FB, bracket; not HP) cut by the plane
+  **and continuing on both sides** of it — never the deck plate or face plates (engineer 2026-11-18: as the samples,
+  where all 47 symbols are horizontal, rotation 180°). Arrow line perpendicular to the plate at mid height; thickness
+  text always in parentheses, `(10.0)`, right beside the plate it belongs to, just above/below the arrow, moved along
+  the plate until it touches no line, symbol or text. Members ending at, or interrupted at, the plane get nothing.
 - **`$` weld trace** — sections only: for **each** plate A **parallel to the section plane** that is **visible**
-  (not hidden) behind the cut, **one** `$` next to its visible outline line, at the middle of that line's height
-  (engineer). Sample 16P 1B-1B: a web parallel to the cut ends at x = 887; its top/bottom edges coincide with the deck
-  plate and face plate, so only the end line shows, and `$` sits beside it.
+  (not hidden) behind the cut, **one** `$` **centred on** the middle of its visible line (the line runs through the
+  `$`, as all 26 in the samples). Only the plate's own lines count: lines coinciding with another member's edge are
+  skipped (engineer 2026-11-18). Sample 16P 1B-1B: a web parallel to the cut ends at x = 887; its top/bottom edges
+  coincide with the deck plate and face plate, so only the end line shows, and `$` sits on it.
+- **Section mark arrows** sit **outside** the DET picture: the cut line is extended past the extents of the DET
+  content by 250 (samples: 240–330), arrows at those ends.
 - **AM_8** also applies to cut HP webs in the Detail Plan (*my call*: everything cut gets marked).
 - Existing layers / dim styles / text styles only — create none (as Plan View). Symbol blocks missing from the drawing
   follow the Plan View fallback: drawing → `CAS.dwt` → tool-drawn shape.

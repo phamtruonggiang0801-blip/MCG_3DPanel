@@ -520,6 +520,10 @@ namespace MCG_3DPanel.Commands.Detail
                 if (m.Cut || m.Item.Type == nameof(PartType.HP) || m.FootAxis == null) continue;
                 if (!SectionCurveRules.IsParallel(m.FootAxis.Value, right, ParallelDeg)) continue;
                 var mine = result.Visible.Where(v => v.Handle == m.Item.Handle && !v.OnBoundary).ToList();
+                // Chỉ nét RIÊNG của tấm (vd nét đầu tấm): bỏ nét trùng cạnh tấm khác (mép trên/dưới nằm sát tấm boong,
+                // face plate…) — spec mẫu 1B-1B, kỹ sư 2026-11-18. Không còn nét riêng ⇒ không đặt $.
+                var others = live.Where(o => !ReferenceEquals(o, m)).SelectMany(o => o.Edges2D).Select(e => (IList<P2>)e).ToList();
+                mine = mine.Where(v => !SectionCurveRules.Covers(SectionCurveRules.Densify(Sample2(v.Curve), CoverStep), others, Tol)).ToList();
                 var p = new ParallelPlate { Type = m.Item.Type, Visible = mine.Count > 0 };
                 if (p.Visible)
                 {

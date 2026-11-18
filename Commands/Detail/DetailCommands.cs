@@ -288,7 +288,8 @@ namespace MCG_3DPanel.Commands.Detail
                             };
 
                             // Ký hiệu nA trong block DET (toạ độ cục bộ = plan − gốc DET)
-                            var marks = DetailComposer.SectionMarks(f, n, letter, new P2(det.BaseX, det.BaseY));
+                            var marks = DetailComposer.SectionMarks(f, n, letter, new P2(det.BaseX, det.BaseY),
+                                DetailComposer.ContentExtents(tr, detRef.BlockTableRecord));
                             DetailWriter.AddToBlock(tr, detRef.BlockTableRecord, marks, rec);
 
                             List<Entity> ents = DetailComposer.SectionEntities(result, f, out P2 basePt);
@@ -834,12 +835,13 @@ namespace MCG_3DPanel.Commands.Detail
             if (DetailWriter.Read(btr) == null) DetailWriter.Tag(btr, i.New);
             DetailWriter.DefineBlock(tr, db, btr.Name, ents, i.New);
 
-            // Ký hiệu section trên DET: theo đường cắt đã lưu + vùng mới (gốc DET giữ nguyên)
+            // Ký hiệu section trên DET: theo đường cắt đã lưu + vùng mới (gốc DET giữ nguyên); khung bao lấy TRƯỚC khi thêm ký hiệu
+            var content = DetailComposer.ContentExtents(tr, i.BtrId);
             foreach (DetailRecord s in DetailUpdateRules.SectionsOf(sectionRecs, i.Rec))
             {
                 SectionFrame f = SectionFrame.From(P(s.CutA), P(s.CutB), P(s.Side), i.Region);
                 if (f == null) continue;
-                DetailWriter.AddToBlock(tr, i.BtrId, DetailComposer.SectionMarks(f, i.Rec.Number, s.Letter, basePt), s);
+                DetailWriter.AddToBlock(tr, i.BtrId, DetailComposer.SectionMarks(f, i.Rec.Number, s.Letter, basePt, content), s);
             }
             Redraw(tr, btr);
             foreach (ObjectId r in i.Refs) DetailWriter.Tag((DBObject)tr.GetObject(r, OpenMode.ForWrite, false, true), i.New);

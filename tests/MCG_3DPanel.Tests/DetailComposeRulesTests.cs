@@ -194,11 +194,56 @@ public class DetailComposeRulesTests
     }
 
     [Fact]
-    public void ThicknessTextAt_AlongSymbol()
+    public void ThicknessText_BesidePlate_AboveArrow_WhenFree()
     {
-        var p = DetailComposeRules.ThicknessTextAt(new P2(10, 20), Math.PI);
-        Assert.True(p.X < 10 - 50);
-        Assert.Equal(20, p.Y, 6);
+        // Tấm đứng dày 10 tại x=0, cao 374; chữ rộng 144, cao 30
+        var c = DetailComposeRules.ThicknessTextPlace(new P2(0, 0), 10, 374, 144, 30, new List<(P2, P2)>(), new List<(P2, P2)>());
+        Assert.Equal(5 + 6 + 72, c.X, 6);   // sát mặt phải tấm
+        Assert.Equal(15 + 7, c.Y, 6);       // ngay trên mũi tên
+    }
+
+    [Fact]
+    public void ThicknessText_AvoidsLinesAndTakenBoxes()
+    {
+        // Nét ngang cắt qua chỗ đầu tiên (y=22) bên phải; chữ đã đặt chiếm bên trái phía trên
+        var segs = new List<(P2, P2)> { (new P2(-500, 22), new P2(500, 22)) };
+        var taken = new List<(P2, P2)> { (new P2(-300, -100), new P2(-10, 200)) };
+        var c = DetailComposeRules.ThicknessTextPlace(new P2(0, 0), 10, 374, 144, 30, segs, taken);
+        Assert.True(c.X > 0);
+        Assert.True(Math.Abs(c.Y - 22) >= 15 + 4);
+        Assert.False(DetailComposeRules.SegmentHitsBox(new P2(-500, 22), new P2(500, 22), new P2(c.X - 76, c.Y - 19), new P2(c.X + 76, c.Y + 19)));
+        Assert.True(Math.Abs(c.Y) <= 187);   // trong chiều dài tấm
+    }
+
+    [Fact]
+    public void ExtendOutside_PushesBothEndsBeyondContentPlusGap()
+    {
+        var (a, b) = DetailComposeRules.ExtendOutside(new P2(0, 50), new P2(1000, 50), new P2(100, 0), new P2(900, 100), 250);
+        Assert.Equal(-150, a.X, 6); Assert.Equal(1150, b.X, 6);
+        Assert.Equal(50, a.Y, 6); Assert.Equal(50, b.Y, 6);
+    }
+
+    [Fact]
+    public void ExtendOutside_NeverShortens_MissKeeps()
+    {
+        var (a, b) = DetailComposeRules.ExtendOutside(new P2(-1000, 50), new P2(2000, 50), new P2(100, 0), new P2(900, 100), 250);
+        Assert.Equal(-1000, a.X, 6); Assert.Equal(2000, b.X, 6);
+        var (c, d) = DetailComposeRules.ExtendOutside(new P2(0, 900), new P2(1000, 900), new P2(100, 0), new P2(900, 100), 250);
+        Assert.Equal(0, c.X, 6); Assert.Equal(1000, d.X, 6);
+    }
+
+    [Fact]
+    public void ContinuousMembers_SkipsHorizontalPlates()
+    {
+        var cuts = new List<(string, string, IList<P2>, double, double)>
+        {
+            ("W", "Web", Rect(0, 0, 10, 374), -50, 50),
+            ("F", "FacePlate", Rect(0, -20, 500, 0), -50, 50),
+            ("T", "TopPlate", Rect(-700, 374, 700, 380), -50, 50),
+        };
+        var m = Assert.Single(DetailComposeRules.ContinuousMembers(cuts));
+        Assert.Equal("Web", m.Type);
+        Assert.Equal(374, m.CutLength, 6);
     }
 
     // ─── Ký hiệu Continuous: tấm nào nhận ───

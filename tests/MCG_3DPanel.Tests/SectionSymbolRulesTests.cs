@@ -40,7 +40,23 @@ namespace MCG_3DPanel.Tests
             var at = SectionSymbolRules.WeldTracePlacement(p);
             Assert.NotNull(at);
             Assert.Equal(-187, at.Value.Y, 6);
-            Assert.Equal(887.4 - 15, at.Value.X, 6);
+            Assert.Equal(887.4, at.Value.X, 6);   // tâm chữ trên nét (bản vẽ tay)
+        }
+
+        [Fact] public void Upright_Vertical_True() => Assert.True(SectionSymbolRules.IsUpright(M("Web", -50, 50)));
+
+        [Fact]
+        public void Upright_Horizontal_False()
+        {
+            var m = M("FacePlate", -50, 50); m.CutAxis = new P2(1, 0);
+            Assert.False(SectionSymbolRules.IsUpright(m));
+        }
+
+        [Fact]
+        public void ContinuousPlacement_AxisDown_Still180()
+        {
+            var m = M("Web", -5, 5); m.CutAxis = new P2(0, -1);
+            Assert.Equal(System.Math.PI, SectionSymbolRules.ContinuousPlacement(m).rotation, 6);
         }
     }
 }

@@ -27,8 +27,6 @@ namespace MCG_3DPanel.Services.Detail
         public const double HeadWidth = (276.9148 - 133.4212) / 3 * MarkScale;
         // Chữ "1B" mẫu: cách đầu mút 36.2 ra ngoài, 86.9 theo hướng nhìn.
         const double TextOut = 36.19, TextLook = 86.9;
-        // Chữ "(t)" cách tâm ký hiệu Continuous dọc trục ký hiệu (ký hiệu dài −59…41.5).
-        const double ThicknessTextGap = 120;
 
         static double Cross(P2 a, P2 b) => a.X * b.Y - a.Y * b.X;
 
@@ -246,7 +244,7 @@ namespace MCG_3DPanel.Services.Detail
                 .GroupBy(c => string.IsNullOrEmpty(c.Handle) ? Guid.NewGuid().ToString() : c.Handle)
                 .Select(g => g.OrderByDescending(c => Area(c.Outline)).First())
                 .Select(c => ToCutMember(c.Type, c.Outline, c.MinSigned, c.MaxSigned))
-                .Where(m => SectionSymbolRules.IsContinuous(m)).ToList();
+                .Where(m => SectionSymbolRules.IsContinuous(m) && SectionSymbolRules.IsUpright(m)).ToList();
         }
 
         /// <summary>CutMember từ 1 vết cắt: dày = bề rộng hình chữ nhật bao nhỏ nhất, tâm = tâm hình chữ nhật, trục = trục dài.</summary>
@@ -259,7 +257,7 @@ namespace MCG_3DPanel.Services.Detail
             return new CutMember
             {
                 Type = type, MinSigned = minSigned, MaxSigned = maxSigned, Thickness = r.width,
-                CutCenter = r.axis * ((a0 + a1) / 2) + n * ((n0 + n1) / 2), CutAxis = r.axis,
+                CutCenter = r.axis * ((a0 + a1) / 2) + n * ((n0 + n1) / 2), CutAxis = r.axis, CutLength = a1 - a0,
             };
         }
 
@@ -277,8 +275,73 @@ namespace MCG_3DPanel.Services.Detail
             return new[] { At(start, u * -1), At(end, u) };
         }
 
-        /// <summary>Tâm chữ "(t)" dọc trục ký hiệu Continuous (góc <paramref name="rotation"/>), phía đầu +X của ký hiệu.</summary>
-        public static P2 ThicknessTextAt(P2 at, double rotation) =>
-            at + new P2(Math.Cos(rotation), Math.Sin(rotation)) * ThicknessTextGap;
+        /// <summary>Mũi tên mặt cắt ra NGOÀI hình: kéo dài đường cắt [a, b] tới chỗ nó ra khỏi khung bao hình
+        /// (<paramref name="min"/>–<paramref name="max"/>) nới thêm <paramref name="gap"/> (bản vẽ tay: mũi tên cách hình ~240–330).
+        /// Không bao giờ rút ngắn; đường không qua khung ⇒ giữ nguyên.</summary>
+        public static (P2 A, P2 B) ExtendOutside(P2 a, P2 b, P2 min, P2 max, double gap = MarkGap)
+        {
+            var d = b - a;
+            double len = d.Length;
+            if (len < 1e-9 || min.X > max.X || min.Y > max.Y) return (a, b);
+            var u = d * (1 / len);
+            double t0 = double.NegativeInfinity, t1 = double.PositiveInfinity;
+            bool Slab(double p, double du, double lo, double hi)
+            {
+                if (Math.Abs(du) < 1e-12) return p >= lo && p <= hi;
+                double s0 = (lo - p) / du, s1 = (hi - p) / du;
+                if (s0 > s1) { var tmp = s0; s0 = s1; s1 = tmp; }
+                t0 = Math.Max(t0, s0); t1 = Math.Min(t1, s1);
+                return true;
+            }
+            if (!Slab(a.X, u.X, min.X - gap, max.X + gap) || !Slab(a.Y, u.Y, min.Y - gap, max.Y + gap) || t0 > t1) return (a, b);
+            return (a + u * Math.Min(0, t0), a + u * Math.Max(len, t1));
+        }
+
+        /// <summary>Khoảng hở mũi tên mặt cắt ↔ hình (bản vẽ tay 16P/16C: 140–390, đa số 240–330).</summary>
+        public const double MarkGap = 250;
+
+        /// <summary>Bề rộng ước lượng của MText 1 dòng (STANDARD): 0.8·h mỗi ký tự.</summary>
+        public static double TextWidth(string s, double h) => (s?.Length ?? 0) * 0.8 * h;
+
+        /// <summary>Tâm chữ "(t)" cho ký hiệu Continuous tại <paramref name="at"/> trên tấm đứng: sát mặt tấm (trái/phải),
+        /// trên/dưới mũi tên, lùi dần dọc tấm (trong chiều dài vết cắt) tới chỗ khung chữ không chạm nét nào
+        /// (<paramref name="segments"/>) và không đè chữ/ký hiệu đã đặt (<paramref name="taken"/>). Không còn chỗ trống ⇒ vị trí đầu.</summary>
+        public static P2 ThicknessTextPlace(P2 at, double thickness, double cutLength, double w, double h,
+            IList<(P2 A, P2 B)> segments, IList<(P2 Min, P2 Max)> taken)
+        {
+            const double pad = 4, faceGap = 6, arrowClear = 7;
+            double side = thickness / 2 + faceGap + w / 2;
+            double first = h / 2 + arrowClear, step = h / 2 + 5;
+            double limit = Math.Max(first, cutLength / 2 - h / 2);
+            P2? fallback = null;
+            for (double a = first; a <= limit + 1e-9; a += step)
+                foreach (double sa in new[] { 1.0, -1.0 })
+                    foreach (double ss in new[] { 1.0, -1.0 })
+                    {
+                        var c = at + new P2(ss * side, sa * a);
+                        if (fallback == null) fallback = c;
+                        var bmin = new P2(c.X - w / 2 - pad, c.Y - h / 2 - pad);
+                        var bmax = new P2(c.X + w / 2 + pad, c.Y + h / 2 + pad);
+                        if (taken != null && taken.Any(t => bmin.X < t.Max.X && bmax.X > t.Min.X && bmin.Y < t.Max.Y && bmax.Y > t.Min.Y)) continue;
+                        if (segments != null && segments.Any(s => SegmentHitsBox(s.A, s.B, bmin, bmax))) continue;
+                        return c;
+                    }
+            return fallback ?? at;
+        }
+
+        /// <summary>Đoạn AB có điểm chung với hình chữ nhật [min, max] (Liang–Barsky).</summary>
+        public static bool SegmentHitsBox(P2 a, P2 b, P2 min, P2 max)
+        {
+            double t0 = 0, t1 = 1, dx = b.X - a.X, dy = b.Y - a.Y;
+            bool Clip(double p, double q)
+            {
+                if (Math.Abs(p) < 1e-12) return q >= 0;
+                double r = q / p;
+                if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r; }
+                else { if (r < t0) return false; if (r < t1) t1 = r; }
+                return true;
+            }
+            return Clip(-dx, a.X - min.X) && Clip(dx, max.X - a.X) && Clip(-dy, a.Y - min.Y) && Clip(dy, max.Y - a.Y);
+        }
     }
 }

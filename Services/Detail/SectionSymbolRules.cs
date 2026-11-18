@@ -14,6 +14,8 @@ namespace MCG_3DPanel.Services.Detail
         public double Thickness;
         /// <summary>Tâm vết cắt và trục dọc chiều cao tấm, toạ độ section.</summary>
         public P2 CutCenter, CutAxis;
+        /// <summary>Chiều dài vết cắt dọc <see cref="CutAxis"/>.</summary>
+        public double CutLength;
     }
 
     /// <summary>Tấm song song với mặt cắt (dùng đặt dấu $).</summary>
@@ -31,21 +33,32 @@ namespace MCG_3DPanel.Services.Detail
         public static bool IsContinuous(CutMember m, double tol = 1.0)
             => m.Type != "HP" && m.MinSigned < -tol && m.MaxSigned > tol;
 
+        /// <summary>Vết cắt đứng (trục tấm lệch phương đứng ≤ <paramref name="maxDeg"/>). Bản vẽ tay chỉ đặt Continuous cho tấm
+        /// đứng (web, bracket…), mũi tên nằm ngang — không cho tấm boong / face plate (kỹ sư 2026-11-18).</summary>
+        public static bool IsUpright(CutMember m, double maxDeg = 30)
+        {
+            double len = m.CutAxis.Length;
+            return len > 1e-12 && Math.Abs(m.CutAxis.Y) / len >= Math.Cos(maxDeg * Math.PI / 180);
+        }
+
         public static string ThicknessText(double t)
             => "(" + t.ToString("0.0", CultureInfo.InvariantCulture) + ")";
 
         /// <summary>Đặt ký hiệu tại tâm vết cắt, xoay vuông góc với tấm.</summary>
         public static (P2 at, double rotation) ContinuousPlacement(CutMember m)
         {
-            double r = Math.Atan2(m.CutAxis.Y, m.CutAxis.X) + Math.PI / 2;
+            // Trục quay lên (Y ≥ 0) ⇒ tấm đứng luôn ra 180° như mọi ký hiệu trên bản vẽ tay
+            P2 ax = m.CutAxis.Y < 0 || (m.CutAxis.Y == 0 && m.CutAxis.X < 0) ? m.CutAxis * -1 : m.CutAxis;
+            double r = Math.Atan2(ax.Y, ax.X) + Math.PI / 2;
             double twoPi = 2 * Math.PI;
             r %= twoPi;
             if (r < 0) r += twoPi;
             return (m.CutCenter, r);
         }
 
-        /// <summary>Dấu $: trung điểm A–B đẩy gap sang bên phải chiều A→B; null nếu tấm ẩn.</summary>
-        public static P2? WeldTracePlacement(ParallelPlate p, double gap = 15)
+        /// <summary>Dấu $: tâm chữ ĐÚNG trung điểm nét A–B (nét đi xuyên qua chữ, như 26 dấu $ trên bản vẽ tay);
+        /// <paramref name="gap"/> &gt; 0 đẩy sang bên phải chiều A→B. null nếu tấm ẩn.</summary>
+        public static P2? WeldTracePlacement(ParallelPlate p, double gap = 0)
         {
             if (!p.Visible) return null;
             P2 mid = (p.OutlineA + p.OutlineB) * 0.5;

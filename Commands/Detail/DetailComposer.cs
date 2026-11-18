@@ -80,11 +80,26 @@ namespace MCG_3DPanel.Commands.Detail
                 AddStructure(r, shift, ents, f == null ? (Func<P2, double>)null
                     : p => Math.Min(Math.Abs(p.X - shift.X), Math.Abs(p.X - shift.X - f.Length)));
 
-                // Continuous: 1 cho mỗi tấm (vết cắt lớn nhất của tấm) cắt liên tục, không phải HP
+                // Nét đã vẽ ⇒ vật cản cho chữ "(t)"
+                var segs = Segments(ents);
+                var taken = new List<(P2 Min, P2 Max)>();
+
+                // "$": 1 cho mỗi tấm song song mặt cắt nhìn thấy, tâm chữ trên trung điểm nét
+                foreach (var pp in r.Parallel)
+                {
+                    var at = SectionSymbolRules.WeldTracePlacement(pp);
+                    if (at == null) continue;
+                    var p = at.Value + shift;
+                    ents.Add(Text("$", p, WeldTextH, AM10));
+                    taken.Add(Box(p, DetailComposeRules.TextWidth("$", WeldTextH), WeldTextH));
+                }
+
+                // Continuous: chỉ tấm đứng cắt liên tục (vết cắt lớn nhất của tấm), không phải HP — như bản vẽ tay
                 var members = ContinuousMembers(r);
                 if (members.Count > 0)
                 {
                     ObjectId sym = BlockId(ContinuousBlock);
+                    var placed = new List<(CutMember m, P2 p)>();
                     foreach (var m in members)
                     {
                         var (at, rot) = SectionSymbolRules.ContinuousPlacement(m);
@@ -93,17 +108,20 @@ namespace MCG_3DPanel.Commands.Detail
                         br.SetDatabaseDefaults(Db);
                         br.Layer = AM5;
                         ents.Add(br);
-                        ents.Add(Text("{\\L" + SectionSymbolRules.ThicknessText(m.Thickness) + "}",
-                            DetailComposeRules.ThicknessTextAt(p, rot), 30, AM5));
+                        // 2 mũi tên của block: −59…41.5 dọc trục X block
+                        var ux = new P2(Math.Cos(rot), Math.Sin(rot));
+                        segs.Add((p + ux * -SymbolReachMinus, p + ux * SymbolReachPlus));
+                        placed.Add((m, p));
                     }
-                }
-
-                // "$": 1 cho mỗi tấm song song mặt cắt nhìn thấy
-                foreach (var pp in r.Parallel)
-                {
-                    var at = SectionSymbolRules.WeldTracePlacement(pp);
-                    if (at == null) continue;
-                    ents.Add(Text("$", at.Value + shift, 35, AM10));
+                    // "(t)": sát mặt tấm, không đè nét / chữ / ký hiệu khác
+                    foreach (var (m, p) in placed)
+                    {
+                        string txt = SectionSymbolRules.ThicknessText(m.Thickness);
+                        double w = DetailComposeRules.TextWidth(txt, ThickTextH);
+                        var c = DetailComposeRules.ThicknessTextPlace(p, m.Thickness, m.CutLength, w, ThickTextH, segs, taken);
+                        ents.Add(Text("{\\L" + txt + "}", c, ThickTextH, AM5));
+                        taken.Add(Box(c, w, ThickTextH));
+                    }
                 }
                 return ents;
             }
@@ -120,14 +138,17 @@ namespace MCG_3DPanel.Commands.Detail
 
         /// <summary>Ký hiệu mặt cắt trên block DET: 2 mũi tên (theo block mẫu A$C1A6307D4, AM_10) ở 2 đầu đường cắt chĩa theo Look
         /// + chữ "nA" h30. Toạ độ cục bộ block DET (plan − <paramref name="basePt"/>).</summary>
-        public static List<Entity> SectionMarks(SectionFrame f, int n, string letter, P2 basePt)
+        public static List<Entity> SectionMarks(SectionFrame f, int n, string letter, P2 basePt, (P2 Min, P2 Max)? content = null)
         {
             var ents = new List<Entity>();
             try
             {
                 var shift = new P2(-basePt.X, -basePt.Y);
                 string label = DetailNaming.SectionMark(n, letter);
-                foreach (var a in DetailComposeRules.SectionArrows(f.Start + shift, f.End + shift, f.Look))
+                // Mũi tên đặt NGOÀI hình DET (kéo dài đường cắt qua khung bao nội dung + MarkGap), như bản vẽ tay
+                P2 s0 = f.Start + shift, s1 = f.End + shift;
+                if (content != null) (s0, s1) = DetailComposeRules.ExtendOutside(s0, s1, content.Value.Min, content.Value.Max);
+                foreach (var a in DetailComposeRules.SectionArrows(s0, s1, f.Look))
                 {
                     // AM_10 mang linetype AM_ISO08W050 (nét đứt) ⇒ mũi tên đặt Continuous riêng cho liền nét như block mẫu
                     var bar = Poly(new[] { a.BarA, a.BarB }, false, AM10);
@@ -472,5 +493,60 @@ namespace MCG_3DPanel.Commands.Detail
         }
 
         static P2 XY(Point3d p) => new P2(p.X, p.Y);
+
+        const double WeldTextH = 35, ThickTextH = 30, SymbolReachMinus = 59.01, SymbolReachPlus = 41.53;
+
+        static (P2 Min, P2 Max) Box(P2 c, double w, double h) => (new P2(c.X - w / 2, c.Y - h / 2), new P2(c.X + w / 2, c.Y + h / 2));
+
+        /// <summary>Các đoạn thẳng xấp xỉ mọi đường cong trong <paramref name="ents"/> (cung lấy 16 điểm).</summary>
+        static List<(P2 A, P2 B)> Segments(IEnumerable<Entity> ents)
+        {
+            var res = new List<(P2, P2)>();
+            foreach (var e in ents)
+            {
+                if (e is Line l) { res.Add((XY(l.StartPoint), XY(l.EndPoint))); continue; }
+                if (e is Polyline pl && Enumerable.Range(0, pl.NumberOfVertices).All(i => Math.Abs(pl.GetBulgeAt(i)) < 1e-12))
+                {
+                    int n = pl.NumberOfVertices;
+                    for (int i = 1; i < n; i++) res.Add((XY(pl.GetPoint3dAt(i - 1)), XY(pl.GetPoint3dAt(i))));
+                    if (pl.Closed && n > 2) res.Add((XY(pl.GetPoint3dAt(n - 1)), XY(pl.GetPoint3dAt(0))));
+                    continue;
+                }
+                if (e is Curve c)
+                {
+                    try
+                    {
+                        P2? prev = null;
+                        for (int k = 0; k <= 16; k++)
+                        {
+                            var q = XY(c.GetPointAtParameter(c.StartParam + (c.EndParam - c.StartParam) * k / 16));
+                            if (prev != null) res.Add((prev.Value, q));
+                            prev = q;
+                        }
+                    }
+                    catch (Autodesk.AutoCAD.Runtime.Exception) { }
+                }
+            }
+            return res;
+        }
+
+        /// <summary>Khung bao (toạ độ block) của nội dung block DET, bỏ ký hiệu mặt cắt (AM_10) và chữ; rỗng ⇒ null.</summary>
+        public static (P2 Min, P2 Max)? ContentExtents(Transaction tr, ObjectId btrId)
+        {
+            double x0 = double.MaxValue, y0 = double.MaxValue, x1 = double.MinValue, y1 = double.MinValue;
+            foreach (ObjectId id in (BlockTableRecord)tr.GetObject(btrId, OpenMode.ForRead))
+            {
+                if (!(tr.GetObject(id, OpenMode.ForRead) is Entity e) || e.IsErased) continue;
+                if (e is MText || e is DBText || string.Equals(e.Layer, AM10, StringComparison.OrdinalIgnoreCase)) continue;
+                try
+                {
+                    var ext = e.GeometricExtents;
+                    x0 = Math.Min(x0, ext.MinPoint.X); y0 = Math.Min(y0, ext.MinPoint.Y);
+                    x1 = Math.Max(x1, ext.MaxPoint.X); y1 = Math.Max(y1, ext.MaxPoint.Y);
+                }
+                catch (Autodesk.AutoCAD.Runtime.Exception) { }
+            }
+            return x0 > x1 ? ((P2, P2)?)null : (new P2(x0, y0), new P2(x1, y1));
+        }
     }
 }
