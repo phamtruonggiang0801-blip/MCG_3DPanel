@@ -357,4 +357,32 @@ public class DetailComposeRulesTests
         var oval = Ring(0, 0, 200, 64).Select(p => new P2(p.X * 1.5, p.Y)).ToList();
         Assert.False(DetailComposeRules.IsCircle(oval, 0.5, out _, out _));
     }
+
+    [Fact]
+    public void Chain_JoinsSharedEndsStopsAtBranch()
+    {
+        var segs = new List<(P2, P2, double)>
+        {
+            (new P2(0, 0), new P2(10, 0), 0), (new P2(20, 0), new P2(10, 0), 0.5),   // đảo chiều ⇒ bulge -0.5
+            (new P2(20, 0), new P2(20, 10), 0), (new P2(20, 0), new P2(30, 0), 0),     // nút rẽ nhánh tại (20,0)
+        };
+        var ch = DetailComposeRules.Chain(segs, 0.05);
+        Assert.Equal(3, ch.Count);
+        var a = ch.Single(c => c.Pts.Count == 3);
+        Assert.False(a.Closed);
+        Assert.Equal(new[] { 0.0, -0.5 }, a.Bulges.ToArray());
+        Assert.Equal(20, a.Pts[2].X, 6);
+    }
+
+    [Fact]
+    public void Chain_ClosedLoop()
+    {
+        var sq = Rect(0, 0, 10, 10);
+        var segs = Enumerable.Range(0, 4).Select(i => (sq[i], sq[(i + 1) % 4], 0.0)).ToList();
+        var ch = DetailComposeRules.Chain(segs, 0.05);
+        Assert.Single(ch);
+        Assert.True(ch[0].Closed);
+        Assert.Equal(4, ch[0].Pts.Count);
+        Assert.Equal(4, ch[0].Bulges.Count);
+    }
 }

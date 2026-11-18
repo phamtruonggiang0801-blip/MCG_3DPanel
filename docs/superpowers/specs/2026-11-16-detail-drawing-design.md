@@ -62,8 +62,11 @@ only; block names and section numbers keep `DET.n`.
 
 ### 2. Section Detail
 
-1. User picks a tool-made `DET.n` (insert), clicks the start point, end point (snaps horizontal/vertical, as the
-   Inventor `DummySectionService`), then the viewing side.
+1. User picks a tool-made `DET.n` (insert), then draws the **section rectangle** with 3 points: start and end of the
+   cut line (snaps horizontal/vertical, as the Inventor `DummySectionService`), then the opposite side (rubber
+   rectangle). The opposite side gives the viewing direction and the **depth** (engineer 2026-11-18). The section is
+   the rectangle ∩ the DET region; the drawn depth (mm from the cut line) is stored in the record, so Update Details
+   keeps it when the DET region changes (still capped at the DET boundary). Old records (no depth) cut to the boundary.
 2. Tool draws the section mark on the DET (two `AM_10` arrow blocks + `nA` text), builds `<panel>_DET.n_nA-nA`
    (letters in creation order), block follows the cursor, user clicks the insertion point (scale 1).
 3. Title `nA-nA` (AM_1, h 50) under it. A section from a **vertical** cut line is rotated to lie horizontal and titled
@@ -130,7 +133,7 @@ Both Detail Plan and Section are **sections of the 3D solids**:
   - **Detail Plan / Detail View**: horizontal plane just below the top plate, looking at the structure; depth = whole
     structure height. Region = rectangle/circle.
   - **Section**: vertical plane on the cut line, looking toward the chosen side; length = part of the cut line inside
-    the DET region; depth = **to the DET boundary** in the viewing direction.
+    the DET region; depth = the drawn depth, capped at the DET boundary (old records: to the boundary).
 - 2D-only items (fitting `tv` blocks, wire-guide path, hole cut-outs) are copied from the 2D panel
   blocks and trimmed to the region. Lashing holes are not copied: they are not built in 3D (engineer 2026-11-18).
   Only inserts directly in `_Assy` go to `AM_2`; inserts inside a child block keep their own layer. Top plate
@@ -222,7 +225,7 @@ In a section, the far face of the clip box (parallel to the cut) does not make b
 3. Engine = approach A (3D solid sections).
 4. Everything in 3D is shown (collar, scallop, snip…).
 5. Visible lines beyond the cut → `AM_0` in sections, `AM_4` in Detail Plan / View (2026-11-18).
-6. Section depth to the DET boundary; HP as true section.
+6. Section depth drawn by the user (3-point rectangle), capped at the DET boundary; HP as true section.
 7. `thk_sym` dropped; Continuous symbol, `(t)` (parallel plates only) and `$` rules as above.
 8. Insert scale is 1 (no frame-scale detection).
 9. Update Details button (regenerate block contents in place).
@@ -240,3 +243,6 @@ In a section, the far face of the clip box (parallel to the cut) does not make b
 - Section mark arrow block: reuse the samples' arrow block shape (anonymous `A$C…` in samples) — drawn by the tool if
   absent.
 - Performance on large panels (7D-17C ≈ 15 m).
+
+**Joined lines (engineer 2026-11-18):** visible lines and break lines that share end points are joined into polylines
+(arcs kept as bulges; splines / ellipses stay separate; branch points end a polyline), on the same layer as before.

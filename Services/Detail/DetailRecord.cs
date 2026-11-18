@@ -28,6 +28,7 @@ namespace MCG_3DPanel.Services.Detail
         public List<double[]> Region = new List<double[]>();   // góc chữ nhật hoặc [cx,cy,r]
         public bool Circle;
         public double[] CutA, CutB, Side;     // chỉ Section, toạ độ plan
+        public double Depth;                  // chỉ Section: chiều sâu vẽ (mm từ đường cắt); 0 = tới biên DET (bản ghi cũ)
         public double Scale = 1;
         public string Title = "";
         public double BaseX, BaseY;           // điểm gốc block trên plan

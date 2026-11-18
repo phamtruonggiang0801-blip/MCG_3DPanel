@@ -21,6 +21,7 @@ namespace MCG_3DPanel.Commands.Detail
         const double DedupeTol = 0.05;
         const double BoundaryTol = 0.5;   // = SectionEngine.Tol: cạnh nằm trên biên vùng / hộp cắt
         const double HoleRoundTol = 0.5;  // mm: vòng lỗ Top Plate nhận là tròn
+        const double JoinTol = 0.05;      // mm: đầu mút trùng ⇒ nối chung polyline
         const short TextColor = 2;   // chữ ký hiệu trên mẫu: màu 2
 
         static Database Db => HostApplicationServices.WorkingDatabase;
@@ -370,22 +371,25 @@ namespace MCG_3DPanel.Commands.Detail
                 foreach (var s in DetailComposeRules.MarkLines(o)) ents.Add(Line(s, AM8));
             }
 
-            // 3. Break thẳng còn lại (bỏ phần trùng cạnh vết cắt break) + nét thấy AM_0 (bỏ phần trùng mọi thứ đã vẽ)
+            // 3. Break thẳng còn lại (bỏ phần trùng cạnh vết cắt break) + nét thấy (bỏ phần trùng mọi thứ đã vẽ)
             var breaks = DetailComposeRules.MergeCollinear(breaksRaw, cutBreak, BoundaryTol);
-            foreach (var s in breaks)
-            {
-                var pl = Poly(new[] { s.Item1, s.Item2 }, false, AM4);
-                ents.Add(pl);
-                Zig(pl);
-            }
             var lines = DetailComposeRules.MergeCollinear(straight0, cutSolid.Concat(cutBreak).Concat(breaks), DedupeTol);
-            foreach (var s in lines) ents.Add(Line(s, seenLayer));
+            var breakSegs = breaks.Select(s => (s.A, s.B, 0.0)).ToList();
+            var seenSegs = lines.Select(s => (s.A, s.B, 0.0)).ToList();
 
-            // 4. Đường cong: trên biên ⇒ AM_4 (bỏ nếu nằm trọn trên cạnh vết cắt break), còn lại AM_0
+            // 4. Đường cong: trên biên ⇒ AM_4 (bỏ nếu nằm trọn trên cạnh vết cắt break), còn lại nét thấy. Cung tròn ⇒ đoạn
+            //    bulge để nối chung polyline với đoạn thẳng; đường cong khác (spline, ellipse) giữ riêng
             foreach (var (c, boundary) in curved)
             {
                 if (boundary && cutBreak.Count > 0 && OnSegments(c, cutBreak))
                 {
+                    ents.Remove(c);
+                    c.Dispose();
+                    continue;
+                }
+                if (ArcSegment(c, out var seg))
+                {
+                    (boundary ? breakSegs : seenSegs).Add(seg);
                     ents.Remove(c);
                     c.Dispose();
                     continue;
@@ -395,7 +399,31 @@ namespace MCG_3DPanel.Commands.Detail
                 if (boundary) Zig(c);
                 else c.Linetype = "ByLayer";
             }
+
+            // 5. Nối đoạn chung đầu mút thành polyline (kỹ sư 2026-11-18: không để nét rời từng đoạn như mẫu tay)
+            foreach (var ch in DetailComposeRules.Chain(breakSegs, JoinTol))
+            {
+                var pl = Poly(ch.Pts, ch.Closed, AM4, ch.Bulges);
+                pl.Plinegen = true;   // amzigzag chạy liền qua các đỉnh
+                ents.Add(pl);
+                Zig(pl);
+            }
+            foreach (var ch in DetailComposeRules.Chain(seenSegs, JoinTol))
+                ents.Add(Poly(ch.Pts, ch.Closed, seenLayer, ch.Bulges));
             if (anyBreak && zig.IsNull) r.Warnings.Add($"Linetype {Zigzag} is missing from the drawing; break lines are drawn Continuous.");
+        }
+
+        /// <summary>Cung tròn nằm trong mặt XY ⇒ đoạn (đầu, cuối, bulge) cho polyline.</summary>
+        static bool ArcSegment(Curve c, out (P2 A, P2 B, double Bulge) seg)
+        {
+            seg = default;
+            if (!(c is Arc a) || Math.Abs(Math.Abs(a.Normal.Z) - 1) > 1e-9) return false;
+            double sweep = a.EndAngle - a.StartAngle;
+            if (sweep <= 0) sweep += 2 * Math.PI;
+            if (sweep >= 2 * Math.PI - 1e-9) return false;
+            double b = Math.Tan(sweep / 4) * (a.Normal.Z > 0 ? 1 : -1);
+            seg = (XY(a.StartPoint), XY(a.EndPoint), b);
+            return true;
         }
 
         /// <summary>Đầu, giữa, cuối đường cong đều cách các đoạn ≤ BoundaryTol.</summary>
@@ -435,12 +463,12 @@ namespace MCG_3DPanel.Commands.Detail
             return x0 > x1 ? new P2(0, 0) : new P2((x0 + x1) / 2, (y0 + y1) / 2);
         }
 
-        static Polyline Poly(IEnumerable<P2> pts, bool closed, string layer)
+        static Polyline Poly(IEnumerable<P2> pts, bool closed, string layer, IList<double> bulges = null)
         {
             var pl = new Polyline();
             if (layer != null) pl.SetDatabaseDefaults(Db);
             int i = 0;
-            foreach (var p in pts) pl.AddVertexAt(i++, new Point2d(p.X, p.Y), 0, 0, 0);
+            foreach (var p in pts) { pl.AddVertexAt(i, new Point2d(p.X, p.Y), bulges != null && i < bulges.Count ? bulges[i] : 0, 0, 0); i++; }
             pl.Closed = closed;
             if (layer != null) pl.Layer = layer;
             return pl;

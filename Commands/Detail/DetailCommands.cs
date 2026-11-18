@@ -257,7 +257,7 @@ namespace MCG_3DPanel.Commands.Detail
             using (Detail3DSource src = Open3D(doc, assyId, panel, what, cancelled, notes, out string file3D))
             {
                 // 2–3. Đường cắt + bên nhìn (toạ độ plan)
-                SectionFrame f = AskCut(ed, db, detRefId, det, region, out P2 cutA, out P2 cutB, out P2 side)
+                SectionFrame f = AskCut(ed, db, detRefId, det, region, out P2 cutA, out P2 cutB, out P2 side, out double depth)
                     ?? throw new StopException(cancelled);
 
                 // 4. Chữ section
@@ -291,6 +291,7 @@ namespace MCG_3DPanel.Commands.Detail
                                 CutA = new[] { cutA.X, cutA.Y },
                                 CutB = new[] { cutB.X, cutB.Y },
                                 Side = new[] { side.X, side.Y },
+                                Depth = depth,
                                 Scale = 1,
                                 Title = title,
                             };
@@ -392,12 +393,14 @@ namespace MCG_3DPanel.Commands.Detail
             return name == want ? found : ObjectId.Null;
         }
 
-        /// <summary>Hỏi đầu, cuối (rubber band từ đầu, bắt ngang/dọc), bên nhìn; toạ độ plan. Khung sai ⇒ nói lý do, hỏi lại
-        /// điểm cuối hoặc bên nhìn. Esc ở bất kỳ câu nào ⇒ null.</summary>
+        /// <summary>Khung mặt cắt vẽ như hình chữ nhật 3 điểm (kỹ sư 2026-11-18): đầu, cuối đường cắt (rubber band từ đầu, bắt
+        /// ngang/dọc), rồi cạnh đối (khung cao su đi theo con trỏ) ⇒ bên nhìn + chiều sâu <paramref name="depth"/> (mm từ đường cắt,
+        /// vẫn chặn ở biên DET). Toạ độ plan. Khung sai ⇒ nói lý do, hỏi lại. Esc ở bất kỳ câu nào ⇒ null.</summary>
         static SectionFrame AskCut(Editor ed, Database db, ObjectId detRefId, DetailRecord det, DetailRegion region,
-            out P2 a, out P2 b, out P2 side)
+            out P2 a, out P2 b, out P2 side, out double depth)
         {
             a = b = side = default;
+            depth = 0;
             Matrix3d toLocal;
             using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
             {
@@ -406,9 +409,11 @@ namespace MCG_3DPanel.Commands.Detail
             }
             // WCS → cục bộ block DET → plan (+ gốc DET)
             Matrix3d toPlan = Matrix3d.Displacement(new Vector3d(det.BaseX, det.BaseY, 0)) * toLocal;
+            Matrix3d toWcs = toPlan.Inverse();
             Matrix3d ucs = ed.CurrentUserCoordinateSystem;
 
             P2 Plan(Point3d wcs) { Point3d p = wcs.TransformBy(toPlan); return new P2(p.X, p.Y); }
+            Point3d Wcs(P2 plan) => new Point3d(plan.X, plan.Y, 0).TransformBy(toWcs);
             Point3d? Ask(string prompt, Point3d? fromWcs)
             {
                 var opt = new PromptPointOptions("\n" + prompt) { AllowNone = false };
@@ -422,7 +427,7 @@ namespace MCG_3DPanel.Commands.Detail
                 return r.Status == PromptStatus.OK ? r.Value.TransformBy(ucs) : (Point3d?)null;
             }
 
-            Point3d? startW = Ask("Start point of the cut line:", null);
+            Point3d? startW = Ask("Start point of the section rectangle (cut line):", null);
             if (startW == null) return null;
             a = Plan(startW.Value);
             while (true)
@@ -430,19 +435,54 @@ namespace MCG_3DPanel.Commands.Detail
                 Point3d? endW = Ask("End point of the cut line:", startW);
                 if (endW == null) return null;
                 b = SectionFrame.Snap(a, Plan(endW.Value));
-                // Đường cắt sai (không dài / không qua vùng) ⇒ hỏi lại điểm cuối ngay, chưa hỏi bên nhìn
+                // Đường cắt sai (không dài / không qua vùng) ⇒ hỏi lại điểm cuối ngay
                 string lineWhy = DetailCommandRules.CutLineProblem(a, b, region);
                 if (lineWhy != null) { ed.WriteMessage("\n" + lineWhy); continue; }
                 while (true)
                 {
-                    Point3d? sideW = Ask("Viewing side (pick a point on the side to look at):", null);
-                    if (sideW == null) return null;
-                    side = Plan(sideW.Value);
+                    var jig = new SectionRectJig(startW.Value, Wcs(b), "\nOpposite side (viewing side and depth):");
+                    PromptResult jr = ed.Drag(jig);
+                    if (jr.Status != PromptStatus.OK) return null;
+                    side = Plan(jig.Cursor);
                     string why = DetailCommandRules.FrameProblem(a, b, side, region, out bool endAgain);
-                    if (why == null) return SectionFrame.From(a, b, side, region);
+                    if (why == null)
+                    {
+                        depth = DetailCommandRules.SectionDepth(a, b, side);
+                        return SectionFrame.From(a, b, side, region, depth);
+                    }
                     ed.WriteMessage("\n" + why);
                     if (endAgain) break;
                 }
+            }
+        }
+
+        /// <summary>Khung cao su của Section: cạnh A–B cố định, cạnh đối theo con trỏ (vuông góc A–B), WCS.</summary>
+        sealed class SectionRectJig : DrawJig
+        {
+            readonly Point3d _a, _b;
+            readonly string _prompt;
+            public Point3d Cursor;
+
+            public SectionRectJig(Point3d a, Point3d b, string prompt) { _a = a; _b = b; _prompt = prompt; Cursor = b; }
+
+            protected override SamplerStatus Sampler(JigPrompts prompts)
+            {
+                var o = new JigPromptPointOptions(_prompt) { UserInputControls = UserInputControls.Accept3dCoordinates };
+                PromptPointResult r = prompts.AcquirePoint(o);
+                if (r.Status != PromptStatus.OK) return SamplerStatus.Cancel;
+                if (r.Value.DistanceTo(Cursor) < 1e-9) return SamplerStatus.NoChange;
+                Cursor = r.Value;
+                return SamplerStatus.OK;
+            }
+
+            protected override bool WorldDraw(Autodesk.AutoCAD.GraphicsInterface.WorldDraw draw)
+            {
+                Vector3d ab = _b - _a;
+                if (ab.Length < 1e-9) return true;
+                Vector3d n = new Vector3d(-ab.Y, ab.X, 0).GetNormal();
+                Vector3d off = n * (Cursor - _a).DotProduct(n);
+                draw.Geometry.Polygon(new Point3dCollection { _a, _b, _b + off, _a + off });
+                return true;
             }
         }
 
@@ -676,7 +716,7 @@ namespace MCG_3DPanel.Commands.Detail
                         && d.Rec.Number == i.Rec.Number && d.Rec.Panel == i.Rec.Panel);
                     i.Region = det != null ? det.Region : CurrentRegion(db, i.Rec, i.OldRegion, notes);
                     if (i.Region == null) { damaged.Add(i); continue; }
-                    i.Frame = SectionFrame.From(P(i.Rec.CutA), P(i.Rec.CutB), P(i.Rec.Side), i.Region);
+                    i.Frame = SectionFrame.From(P(i.Rec.CutA), P(i.Rec.CutB), P(i.Rec.Side), i.Region, i.Rec.Depth);
                 }
                 foreach (var i in damaged)
                 {
@@ -853,7 +893,7 @@ namespace MCG_3DPanel.Commands.Detail
             var content = DetailComposer.ContentExtents(tr, i.BtrId);
             foreach (DetailRecord s in DetailUpdateRules.SectionsOf(sectionRecs, i.Rec))
             {
-                SectionFrame f = SectionFrame.From(P(s.CutA), P(s.CutB), P(s.Side), i.Region);
+                SectionFrame f = SectionFrame.From(P(s.CutA), P(s.CutB), P(s.Side), i.Region, s.Depth);
                 if (f == null) continue;
                 DetailWriter.AddToBlock(tr, i.BtrId, DetailComposer.SectionMarks(f, i.Rec.Number, s.Letter, basePt, content), s);
             }
@@ -876,7 +916,7 @@ namespace MCG_3DPanel.Commands.Detail
 
             var ents = new List<Entity>();
             SectionFrame oldFrame = i.OldRegion == null ? null
-                : SectionFrame.From(P(i.Rec.CutA), P(i.Rec.CutB), P(i.Rec.Side), i.OldRegion);
+                : SectionFrame.From(P(i.Rec.CutA), P(i.Rec.CutB), P(i.Rec.Side), i.OldRegion, i.Rec.Depth);
             P2? keep = DetailUpdateRules.SectionBase(new P2(i.Rec.BaseX, i.Rec.BaseY), oldFrame, i.Frame);
             if (keep.HasValue)
             {

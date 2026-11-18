@@ -137,4 +137,27 @@ public class SectionFrameTests
     {
         Assert.Null(SectionFrame.From(new P2(0, 50), new P2(200, 50), new P2(100, 51), Rect()));
     }
+
+    [Fact]
+    public void Frame_DrawnDepth_KeptButCappedAtRegion()
+    {
+        // vùng cao 100, đường cắt y = 50 nhìn lên ⇒ tới biên = 50
+        Assert.Equal(50, SectionFrame.From(new P2(-50, 50), new P2(300, 50), new P2(100, 80), Rect()).Depth, 6);
+        Assert.Equal(30, SectionFrame.From(new P2(-50, 50), new P2(300, 50), new P2(100, 80), Rect(), 30).Depth, 6);
+        Assert.Equal(50, SectionFrame.From(new P2(-50, 50), new P2(300, 50), new P2(100, 80), Rect(), 400).Depth, 6);
+    }
+
+    [Fact]
+    public void Frame_LengthLimitedToDrawnEnds()
+    {
+        var f = SectionFrame.From(new P2(20, 50), new P2(120, 50), new P2(100, 80), Rect(), 30);
+        Assert.Equal(100, f.Length, 6);
+    }
+
+    [Fact]
+    public void SectionDepth_DistanceFromCutLine()
+    {
+        Assert.Equal(30, DetailCommandRules.SectionDepth(new P2(0, 50), new P2(100, 50), new P2(40, 80)), 6);
+        Assert.Equal(25, DetailCommandRules.SectionDepth(new P2(10, 0), new P2(10, 100), new P2(-15, 40)), 6);
+    }
 }

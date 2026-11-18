@@ -23,7 +23,9 @@ namespace MCG_3DPanel.Services.Detail
             return Math.Abs(dy) > Math.Abs(dx) ? new P2(start.X, raw.Y) : new P2(raw.X, start.Y);
         }
 
-        public static SectionFrame From(P2 a, P2 b, P2 side, DetailRegion region)
+        /// <summary><paramref name="maxDepth"/> &gt; 0 = chiều sâu người dùng vẽ (khung chữ nhật Section, kỹ sư 2026-11-18), vẫn chặn ở
+        /// biên vùng; 0 = tới biên vùng (bản ghi cũ).</summary>
+        public static SectionFrame From(P2 a, P2 b, P2 side, DetailRegion region, double maxDepth = 0)
         {
             var d = b - a;
             double len = d.Length;
@@ -44,6 +46,7 @@ namespace MCG_3DPanel.Services.Detail
             double depth = 0;
             foreach (var p in region.Outline(72))
                 depth = Math.Max(depth, (p - start).Dot(look));
+            if (maxDepth > 0) depth = Math.Min(depth, maxDepth);
 
             return new SectionFrame
             {

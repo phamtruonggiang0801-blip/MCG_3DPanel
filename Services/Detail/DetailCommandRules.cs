@@ -144,6 +144,14 @@ namespace MCG_3DPanel.Services.Detail
             return "The viewing side is on the cut line. Pick a point to one side of it.";
         }
 
+        /// <summary>Chiều sâu khung Section = khoảng cách điểm cạnh đối tới đường cắt a–b.</summary>
+        public static double SectionDepth(P2 a, P2 b, P2 side)
+        {
+            var d = b - a;
+            double l = d.Length;
+            return l < 1e-9 ? 0 : Math.Abs(d.X * (side.Y - a.Y) - d.Y * (side.X - a.X)) / l;
+        }
+
         /// <summary>Đường cắt (chưa có bên nhìn) dùng được không: không dài / không qua vùng ⇒ lý do; được ⇒ null.</summary>
         public static string CutLineProblem(P2 start, P2 end, DetailRegion region)
         {

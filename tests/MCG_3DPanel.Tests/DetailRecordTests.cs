@@ -56,6 +56,17 @@ namespace MCG_3DPanel.Tests
             Assert.Equal(1, r.Scale);
         }
 
+        [Fact]
+        public void Depth_RoundTripsOldRecordIsZero()
+        {
+            var s = Section();
+            s.Depth = 750;
+            Assert.Equal(750, DetailRecord.FromJson(s.ToJson()).Depth);
+            var old = s.ToJson().Replace(",\"Depth\":750", "");
+            Assert.DoesNotContain("Depth", old);
+            Assert.Equal(0, DetailRecord.FromJson(old).Depth);
+        }
+
         [Fact] public void FromJson_Garbage_Null() => Assert.Null(DetailRecord.FromJson("{not json"));
         [Fact] public void FromJson_Empty_Null()
         {
