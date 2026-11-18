@@ -125,8 +125,10 @@ Both Detail Plan and Section are **sections of the 3D solids**:
     structure height. Region = rectangle/circle.
   - **Section**: vertical plane on the cut line, looking toward the chosen side; length = part of the cut line inside
     the DET region; depth = **to the DET boundary** in the viewing direction.
-- 2D-only items (fitting `tv` blocks, wire-guide path, lashing holes, hole cut-outs) are copied from the 2D panel
-  blocks and trimmed to the region — **in Detail Plan / Detail View only**; sections get no fittings. *My call:* block
+- 2D-only items (fitting `tv` blocks, wire-guide path, hole cut-outs) are copied from the 2D panel
+  blocks and trimmed to the region. Lashing holes are not copied: they are not built in 3D (engineer 2026-11-18).
+  Only inserts directly in `_Assy` go to `AM_2`; inserts inside a child block keep their own layer. Top plate
+  cut-outs come from the 3D top plate (all section loops), on `AM_7`. 2D items are drawn — **in Detail Plan / Detail View only**; sections get no fittings. *My call:* block
   inserts (fittings) are never exploded: kept whole when their insertion point is inside the region, dropped otherwise
   (the samples keep whole blocks).
 - **Orientation** (*my call*): the Detail Plan has the plan's orientation. Sections always have the top plate **on
@@ -146,11 +148,11 @@ Rejected:
 | Outline of cut material | `AM_0` |
 | Section-mark lines inside cut material | `AM_8` |
 | Visible lines beyond the cut (Detail Plan **and** Section) | `AM_0` |
-| Top plate edge in Detail Plan / View (reference) | `AM_7` |
+| Top plate edge + cut-outs in Detail Plan / View (reference) | `AM_7`; where the region cuts the plate: `AM_4` `amzigzag` |
 | Wire-guide path (from 2D) | `AM_7`, width 3 |
 | Fitting `tv` blocks (from 2D) | `AM_2` |
 | Break where the region boundary cuts through material | `AM_4`, linetype `amzigzag` |
-| Section mark arrows + letter | `AM_10` (text h 30) |
+| Section mark arrows + letter | `AM_10` (text h 30); arrows linetype `Continuous` (AM_10 is dashed) |
 | Titles | `AM_1` (text h 50) |
 | Continuous symbol + thickness text | `AM_5` (block `Continious symbol`, text) |
 | Weld trace mark `$` | `AM_10`, MText h 35 |

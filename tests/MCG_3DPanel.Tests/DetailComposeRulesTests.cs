@@ -237,4 +237,42 @@ public class DetailComposeRulesTests
         Assert.Null(DetailComposeRules.AttributesNote(new string[0]));
         Assert.Null(DetailComposeRules.AttributesNote(null));
     }
+
+    // ─── Viền Top Plate: cạnh trên biên vùng ⇒ break, còn lại AM_7 (kỹ sư 2026-11-18) ───
+
+    // Vùng = hình chữ nhật x ∈ [0,100], y ∈ [0,100]
+    static double DistRect(P2 p) => Math.Min(Math.Min(Math.Abs(p.X), Math.Abs(p.X - 100)), Math.Min(Math.Abs(p.Y), Math.Abs(p.Y - 100)));
+
+    [Fact]
+    public void TopPlateRuns_EdgesOnBoundary_BecomeBreaks()
+    {
+        // Tấm phủ nửa trái vùng: mép thật x = 50, 3 cạnh còn lại nằm trên biên vùng
+        var loop = new List<P2> { new P2(0, 0), new P2(50, 0), new P2(50, 100), new P2(0, 100) };
+        var (breaks, edges) = DetailComposeRules.TopPlateRuns(loop, DistRect, 0.5);
+        Assert.Equal(3, breaks.Count);
+        var e = Assert.Single(edges);
+        Assert.False(e.Closed);
+        Assert.Equal(2, e.Pts.Count);
+        Assert.All(e.Pts, p => Assert.Equal(50, p.X, 6));
+    }
+
+    [Fact]
+    public void TopPlateRuns_HoleInside_ClosedEdgeNoBreak()
+    {
+        var hole = new List<P2> { new P2(40, 40), new P2(60, 40), new P2(60, 60), new P2(40, 60) };
+        var (breaks, edges) = DetailComposeRules.TopPlateRuns(hole, DistRect, 0.5);
+        Assert.Empty(breaks);
+        var e = Assert.Single(edges);
+        Assert.True(e.Closed);
+        Assert.Equal(4, e.Pts.Count);
+    }
+
+    [Fact]
+    public void TopPlateRuns_WholeRegion_AllBreak()
+    {
+        var loop = new List<P2> { new P2(0, 0), new P2(100, 0), new P2(100, 100), new P2(0, 100) };
+        var (breaks, edges) = DetailComposeRules.TopPlateRuns(loop, DistRect, 0.5);
+        Assert.Equal(4, breaks.Count);
+        Assert.Empty(edges);
+    }
 }

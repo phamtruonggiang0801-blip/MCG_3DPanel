@@ -44,10 +44,10 @@ namespace MCG_3DPanel.Commands.Detail
         }
     }
 
-    /// <summary>Viền Top Plate (AM_7), toạ độ plan, CCW; rỗng ⇒ không có.</summary>
+    /// <summary>Các vòng viền Top Plate trong vùng (mép ngoài + lỗ khoét đã dựng 3D), toạ độ plan; rỗng ⇒ không có.</summary>
     public sealed class TopPlateResult
     {
-        public List<P2> Outline = new List<P2>();
+        public List<List<P2>> Loops = new List<List<P2>>();
         public List<string> Warnings = new List<string>();
     }
 
@@ -150,7 +150,7 @@ namespace MCG_3DPanel.Commands.Detail
             return Run(target, src, items, job);
         }
 
-        /// <summary>Viền Top Plate trong vùng (cắt ngang giữa chiều dày, đáy + t/2, đã cắt theo vùng), toạ độ plan, CCW; vòng ngoài lớn nhất.
+        /// <summary>Viền Top Plate trong vùng (cắt ngang giữa chiều dày, đáy + t/2, đã cắt theo vùng), toạ độ plan; mọi vòng (kể cả lỗ khoét).
         /// Outline rỗng ⇒ không có. Lỗi từng phần ⇒ Warnings.</summary>
         public static TopPlateResult TopPlateOutline(Database target, Detail3DSource src, DetailRegion regionPlan)
         {
@@ -209,12 +209,8 @@ namespace MCG_3DPanel.Commands.Detail
                     RemoveNewNodEntries(tr, target, nodKeys, clones, res.Warnings);
                     tr.Commit();
                 }
-                var best = loops.Where(l => l.Count >= 3).OrderByDescending(l => Math.Abs(SectionCurveRules.SignedArea(l))).FirstOrDefault();
-                if (best != null)
-                {
-                    if (SectionCurveRules.SignedArea(best) < 0) best.Reverse();
-                    res.Outline = best;
-                }
+                // Mọi vòng: mép ngoài + lỗ khoét (CutOut đã trừ vào solid Top Plate khi Build 3D)
+                res.Loops = loops.Where(l => l.Count >= 3).ToList();
                 return res;
             }
             catch (System.Exception ex)

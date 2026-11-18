@@ -161,7 +161,7 @@ namespace MCG_3DPanel.Commands.Detail
 
                         List<Entity> twoD = DetailComposer.TwoDItems(tr, assyRef, region, result.Warnings);
                         List<Entity> ents;
-                        try { ents = DetailComposer.PlanEntities(result, top.Outline, twoD, centre, region); }
+                        try { ents = DetailComposer.PlanEntities(result, top.Loops, twoD, centre, region); }
                         catch
                         {
                             // PlanEntities chỉ giải phóng phần đã nhận ⇒ phần còn lại do ta giải phóng
@@ -824,7 +824,7 @@ namespace MCG_3DPanel.Commands.Detail
             var assyRef = (BlockReference)tr.GetObject(i.AssyId, OpenMode.ForRead);
             List<Entity> twoD = DetailComposer.TwoDItems(tr, assyRef, i.Region, i.Result.Warnings);
             List<Entity> ents;
-            try { ents = DetailComposer.PlanEntities(i.Result, i.Top?.Outline, twoD, basePt, i.Region); }
+            try { ents = DetailComposer.PlanEntities(i.Result, i.Top?.Loops, twoD, basePt, i.Region); }
             catch
             {
                 foreach (var e in twoD) if (!e.IsDisposed && e.ObjectId.IsNull) e.Dispose();

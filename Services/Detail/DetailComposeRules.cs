@@ -141,6 +141,23 @@ namespace MCG_3DPanel.Services.Detail
             res.Add((cur, kind, false));
             return res;
         }
+        /// <summary>Viền Top Plate (1 vòng, đã cắt theo vùng): cạnh nằm trên biên vùng (<paramref name="boundaryDist"/> ≤ tol) =
+        /// chỗ vùng cắt ngang tấm ⇒ đoạn break (AM_4 amzigzag); phần còn lại = mép tấm thật / lỗ khoét (AM_7, kín nếu cả vòng).</summary>
+        public static (List<(P2 A, P2 B)> Breaks, List<(List<P2> Pts, bool Closed)> Edges) TopPlateRuns(
+            IList<P2> loop, Func<P2, double> boundaryDist, double tol)
+        {
+            var breaks = new List<(P2, P2)>();
+            var edges = new List<(List<P2>, bool)>();
+            if (loop == null || loop.Count < 3) return (breaks, edges);
+            foreach (var run in Runs(loop, BreakEdges(loop, boundaryDist, null, tol)))
+            {
+                if (!run.Break) { edges.Add((run.Pts, run.Closed)); continue; }
+                for (int i = 1; i < run.Pts.Count; i++) breaks.Add((run.Pts[i - 1], run.Pts[i]));
+                if (run.Closed) breaks.Add((run.Pts[run.Pts.Count - 1], run.Pts[0]));
+            }
+            return (breaks, edges);
+        }
+
         /// <summary>Phần của đường thẳng vô hạn p + t·d nằm trong đa giác (kín, có thể lõm; không lặp đỉnh đầu).</summary>
         public static List<(P2 A, P2 B)> ClipLine(P2 p, P2 d, IList<P2> poly)
         {

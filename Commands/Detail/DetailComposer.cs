@@ -29,7 +29,7 @@ namespace MCG_3DPanel.Commands.Detail
         /// <summary>Block DET: vết cắt + AM_8 + đường thấy + viền Top Plate (AM_7) + đồ 2D; toạ độ = plan − <paramref name="basePt"/>.
         /// <paramref name="twoDItems"/> (từ <see cref="TwoDItems"/>) được dời rồi đưa luôn vào danh sách (không chép).
         /// <paramref name="region"/> (toạ độ plan, BẮT BUỘC): cạnh vết cắt nằm trên biên vùng ⇒ break AM_4.</summary>
-        public static List<Entity> PlanEntities(SectionResult r, List<P2> topPlate, IEnumerable<Entity> twoDItems, P2 basePt,
+        public static List<Entity> PlanEntities(SectionResult r, IEnumerable<List<P2>> topPlate, IEnumerable<Entity> twoDItems, P2 basePt,
             DetailRegion region)
         {
             // Thiếu vùng ⇒ cạnh tại biên lại thành nét liền AM_0 — không cho phép im lặng
@@ -38,9 +38,18 @@ namespace MCG_3DPanel.Commands.Detail
             try
             {
                 var shift = new P2(-basePt.X, -basePt.Y);
-                AddStructure(r, shift, ents, p => region.DistanceToBoundary(p - shift));
-                if (topPlate != null && topPlate.Count >= 3)
-                    ents.Add(Poly(topPlate.Select(p => p + shift), true, AM7));
+                Func<P2, double> dist = p => region.DistanceToBoundary(p - shift);
+                // Viền Top Plate: mép thật + lỗ khoét ⇒ AM_7; cạnh trên biên vùng (vùng cắt ngang tấm) ⇒ break AM_4,
+                // gộp chung với break của kết cấu để không vẽ chồng
+                var topBreaks = new List<(P2, P2)>();
+                foreach (var loop in topPlate ?? Enumerable.Empty<List<P2>>())
+                {
+                    if (loop == null || loop.Count < 3) continue;
+                    var (brk, edges) = DetailComposeRules.TopPlateRuns(loop.Select(p => p + shift).ToList(), dist, BoundaryTol);
+                    topBreaks.AddRange(brk);
+                    foreach (var e in edges) ents.Add(Poly(e.Pts, e.Closed, AM7));
+                }
+                AddStructure(r, shift, ents, dist, topBreaks);
                 var m = Matrix3d.Displacement(new Vector3d(shift.X, shift.Y, 0));
                 foreach (var e in twoDItems ?? Enumerable.Empty<Entity>())
                 {
@@ -120,10 +129,13 @@ namespace MCG_3DPanel.Commands.Detail
                 string label = DetailNaming.SectionMark(n, letter);
                 foreach (var a in DetailComposeRules.SectionArrows(f.Start + shift, f.End + shift, f.Look))
                 {
+                    // AM_10 mang linetype AM_ISO08W050 (nét đứt) ⇒ mũi tên đặt Continuous riêng cho liền nét như block mẫu
                     var bar = Poly(new[] { a.BarA, a.BarB }, false, AM10);
+                    bar.Linetype = "Continuous";
                     bar.ConstantWidth = DetailComposeRules.BarWidth;
                     ents.Add(bar);
                     var arrow = Poly(new[] { a.Base, a.Neck, a.Tip }, false, AM10);
+                    arrow.Linetype = "Continuous";
                     arrow.SetStartWidthAt(1, DetailComposeRules.HeadWidth);
                     arrow.SetEndWidthAt(1, 0);
                     ents.Add(arrow);
@@ -141,16 +153,17 @@ namespace MCG_3DPanel.Commands.Detail
         // ─── Đồ 2D (chỉ Detail Plan / View) ────────────────────────────────────
 
         /// <summary>Đồ chỉ có trên bản vẽ 2D, toạ độ plan (WCS): đi cây block _Assy (bỏ Top Plate / Structure, đi xuống
-        /// mọi block &lt;panel&gt;_*). Block khác = phụ kiện, giữ nguyên nếu điểm chèn trong vùng (AM_0 nếu thuộc Hole cut out, còn lại
-        /// AM_2). Đường cong trong các block chứa: cắt theo vùng, bỏ AM_9; polyline của Wire guide support ⇒ AM_7 rộng 3.
+        /// mọi block &lt;panel&gt;_* trừ Lashing Hole). Block khác giữ nguyên nếu điểm chèn trong vùng: nằm thẳng trong _Assy ⇒ AM_2,
+        /// trong block con ⇒ giữ layer gốc. Đường cong trong các block chứa: cắt theo vùng, bỏ AM_9; polyline của Wire guide support ⇒ AM_7 rộng 3.
         /// Chỉ ĐỌC cây _Assy — entity trả về là bản chép.</summary>
         public static List<Entity> TwoDItems(Transaction tr, BlockReference assyRef, DetailRegion region, List<string> warnings = null)
         {
             var res = new List<Entity>();
             string assyName = Name(tr, assyRef);
             string panel = assyName.EndsWith("_Assy", StringComparison.Ordinal) ? assyName.Substring(0, assyName.Length - 5) : assyName;
-            // Lashing Hole KHÔNG bỏ: lỗ lashing chỉ có trên 2D (spec)
-            var skip = new HashSet<string>(StringComparer.Ordinal) { panel + "_Top Plate", panel + "_Structure" };
+            // Lashing Hole bỏ (kỹ sư 2026-11-18): lỗ lashing không dựng 3D ⇒ không vẽ vào detail.
+            // Lỗ khoét Top Plate lấy từ 3D (TopPlateOutline), không từ block 2D.
+            var skip = new HashSet<string>(StringComparer.Ordinal) { panel + "_Top Plate", panel + "_Structure", panel + "_Lashing Hole" };
             var withAttributes = new List<string>();   // phụ kiện có thuộc tính: bản chép mất giá trị ⇒ báo
             Entity boundary = Boundary(region);
             try
@@ -190,7 +203,8 @@ namespace MCG_3DPanel.Commands.Detail
                         var leaf = (BlockReference)br.Clone();
                         res.Add(leaf);
                         leaf.TransformBy(xf);
-                        leaf.Layer = container == panel + "_Hole cut out" ? AM0 : AM2;
+                        // Chỉ phụ kiện nằm TRỰC TIẾP trong _Assy ⇒ AM_2; block trong block con giữ layer gốc (kỹ sư 2026-11-18)
+                        if (depth == 0) leaf.Layer = AM2;
                         continue;
                     }
                     if (!(ent is Curve c) || string.Equals(c.Layer, AM9, StringComparison.OrdinalIgnoreCase)) continue;
@@ -274,7 +288,8 @@ namespace MCG_3DPanel.Commands.Detail
         /// <summary>Vết cắt + AM_8 + đường thấy, đã gộp đoạn trùng. Cạnh vết cắt nằm trên biên vùng / hộp cắt
         /// (<paramref name="boundaryDist"/>, toạ độ đã dời) hoặc trùng break ⇒ AM_4 amzigzag, còn lại AM_0; đường thấy trên biên
         /// ⇒ AM_4 amzigzag, bỏ phần đã có cạnh vết cắt break. Thiếu linetype ⇒ Continuous + ghi chú.</summary>
-        static void AddStructure(SectionResult r, P2 shift, List<Entity> ents, Func<P2, double> boundaryDist)
+        static void AddStructure(SectionResult r, P2 shift, List<Entity> ents, Func<P2, double> boundaryDist,
+            IEnumerable<(P2, P2)> extraBreaks = null)
         {
             ObjectId zig = LinetypeId(Zigzag);
             bool anyBreak = false;
@@ -298,6 +313,7 @@ namespace MCG_3DPanel.Commands.Detail
                     curved.Add((c, v.OnBoundary));
                 }
             }
+            if (extraBreaks != null) straight4.AddRange(extraBreaks);   // đã ở toạ độ dời
             var breaksRaw = DetailComposeRules.MergeCollinear(straight4, null, DedupeTol);
 
             // 2. Vết cắt: tách cạnh break / cạnh thường
