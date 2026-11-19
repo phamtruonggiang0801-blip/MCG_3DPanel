@@ -448,18 +448,41 @@ namespace MCG_3DPanel.Commands.Detail
             }
             if (edgeFail > 0) result.Warnings.Add($"{edgeFail} solid edge(s) could not be read (some joint lines may be missing)");
 
-            // 5. Gộp mọi tấm rồi in cạnh từng tấm lên khối gộp
-            var union = (Solid3d)tr.GetObject(live[0].Id, OpenMode.ForWrite);
+            // 5. Gộp mọi tấm rồi in cạnh từng tấm lên khối gộp. Gộp trên BẢN SAO: lần gộp lỗi hoặc thể tích vô lý ⇒ bỏ bản sao,
+            //    giữ khối trước, tấm đó để riêng (DET.19 2026-11-19: một lần gộp lỗi làm khối gộp mất cả flange + bầu HP ⇒
+            //    thiếu nét flange, cạnh bracket dưới HP lại hiện). Tấm gốc không bị gộp tiêu ⇒ còn nguyên để cắt riêng ở 6.
             var united = new List<Member> { live[0] };
             var apart = new List<Member>();
-            for (int i = 1; i < live.Count; i++)
+            Solid3d union = (Solid3d)((Solid3d)tr.GetObject(live[0].Id, OpenMode.ForRead)).Clone();
+            try
             {
-                try
+                double? unionVol = Volume(union);
+                for (int i = 1; i < live.Count; i++)
                 {
-                    union.BooleanOperation(BooleanOperationType.BoolUnite, (Solid3d)tr.GetObject(live[i].Id, OpenMode.ForWrite));
-                    united.Add(live[i]);
+                    var part = (Solid3d)tr.GetObject(live[i].Id, OpenMode.ForRead);
+                    double? partVol = Volume(part);
+                    Solid3d merged = null;
+                    bool ok = false;
+                    try
+                    {
+                        merged = (Solid3d)union.Clone();
+                        using (var operand = (Solid3d)part.Clone()) merged.BooleanOperation(BooleanOperationType.BoolUnite, operand);
+                        double? v = Volume(merged);
+                        ok = SectionCleanupRules.UnionPlausible(unionVol, partVol, v);
+                        if (ok) unionVol = v;
+                    }
+                    catch (System.Exception) { }
+                    if (ok) { union.Dispose(); union = merged; united.Add(live[i]); }
+                    else { merged?.Dispose(); apart.Add(live[i]); }
                 }
-                catch (System.Exception) { apart.Add(live[i]); }
+                var owner = (BlockTableRecord)tr.GetObject(sec.OwnerId, OpenMode.ForWrite);
+                owner.AppendEntity(union);   // resident như tấm chép; xoá cuối bước 6 (lỗi ⇒ transaction huỷ ⇒ tự mất)
+                tr.AddNewlyCreatedDBObject(union, true);
+            }
+            catch
+            {
+                if (union.ObjectId.IsNull) union.Dispose();
+                throw;
             }
             if (apart.Count > 0)
                 result.Warnings.Add($"{apart.Count} solid(s) could not be merged; lines they hide may still show");
@@ -473,15 +496,30 @@ namespace MCG_3DPanel.Commands.Detail
             if (impFail > 0) result.Warnings.Add($"{impFail} of {imp + impFail} edge(s) could not be imprinted (some joint lines may be missing)");
 
             // 6. Section khối gộp: đường thấy = background + tangency (bỏ boundary của khối gộp)
+            //    Khối gộp không cắt được ⇒ cắt từng tấm đã gộp (tấm gốc còn nguyên), nét khuất giữa các tấm do bước 6b bắn tia lọc.
+            Solid3d Of(Member m) => (Solid3d)tr.GetObject(m.Id, OpenMode.ForRead);
             var raw = new List<Curve>();
-            foreach (var solid in new[] { union }.Concat(apart.Select(m => (Solid3d)tr.GetObject(m.Id, OpenMode.ForRead))))
+            bool Take(Solid3d solid)
             {
                 Array bnd, fill, bg, fg, tan;
                 try { sec.GenerateSectionGeometry(solid, out bnd, out fill, out bg, out fg, out tan); }
-                catch (System.Exception) { result.Warnings.Add("the merged solid could not be sectioned; visible lines are missing"); continue; }
+                catch (System.Exception) { return false; }
                 DisposeAll(bnd); DisposeAll(fill); DisposeAll(fg);
                 raw.AddRange(Curves(bg)); raw.AddRange(Curves(tan));
+                return true;
             }
+            var occluders = new List<Solid3d> { union };
+            if (!Take(union))
+            {
+                occluders = united.Select(Of).ToList();
+                int pieceFail = occluders.Count(s => !Take(s));
+                result.Warnings.Add(pieceFail == 0
+                    ? "the merged solid could not be sectioned; solids were sectioned one by one"
+                    : $"the merged solid could not be sectioned; {pieceFail} solid(s) are missing their visible lines");
+            }
+            int apartFail = apart.Count(m => !Take(Of(m)));
+            Warn(result.Warnings, apartFail, "unmerged solid(s) could not be sectioned; their visible lines are missing");
+            occluders.AddRange(apart.Select(Of));
 
             var memberEdges = live.Select(m => (IList<IList<P2>>)m.Edges2D).ToList();
             void Emit(Curve c, List<P2> pts)
@@ -499,9 +537,8 @@ namespace MCG_3DPanel.Commands.Detail
             }
 
             // 6b. Nét tiếp tuyến (vd bầu HP) không qua bước bỏ nét khuất của AutoCAD ⇒ tự kiểm bằng tia (kỹ sư 2026-11-18, 6A-6A)
-            var solids = new[] { union }.Concat(apart.Select(m => (Solid3d)tr.GetObject(m.Id, OpenMode.ForRead)));
             int next = 0;
-            using (var occ = new Occluder(job, solids, live.SelectMany(m => m.Seams)))
+            using (var occ = new Occluder(job, occluders, live.SelectMany(m => m.Seams)))
             {
                 try
                 {
@@ -532,7 +569,14 @@ namespace MCG_3DPanel.Commands.Detail
                 if (job.IsSection) FindParallel(job, live, result, occ);   // trước Warn: "(t)" cũng bắn tia
                 Warn(result.Warnings, occ.Failures, "hidden-line check(s) failed; some hidden lines may still show");
             }
+            if (!union.IsErased) union.Erase();   // khối gộp tạm (bước 5)
+        }
 
+        /// <summary>Thể tích solid; không đo được (khối hỏng) ⇒ null.</summary>
+        static double? Volume(Solid3d s)
+        {
+            try { return s.IsNull ? (double?)null : s.MassProperties.Volume; }
+            catch (System.Exception) { return null; }
         }
 
         /// <summary>Tấm không phải HP, mặt cắt không cắt qua, nằm trong hộp, footprint song song đường cắt trong 1°.</summary>

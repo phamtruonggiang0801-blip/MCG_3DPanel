@@ -27,3 +27,16 @@ public class SectionCleanupRulesTests
         Assert.Equal("3 solid(s) could not be clipped", SectionCleanupRules.Count(3, "solid(s) could not be clipped"));
     }
 }
+
+public class UnionPlausibleTests
+{
+    [Fact] public void Overlapping_Ok() => Assert.True(SectionCleanupRules.UnionPlausible(1000, 300, 1250));
+    [Fact] public void Disjoint_Ok() => Assert.True(SectionCleanupRules.UnionPlausible(1000, 300, 1300));
+    [Fact] public void PartSwallowed_Ok() => Assert.True(SectionCleanupRules.UnionPlausible(1000, 300, 1000));
+    [Fact] public void LostEarlierParts_Rejected()   // DET.19: khối gộp mất flange + HP
+        => Assert.False(SectionCleanupRules.UnionPlausible(5.0e7, 2.0e5, 4.0e7));
+    [Fact] public void Grew_Rejected() => Assert.False(SectionCleanupRules.UnionPlausible(1000, 300, 1500));
+    [Fact] public void NoAfter_Rejected() => Assert.False(SectionCleanupRules.UnionPlausible(1000, 300, null));
+    [Fact] public void ZeroAfter_Rejected() => Assert.False(SectionCleanupRules.UnionPlausible(1000, 300, 0));
+    [Fact] public void UnknownBefore_NotChecked() => Assert.True(SectionCleanupRules.UnionPlausible(null, 300, 50));
+}
