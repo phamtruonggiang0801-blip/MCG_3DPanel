@@ -333,18 +333,21 @@ namespace MCG_3DPanel.Commands.Detail
             var m = Matrix3d.Displacement(new Vector3d(shift.X, shift.Y, 0));
             var straight0 = new List<(P2, P2)>();
             var straight4 = new List<(P2, P2)>();
-            var curved = new List<(Curve c, bool boundary)>();
+            var straightSolid = new List<(P2, P2)>();   // Detail Plan: bracket dưới HP ⇒ AM_0 như mẫu tay
+            var curved = new List<(Curve c, bool boundary, bool solid)>();
+            var cutHandles = new HashSet<string>(r.Cut.Where(c => !string.IsNullOrEmpty(c.Handle)).Select(c => c.Handle), StringComparer.Ordinal);
             foreach (var v in r.Visible)
             {
                 if (v.Curve == null || v.Curve.IsDisposed) continue;
+                bool solid = !v.OnBoundary && seenLayer != AM0 && DetailComposeRules.SolidInPlan(v.Type, v.Handle, cutHandles);
                 if (TryStraight(v.Curve, out P2 a, out P2 b))
-                    (v.OnBoundary ? straight4 : straight0).Add((a + shift, b + shift));
+                    (v.OnBoundary ? straight4 : solid ? straightSolid : straight0).Add((a + shift, b + shift));
                 else
                 {
                     var c = (Curve)v.Curve.Clone();
                     ents.Add(c);   // vào danh sách ngay: lỗi sau đó ⇒ caller giải phóng
                     c.TransformBy(m);
-                    curved.Add((c, v.OnBoundary));
+                    curved.Add((c, v.OnBoundary, solid));
                 }
             }
             if (extraBreaks != null) straight4.AddRange(extraBreaks);   // đã ở toạ độ dời
@@ -378,11 +381,14 @@ namespace MCG_3DPanel.Commands.Detail
                 ents.Add(pl);
                 Zig(pl);
             }
-            var lines = DetailComposeRules.MergeCollinear(straight0, cutSolid.Concat(cutBreak).Concat(breaks), DedupeTol);
+            var drawn = cutSolid.Concat(cutBreak).Concat(breaks).ToList();
+            var solidLines = DetailComposeRules.MergeCollinear(straightSolid, drawn, DedupeTol);
+            foreach (var s in solidLines) ents.Add(Line(s, AM0));
+            var lines = DetailComposeRules.MergeCollinear(straight0, drawn.Concat(solidLines), DedupeTol);
             foreach (var s in lines) ents.Add(Line(s, seenLayer));
 
-            // 4. Đường cong: trên biên ⇒ AM_4 (bỏ nếu nằm trọn trên cạnh vết cắt break), còn lại AM_0
-            foreach (var (c, boundary) in curved)
+            // 4. Đường cong: trên biên ⇒ AM_4 (bỏ nếu nằm trọn trên cạnh vết cắt break), bracket dưới HP ⇒ AM_0, còn lại seenLayer
+            foreach (var (c, boundary, solid) in curved)
             {
                 if (boundary && cutBreak.Count > 0 && OnSegments(c, cutBreak))
                 {
@@ -391,7 +397,7 @@ namespace MCG_3DPanel.Commands.Detail
                     continue;
                 }
                 c.SetDatabaseDefaults(Db);
-                c.Layer = boundary ? AM4 : seenLayer;
+                c.Layer = boundary ? AM4 : solid ? AM0 : seenLayer;
                 if (boundary) Zig(c);
                 else c.Linetype = "ByLayer";
             }

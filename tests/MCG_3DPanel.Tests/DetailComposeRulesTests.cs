@@ -358,4 +358,15 @@ public class DetailComposeRulesTests
         Assert.False(DetailComposeRules.IsCircle(oval, 0.5, out _, out _));
     }
 
+    [Fact]
+    public void SolidInPlan_OnlyBracketsTheCutMissed()
+    {
+        var cut = new HashSet<string> { "B1" };
+        Assert.True(DetailComposeRules.SolidInPlan("Bracket", "B2", cut));    // bracket dưới HP: không bị cắt
+        Assert.False(DetailComposeRules.SolidInPlan("Bracket", "B1", cut));   // bracket bị cắt: đường thấy AM_4
+        Assert.False(DetailComposeRules.SolidInPlan("HP", "H1", cut));
+        Assert.False(DetailComposeRules.SolidInPlan("Flange", "F1", cut));
+        Assert.False(DetailComposeRules.SolidInPlan("Bracket", "", cut));     // không gán được tấm
+    }
+
 }

@@ -214,6 +214,12 @@ namespace MCG_3DPanel.Services.Detail
             return false;
         }
 
+        /// <summary>Đường thấy trên Detail Plan vẽ nét liền AM_0 thay vì AM_4: cạnh của Bracket nằm trọn dưới mặt cắt plan
+        /// (không có vết cắt — bracket dưới HP). Hai mẫu tay CAS-0062239 DET.1 / DET.3 vẽ bracket dưới HP AM_0 (dump 2026-11-19);
+        /// bracket bị mặt cắt cắt qua giữ đường thấy AM_4 như cũ. Không gán được tấm (<paramref name="handle"/> rỗng) ⇒ false.</summary>
+        public static bool SolidInPlan(string type, string handle, ICollection<string> cutHandles)
+            => type == "Bracket" && !string.IsNullOrEmpty(handle) && (cutHandles == null || !cutHandles.Contains(handle));
+
         /// <summary>Vòng là đường tròn (≥ 8 đỉnh, mọi đỉnh cách tâm trung bình ≤ <paramref name="tol"/>) ⇒ tâm + bán kính;
         /// lỗ tròn vẽ bằng Circle như mẫu tay thay vì polyline nhiều đỉnh.</summary>
         public static bool IsCircle(IList<P2> loop, double tol, out P2 centre, out double radius)
