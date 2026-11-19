@@ -185,7 +185,7 @@ namespace MCG_3DPanel.Commands.Detail
 
         // ─── Đồ 2D (chỉ Detail Plan / View) ────────────────────────────────────
 
-        /// <summary>Đồ chỉ có trên bản vẽ 2D, toạ độ plan (WCS): đi cây block _Assy (bỏ Top Plate / Structure, đi xuống
+        /// <summary>Đồ chỉ có trên bản vẽ 2D, toạ độ plan (WCS): đi cây block _Assy (bỏ Top Plate; Structure chỉ lấy block ký hiệu; đi xuống
         /// mọi block &lt;panel&gt;_* trừ Lashing Hole). Block khác giữ nguyên nếu điểm chèn trong vùng: nằm thẳng trong _Assy ⇒ AM_2,
         /// trong block con ⇒ giữ layer gốc. Đường cong trong các block chứa: cắt theo vùng, bỏ AM_9; polyline của Wire guide support ⇒ AM_7 rộng 3.
         /// Chỉ ĐỌC cây _Assy — entity trả về là bản chép.</summary>
@@ -196,12 +196,14 @@ namespace MCG_3DPanel.Commands.Detail
             string panel = assyName.EndsWith("_Assy", StringComparison.Ordinal) ? assyName.Substring(0, assyName.Length - 5) : assyName;
             // Lashing Hole bỏ (kỹ sư 2026-11-18): lỗ lashing không dựng 3D ⇒ không vẽ vào detail.
             // Lỗ khoét Top Plate lấy từ 3D (TopPlateOutline), không từ block 2D.
-            var skip = new HashSet<string>(StringComparer.Ordinal) { panel + "_Top Plate", panel + "_Structure", panel + "_Lashing Hole" };
+            var skip = new HashSet<string>(StringComparer.Ordinal) { panel + "_Top Plate", panel + "_Lashing Hole" };
+            // _Structure: nét kết cấu lấy từ 3D, chỉ chép block ký hiệu bên trong (vd 4111818_7D_CNR72 — mẫu tay DET.4, dump 2026-11-19)
+            string structure = panel + "_Structure";
             var withAttributes = new List<string>();   // phụ kiện có thuộc tính: bản chép mất giá trị ⇒ báo
             Entity boundary = Boundary(region);
             try
             {
-                Walk((BlockTableRecord)tr.GetObject(assyRef.BlockTableRecord, OpenMode.ForRead), assyRef.BlockTransform, assyName, 0);
+                Walk((BlockTableRecord)tr.GetObject(assyRef.BlockTableRecord, OpenMode.ForRead), assyRef.BlockTransform, assyName, 0, false);
                 string note = DetailComposeRules.AttributesNote(withAttributes);
                 if (note != null) warnings?.Add(note);
                 return res;
@@ -213,7 +215,7 @@ namespace MCG_3DPanel.Commands.Detail
             }
             finally { boundary.Dispose(); }
 
-            void Walk(BlockTableRecord btr, Matrix3d xf, string container, int depth)
+            void Walk(BlockTableRecord btr, Matrix3d xf, string container, int depth, bool symbolsOnly)
             {
                 if (depth > 16) throw new InvalidOperationException($"Block nesting under {assyName} is too deep (over 16 levels).");
                 foreach (ObjectId id in btr)
@@ -227,7 +229,7 @@ namespace MCG_3DPanel.Commands.Detail
                         if (n.StartsWith(panel + "_", StringComparison.Ordinal))
                         {
                             var child = (BlockTableRecord)tr.GetObject(br.BlockTableRecord, OpenMode.ForRead);
-                            Walk(child, xf * br.BlockTransform, n, depth + 1);
+                            Walk(child, xf * br.BlockTransform, n, depth + 1, symbolsOnly || n == structure);
                             continue;
                         }
                         var at = br.Position.TransformBy(xf);
@@ -240,6 +242,7 @@ namespace MCG_3DPanel.Commands.Detail
                         if (depth == 0) leaf.Layer = AM2;
                         continue;
                     }
+                    if (symbolsOnly) continue;   // nét kết cấu 2D (trong _Structure): không chép
                     if (!(ent is Curve c) || string.Equals(c.Layer, AM9, StringComparison.OrdinalIgnoreCase)) continue;
                     bool wire = container == panel + "_Wire guide support" && c is Polyline;
                     foreach (var piece in Clip(c, xf, region, boundary))
