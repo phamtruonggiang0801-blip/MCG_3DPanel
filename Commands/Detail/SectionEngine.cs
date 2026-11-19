@@ -485,7 +485,7 @@ namespace MCG_3DPanel.Commands.Detail
                 throw;
             }
             if (apart.Count > 0)
-                result.Warnings.Add($"{apart.Count} solid(s) could not be merged; lines they hide may still show");
+                result.Warnings.Add($"{apart.Count} solid(s) could not be merged ({string.Join(", ", apart.Select(m => m.Item.Type + " " + m.Item.Handle))}); lines they hide may still show");
             int imp = 0, impFail = 0;
             foreach (var m in united)
                 foreach (var c in m.Seams)
