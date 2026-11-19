@@ -78,24 +78,42 @@ namespace MCG_3DPanel.Services.Detail
         /// viền vết cắt): nét trùng cạnh đó, hoặc thẳng hàng và chạm cạnh đó
         /// (vd đầu vách chạy dưới HP treo ở 9A-9A). Nét gần nhau (trung điểm cách ≤ nearTol theo X — vd nét nối bị che đứt,
         /// hay nét bắt đầu vát 1:4 cách mối nối 16 mm ở 9B-9B) chỉ giữ một: ưu tiên nét NỐI (<c>Joint</c> = trùng cạnh tấm
-        /// song song khác), rồi nét dài nhất. Nét ngắn hơn minLen bị bỏ.</summary>
+        /// song song khác), rồi nét dài nhất. Nét ngắn hơn minLen bị bỏ.
+        /// <para>Mẫu tay CAS-0062239 (dump 2026-11-19, 7 dấu "$"): nét luôn ĐỨNG và chạy SUỐT từ tấm trên xuống tấm dưới.
+        /// <paramref name="supports"/> (viền vết cắt + cạnh tấm nằm ngang) ≠ null ⇒ 2 đầu nét (sau khi nối các khúc thẳng hàng
+        /// bị che đứt) đều phải chạm một support — loại mép tự do xiên của bracket, nét ngắn dưới HP. Hai nét cách ≤ nearTol
+        /// (mặc định 65: vát 1:4 tới chênh dày 15 mm) chỉ một "$".</para></summary>
         public static List<(P2 A, P2 B)> WeldTraceLines(IEnumerable<(IList<P2> Pts, bool Joint)> candidates,
-            IList<IList<P2>> blockers, double tol = 0.5, double step = 2.0, double maxDeg = 30, double minLen = 20,
-            double nearTol = 40.0)
+            IList<IList<P2>> blockers, double tol = 0.5, double step = 2.0, double maxDeg = 10, double minLen = 20,
+            double nearTol = 65.0, IList<IList<P2>> supports = null, double supportTol = 1.0, double joinGap = 30.0)
         {
             double cosMax = Math.Cos(maxDeg * Math.PI / 180);
-            var lines = new List<(P2 A, P2 B, bool Joint)>();
+            var pieces = new List<(P2 A, P2 B, bool Joint)>();
             foreach (var (c, joint) in candidates)
             {
                 if (c.Count < 2) continue;
                 P2 a = c[0], b = c[c.Count - 1];
                 var d = b - a;
                 double len = d.Length;
-                if (len < minLen || Math.Abs(d.Y) / len < cosMax) continue;
+                if (len < 1e-9 || Math.Abs(d.Y) / len < cosMax) continue;
                 if (blockers.Count > 0 && SectionCurveRules.Covers(SectionCurveRules.Densify(c, step), blockers, tol)) continue;
                 if (blockers.Any(bl => TouchesInLine(a, b, bl, tol))) continue;
-                lines.Add(a.Y <= b.Y ? (a, b, joint) : (b, a, joint));
+                pieces.Add(a.Y <= b.Y ? (a, b, joint) : (b, a, joint));
             }
+            // Nối các khúc thẳng hàng (cùng X ± 2, khe ≤ joinGap) — nét bị che đứt vẫn là một nét suốt
+            var lines = new List<(P2 A, P2 B, bool Joint)>();
+            foreach (var p in pieces.OrderBy(p => p.A.X).ThenBy(p => p.A.Y))
+            {
+                int k = lines.FindIndex(l => Math.Abs((l.A.X + l.B.X) / 2 - (p.A.X + p.B.X) / 2) <= 2.0
+                                             && p.A.Y <= l.B.Y + joinGap && p.B.Y >= l.A.Y - joinGap);
+                if (k < 0) { lines.Add(p); continue; }
+                var l0 = lines[k];
+                lines[k] = (l0.A.Y <= p.A.Y ? l0.A : p.A, l0.B.Y >= p.B.Y ? l0.B : p.B, l0.Joint || p.Joint);
+            }
+            lines = lines.Where(l => (l.B - l.A).Length >= minLen).ToList();
+            if (supports != null)
+                lines = lines.Where(l => supports.Any(s => SectionCurveRules.DistanceToPolyline(l.A, s) <= supportTol)
+                                      && supports.Any(s => SectionCurveRules.DistanceToPolyline(l.B, s) <= supportTol)).ToList();
             var keep = new List<(P2 A, P2 B)>();
             foreach (var l in lines.OrderByDescending(l => l.Joint).ThenByDescending(l => (l.B - l.A).Length))
             {

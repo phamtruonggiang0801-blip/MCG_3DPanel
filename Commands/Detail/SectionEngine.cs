@@ -562,8 +562,15 @@ namespace MCG_3DPanel.Commands.Detail
             var blockers = live.Where(o => o.Item.Type == nameof(PartType.HP) || o.Item.Type == nameof(PartType.FlatBar))
                 .SelectMany(o => o.Edges2D).Select(e => (IList<P2>)e).ToList();
             // đầu tấm tì vào tấm bị cắt (nét trùng / chạm viền vết cắt) cũng không "$" — kỹ sư 2026-11-18, 9B-9B x = -82.5
-            blockers.AddRange(result.Cut.Where(c => c.Outline != null && c.Outline.Count >= 3).Select(c => (IList<P2>)Closed(c.Outline)));
-            foreach (var (a, b) in SectionSymbolRules.WeldTraceLines(candidates, blockers, Tol, CoverStep))
+            var cutOutlines = result.Cut.Where(c => c.Outline != null && c.Outline.Count >= 3).Select(c => (IList<P2>)Closed(c.Outline)).ToList();
+            blockers.AddRange(cutOutlines);
+            // "$" chỉ cho nét chạy suốt giữa 2 tấm đỡ (mẫu tay 2026-11-19): vết cắt + cạnh tấm nằm ngang (Top Plate / Flange /
+            // Face Plate) song song mặt cắt
+            var supports = new List<IList<P2>>(cutOutlines);
+            supports.AddRange(live.Where(o => o.Item.Type == nameof(PartType.TopPlate) || o.Item.Type == nameof(PartType.Flange)
+                                              || o.Item.Type == nameof(PartType.FacePlate))
+                .SelectMany(o => o.Edges2D).Select(e => (IList<P2>)e));
+            foreach (var (a, b) in SectionSymbolRules.WeldTraceLines(candidates, blockers, Tol, CoverStep, supports: supports))
                 result.Parallel.Add(new ParallelPlate { Visible = true, OutlineA = a, OutlineB = b });
         }
 

@@ -79,6 +79,38 @@ namespace MCG_3DPanel.Tests
             Assert.Equal(2, r.Count);
         }
 
+        // Top Plate dưới mặt y = 194, flange đáy mặt trên y = -180 (như 17E-17E)
+        static readonly IList<IList<P2>> Supports = new List<IList<P2>> { L(-1000, 194, 1000, 194), L(-1000, -180, 1000, -180) };
+
+        [Fact]
+        public void FullHeightLine_Gets() =>
+            Assert.Single(SectionSymbolRules.WeldTraceLines(C(L(887, 194, 887, -180)), NoBlock, supports: Supports));
+
+        [Fact]
+        public void BracketFreeEdge_Skipped()   // 17E-17E: mép tự do bracket (643,-178)-(658,42), lệch đứng ~4°, đầu trên không tì tấm nào
+            => Assert.Empty(SectionSymbolRules.WeldTraceLines(C(L(643, -178, 658, 42)), NoBlock, supports: Supports));
+
+        [Fact]
+        public void SlantedBracketEdge_Skipped()   // 16E-16E: (-138,-180)-(-20,59)
+            => Assert.Empty(SectionSymbolRules.WeldTraceLines(C(L(-138, -180, -20, 59)), NoBlock, supports: Supports));
+
+        [Fact]
+        public void ShortLineUnderHp_Skipped()   // 17G-17G: (329,89)-(329,194) chỉ chạm Top Plate
+            => Assert.Empty(SectionSymbolRules.WeldTraceLines(C(L(329, 89, 329, 194)), NoBlock, supports: Supports));
+
+        [Fact]
+        public void BrokenFullHeightLine_JoinedAndGets()
+        {
+            var r = SectionSymbolRules.WeldTraceLines(C(L(215.9, 194, 215.9, 20), L(215.5, 10, 215.5, -180)), NoBlock, supports: Supports);
+            Assert.Single(r);
+            Assert.Equal(7, ((r[0].A + r[0].B) * 0.5).Y, 0);
+        }
+
+        [Fact]
+        public void ChamferPair40Apart_OneSymbol()   // 17E-17E: x = -356 / -316 (vát 1:4)
+            => Assert.Single(SectionSymbolRules.WeldTraceLines(C(L(-356, -180, -356, 194), L(-316, 194, -316, -180)), NoBlock,
+                supports: Supports));
+
         [Fact]
         public void ShortLine_Skipped() =>
             Assert.Empty(SectionSymbolRules.WeldTraceLines(C(L(272.9, -180, 272.9, -195)), NoBlock));
