@@ -8,7 +8,7 @@ using MCG_3DPanel.Commands.Detail;
 using MCG_3DPanel.Services;
 using MCG_3DPanel.Services.Update;
 
-[assembly: CommandClass(typeof(MCG_3DPanel.Commands.UpdateChain))]
+
 
 namespace MCG_3DPanel.Commands
 {
@@ -26,8 +26,8 @@ namespace MCG_3DPanel.Commands
         public static bool Running { get; private set; }
         private static (string Msg, bool Error)? _deferred;
 
-        private static BuildResult _request;
-        private static bool _planViewRequested;   // Create Drawing ▸ Plan View trên bản 2D: luôn vẽ Plan View (kể cả chưa có)
+
+
 
         // Trạng thái chờ Detail Update (lệnh Modal chạy sau, báo qua DetailCommands.Finished).
         private static bool _waitDetail;
@@ -48,18 +48,13 @@ namespace MCG_3DPanel.Commands
             Document doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null || remote?.Remote == null) return;
             if (PanelCommands.IsBuilding) { Finish("A build is running — try again when it finishes.", true); return; }
-            _request = remote;
-            _planViewRequested = planView;
-            doc.SendStringToExecute(Command + " ", true, false, false);
+            // Chạy THẲNG từ nút palette (ngữ cảnh ứng dụng, như Build 3D — PanelCommands.RunBuild), KHÔNG qua lệnh của bản 2D:
+            // lệnh khởi động trong bản 2D rồi mở / đóng file 3D giữa chừng làm phần Plan View ghi vào bản 2D bị mất (kỹ sư 2026-11-20).
+            Run(remote, planView);
         }
 
-        [CommandMethod(Command, CommandFlags.Session)]
-        public void Run()
+        private static void Run(BuildResult req, bool planOnly)
         {
-            BuildResult req = _request;
-            bool planOnly = _planViewRequested;
-            _request = null;
-            _planViewRequested = false;
             if (req?.Remote == null) return;
             TraceLog.Write($"{Command}: plan view = {planOnly}, pending = {req.Remote.PendingKeys.Count}, locked = {req.Remote.LockReason}");
             Running = true;
