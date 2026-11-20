@@ -39,12 +39,16 @@ namespace MCG_3DPanel.Commands
             return p;
         }
 
-        /// <summary>Lý do từ chối Update (null = được phép): file không có meta, hoặc dựng từ block 2D khác (so handle không phân biệt hoa/thường).</summary>
-        public static string UpdateRefusal(string fileName, MCG_3DPanel.Services.Corrections.PanelMeta meta, string selectedRefHandle)
+        /// <summary>Lý do từ chối Update (null = được phép): file không có meta, hoặc dựng từ block 2D khác — khác handle reference VÀ khác
+        /// tên block panel (không phân biệt hoa/thường). Cùng tên block ⇒ cùng panel đã chèn lại, vd DC từ Global (spec 2026-11-20).</summary>
+        public static string UpdateRefusal(string fileName, MCG_3DPanel.Services.Corrections.PanelMeta meta, string selectedRefHandle,
+            string selectedBlockName = null, string oldBlockName = null)
         {
             if (meta == null) return fileName + " has no panel data; use New copy.";
-            if (!string.Equals(meta.SourceRefHandle, selectedRefHandle, StringComparison.OrdinalIgnoreCase))
-                return fileName + " was built from another 2D block; use New copy.";
+            bool sameRef = string.Equals(meta.SourceRefHandle, selectedRefHandle, StringComparison.OrdinalIgnoreCase);
+            bool sameBlock = !string.IsNullOrEmpty(selectedBlockName) && !string.IsNullOrEmpty(oldBlockName)
+                             && string.Equals(selectedBlockName, oldBlockName, StringComparison.OrdinalIgnoreCase);
+            if (!sameRef && !sameBlock) return fileName + " was built from another 2D block; use New copy.";
             return null;
         }
 

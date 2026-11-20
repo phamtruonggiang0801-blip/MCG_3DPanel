@@ -173,6 +173,15 @@ namespace MCG_3DPanel.Tests
         [Fact] public void Refusal_OtherReference()
             => Assert.Equal("A_3D.dwg was built from another 2D block; use New copy.", Panel3DPath.UpdateRefusal("A_3D.dwg", new PanelMeta { SourceRefHandle = "2C" }, "1B"));
         [Fact] public void Refusal_SameReference_Null() => Assert.Null(Panel3DPath.UpdateRefusal("A_3D.dwg", new PanelMeta { SourceRefHandle = "1b" }, "1B"));
+        // Block chèn lại (DC từ Global): handle reference mới nhưng cùng panel ⇒ cho Update (spec 2026-11-20 update-after-dc-block)
+        [Fact] public void Refusal_OtherHandle_SameBlockName_Null()
+            => Assert.Null(Panel3DPath.UpdateRefusal("A_3D.dwg", new PanelMeta { SourceRefHandle = "2C" }, "1B", "7D-16P_Assy", "7d-16p_assy"));
+        [Fact] public void Refusal_OtherHandle_OtherBlockName()
+            => Assert.Equal("A_3D.dwg was built from another 2D block; use New copy.",
+                Panel3DPath.UpdateRefusal("A_3D.dwg", new PanelMeta { SourceRefHandle = "2C" }, "1B", "7D-16P_Assy", "7D-17P_Assy"));
+        [Fact] public void Refusal_OtherHandle_NoNames()
+            => Assert.Equal("A_3D.dwg was built from another 2D block; use New copy.",
+                Panel3DPath.UpdateRefusal("A_3D.dwg", new PanelMeta { SourceRefHandle = "2C" }, "1B", "", ""));
 
         [Fact] public void Unmatched_CountsMissingParts() => Assert.Equal(1, Panel3DPath.CountUnmatched(new[] { "1B#0", "2C#1" }, new[] { "1B#0" }));
         [Fact] public void Unmatched_IgnoresGeneratedKeys() => Assert.Equal(0, Panel3DPath.CountUnmatched(new[] { "CollarPlate:x", "HpEndBracketB:y", "1B#0/GirderFlange#0" }, new string[0]));
