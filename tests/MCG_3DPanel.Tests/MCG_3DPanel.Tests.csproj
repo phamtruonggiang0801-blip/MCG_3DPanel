@@ -23,6 +23,7 @@
     <Compile Include="..\..\Naming\StructureNaming.cs" Link="StructureNaming.cs" />
     <Compile Include="..\..\Naming\NamesJson.cs" Link="NamesJson.cs" />
     <Compile Include="..\..\Services\Classify\ClosedPlateRules.cs" Link="ClosedPlateRules.cs" />
+    <Compile Include="..\..\Services\Classify\GirderRules.cs" Link="GirderRules.cs" />
     <Compile Include="..\..\Commands\PickWindow.cs" Link="PickWindow.cs" />
     <Compile Include="..\..\Services\Corrections\PanelMeta.cs" Link="PanelMeta.cs" />
     <Compile Include="..\..\Commands\Panel3DPath.cs" Link="Panel3DPath.cs" />

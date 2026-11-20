@@ -108,27 +108,6 @@ namespace MCG_3DPanel.Services.Classify
             return ClosedPlateRules.BridgesBothHalves(offsets, p.MemberLength);
         }
 
-        /// <summary>Mảnh ngắn dày hơn, nối đầu thẳng hàng với 1 Web dài mỏng hơn, có vát 1:4 vẽ sẵn tại mối nối: đoạn chuyển chiều dày
-        /// của web, là WEB dù đầu kia chạm HP (kỹ sư 2026-11-06: 20582, 20596 trên 7D-14P). Chạy trước <see cref="IsBracketPattern"/>.</summary>
-        public static bool IsChamferedWebTier(PanelPart p, IEnumerable<PanelPart> otherAm0)
-        {
-            var v = p.Vertices;
-            if (v == null || v.Length < 5) return false;
-            var poly = v.Select(x => (x.X, x.Y)).ToList();
-            Builders.WebSeg Seg(PanelPart m)
-            {
-                var (a, b) = Endpoints(m);
-                return new Builders.WebSeg { Ax = a.X, Ay = a.Y, Bx = b.X, By = b.Y, T = m.FootprintThickness };
-            }
-            var self = Seg(p);
-            return otherAm0.Any(o =>
-            {
-                if (ReferenceEquals(o, p) || o.MemberLength <= WEB_MIN_LEN || o.FootprintThickness >= p.FootprintThickness) return false;
-                var j = Builders.WebThicknessChamferGeometry.Match(self, Seg(o));
-                return j != null && j.Thick == 0 && Builders.WebThicknessChamferGeometry.HasDrawnChamfer(j, poly);
-            });
-        }
-
         /// <summary>Cạnh NGẮN của bbox (min của w,h) — để phân biệt strip mỏng vs tấm.</summary>
         public static double BboxMinDim(PanelPart p)
             => Math.Min(p.Bounds.MaxPoint.X - p.Bounds.MinPoint.X, p.Bounds.MaxPoint.Y - p.Bounds.MinPoint.Y);

@@ -19,7 +19,11 @@ Trên layer Web `Mechanical-AM_0`, xét Closed LWPolyline theo **chiều dài** 
 - ❌ Bản cũ dùng "thk6 = bracket" → **OB1 (bracket dày 10) bị nuốt thành web-tier** (dựng chữ nhật). Đã bỏ.
 - ❌ KHÔNG dùng collinear: nhiều OB (334/399) collinear/nối đầu web NHƯNG vẫn là OB. Web-tier & OB đều có thể collinear;
   chỉ khác **web-tier KHÔNG chạm HP/FB**, OB thì có.
-- ✅ Ngoại lệ (kỹ sư 2026-11-06, 7D-14P `20582`, `20596`): mảnh ngắn dày hơn, nối đầu thẳng hàng với Web dài mỏng hơn, có vát 1:4 vẽ sẵn tại mối nối ⇒ **Web** dù đầu kia chạm HP (`ClassifyUtil.IsChamferedWebTier`). Tấm chữ nhật không vát vẫn theo luật cũ.
+- ✅ Định nghĩa kỹ sư 2026-11-20 (thay ngoại lệ 2026-11-06 `IsChamferedWebTier`, đã gỡ):
+  - **OB/IB**: bracket 1 đầu end tại HP/FB, đầu kia end tại Web — kể cả mảnh nối thẳng hàng sang web mỏng hơn bằng vát 1:4.
+  - **GB**: như OB nhưng dài **>** max span HP (`GirderEndDetector.HpMaxSpan`, fallback 775) ⇒ GB cả tấm (`GirderRules.IsGirderBracket`).
+    Ví dụ: 7D-16P `2B7B3` (827) / `2FB20` (800), 7D-14P `205DD` (800) / `205E5` (840, = 20582/20596 cũ).
+  - **GE**: hình thức end của Web tại HP/FB — đoạn đầu web dài do `GirderEndSplitter` tách; không còn tự tách GB từ web.
 - ✅ Thực đo 140753: 26 bracket (21 thk6 + 5 thk10 OB1: len 200/470×2/520×2 — đều adjHP), 4 web-tier (thk10 len300 — không adjHP).
 - ⚠️ Rủi ro: web-tier ở cạnh HP có thể adjHP giả. Dữ liệu hiện tại tách sạch; nếu gặp panel sai, thêm điều kiện "trục dài vuông góc web" (bracket chĩa ra HP) hoặc "không collinear với long-web THẬT sát".
 

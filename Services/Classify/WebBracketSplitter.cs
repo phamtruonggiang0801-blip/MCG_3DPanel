@@ -53,8 +53,9 @@ namespace MCG_3DPanel.Services.Classify
                 }
 
                 bool isShort = p.MemberLength < ClassifyUtil.WEB_MIN_LEN;
+                // Tấm vát 1:4 nối web mỏng mà đầu kia chạm HP/FB cũng là bracket (OB/IB, dài > max span ⇒ GB ở
+                // GirderEndDetector) — kỹ sư 2026-11-20 thay luật 2026-11-06 (7D-14P 20582/20596 là Web).
                 bool isBracket = isShort
-                    && !ClassifyUtil.IsChamferedWebTier(p, allAm0)
                     && ClassifyUtil.IsBracketPattern(p, allAm0, hpParts, fbParts, ClassifyUtil.ADJ_TOL);
 
                 if (isBracket) { p.Type = PartType.Bracket; brkPieces.Add(p); }
