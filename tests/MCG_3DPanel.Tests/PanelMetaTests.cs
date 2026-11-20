@@ -22,6 +22,18 @@ namespace MCG_3DPanel.Tests
             Assert.Equal("GE-HP", b.Solids[0].MergedCodes[0]);
         }
 
+        [Fact] public void PanelMeta_OldJsonWithoutFingerprint_ReadsEmpty()
+        {
+            var b = PanelMeta.FromJson("{\"SourceRefHandle\":\"1B\",\"SourceBtrHandle\":\"2C\",\"Input\":{},\"Solids\":[]}");
+            Assert.Equal("", b.SourceFingerprint);
+        }
+
+        [Fact] public void PanelMeta_Fingerprint_RoundTrips()
+        {
+            var m = new PanelMeta { SourceRefHandle = "1B", SourceBtrHandle = "2C", SourceFingerprint = "ab12" };
+            Assert.Equal("ab12", PanelMeta.FromJson(m.ToJson()).SourceFingerprint);
+        }
+
         [Fact] public void FromJson_OldJsonWithoutSourcePath_IsEmpty()
         {
             var b = PanelMeta.FromJson("{\"SourceRefHandle\":\"1B\",\"SourceBtrHandle\":\"2C\",\"Input\":{},\"Solids\":[]}");

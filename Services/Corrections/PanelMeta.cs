@@ -43,6 +43,8 @@ namespace MCG_3DPanel.Services.Corrections
         public string SourceBtrHandle { get; set; } = "";
         /// <summary>Đường dẫn đầy đủ của bản vẽ 2D đã dựng ra file này (Create Drawing ghi ngược về đó). File cũ chưa có ⇒ "".</summary>
         public string SourcePath { get; set; } = "";
+        /// <summary>SHA-256 cấu trúc block 2D lúc dựng (so với 2D hiện tại để biết 3D cũ). File cũ chưa có ⇒ "".</summary>
+        public string SourceFingerprint { get; set; } = "";
         public PanelInput Input { get; set; } = new PanelInput();
         public int Position { get; set; }
         public List<PanelMetaSolid> Solids { get; set; } = new List<PanelMetaSolid>();
@@ -64,6 +66,7 @@ namespace MCG_3DPanel.Services.Corrections
                 m.Warnings = m.Warnings ?? new List<string>();
                 m.NotBuilt = m.NotBuilt ?? new List<PanelMetaNotBuilt>();
                 m.SourcePath = m.SourcePath ?? "";
+                m.SourceFingerprint = m.SourceFingerprint ?? "";
                 m.Warnings.RemoveAll(w => w == null);
                 m.NotBuilt.RemoveAll(p => p == null);
                 return m;

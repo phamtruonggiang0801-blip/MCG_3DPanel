@@ -1,0 +1,575 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.Geometry;
+using MCG_3DPanel.Services.Detail;
+
+namespace MCG_3DPanel.Commands.Detail
+{
+    /// <summary>Biến kết quả <see cref="SectionEngine"/> + đồ 2D thành danh sách entity CHƯA vào bản vẽ (toạ độ cục bộ block).
+    /// Không lấy quyền sở hữu đường của <see cref="SectionResult.Visible"/> (luôn chép) ⇒ caller vẫn gọi
+    /// <see cref="SectionResult.DisposeCurves"/>. Linetype / block / text style tra trong database đang làm việc (= bản vẽ 2D,
+    /// caller đã lock). Ghi chú (thiếu linetype amzigzag) đẩy vào <see cref="SectionResult.Warnings"/>.</summary>
+    public static class DetailComposer
+    {
+        public const string AM0 = "Mechanical-AM_0", AM2 = "Mechanical-AM_2", AM4 = "Mechanical-AM_4", AM5 = "Mechanical-AM_5",
+                            AM7 = "Mechanical-AM_7", AM8 = "Mechanical-AM_8", AM9 = "Mechanical-AM_9", AM10 = "Mechanical-AM_10";
+        public const string Zigzag = "amzigzag";
+        public const string ContinuousBlock = "Continious symbol";
+        const string TextStyle = "STANDARD";
+        const double DedupeTol = 0.05;
+        const double BoundaryTol = 0.5;   // = SectionEngine.Tol: cạnh nằm trên biên vùng / hộp cắt
+        const double HoleRoundTol = 0.5;  // mm: vòng lỗ Top Plate nhận là tròn
+        const short TextColor = 2;   // chữ ký hiệu trên mẫu: màu 2
+
+        static Database Db => HostApplicationServices.WorkingDatabase;
+
+        // ─── Detail Plan ───────────────────────────────────────────────────────
+
+        /// <summary>Block DET: vết cắt + AM_8 + đường thấy + viền Top Plate (AM_7) + đồ 2D; toạ độ = plan − <paramref name="basePt"/>.
+        /// <paramref name="twoDItems"/> (từ <see cref="TwoDItems"/>) được dời rồi đưa luôn vào danh sách (không chép).
+        /// <paramref name="region"/> (toạ độ plan, BẮT BUỘC): cạnh vết cắt nằm trên biên vùng ⇒ break AM_4.</summary>
+        public static List<Entity> PlanEntities(SectionResult r, IEnumerable<List<P2>> topPlate, IEnumerable<Entity> twoDItems, P2 basePt,
+            DetailRegion region)
+        {
+            // Thiếu vùng ⇒ cạnh tại biên lại thành nét liền AM_0 — không cho phép im lặng
+            if (region == null) throw new ArgumentNullException(nameof(region));
+            var ents = new List<Entity>();
+            try
+            {
+                var shift = new P2(-basePt.X, -basePt.Y);
+                Func<P2, double> dist = p => region.DistanceToBoundary(p - shift);
+                // Viền Top Plate: mép thật + lỗ khoét ⇒ AM_7; cạnh trên biên vùng (vùng cắt ngang tấm) ⇒ break AM_4,
+                // gộp chung với break của kết cấu để không vẽ chồng
+                var topBreaks = new List<(P2, P2)>();
+                var loops = (topPlate ?? Enumerable.Empty<List<P2>>()).Where(l => l != null && l.Count >= 3)
+                    .Select(l => l.Select(p => p + shift).ToList()).ToList();
+                for (int i = 0; i < loops.Count; i++)
+                {
+                    var (brk, edges) = DetailComposeRules.TopPlateRuns(loops[i], dist, BoundaryTol);
+                    topBreaks.AddRange(brk);
+                    // Lỗ khoét nằm trọn trong vùng ⇒ nét liền AM_0 (5 mẫu: Circle AM_0), tròn ⇒ Circle; mép tấm ⇒ AM_7 (kỹ sư 2026-11-18)
+                    bool hole = brk.Count == 0 && DetailComposeRules.IsHole(loops, i);
+                    if (hole && DetailComposeRules.IsCircle(loops[i], HoleRoundTol, out P2 c, out double rad))
+                    {
+                        var circle = new Circle(new Point3d(c.X, c.Y, 0), Vector3d.ZAxis, rad);
+                        circle.SetDatabaseDefaults(Db);
+                        circle.Layer = AM0;
+                        ents.Add(circle);
+                        continue;
+                    }
+                    foreach (var e in edges) ents.Add(Poly(e.Pts, e.Closed, hole ? AM0 : AM7));
+                }
+                AddStructure(r, shift, ents, dist, topBreaks, AM4);
+                var m = Matrix3d.Displacement(new Vector3d(shift.X, shift.Y, 0));
+                foreach (var e in twoDItems ?? Enumerable.Empty<Entity>())
+                {
+                    e.TransformBy(m);
+                    ents.Add(e);
+                }
+                return ents;
+            }
+            catch
+            {
+                DisposeAll(ents);
+                throw;
+            }
+        }
+
+        // ─── Section ───────────────────────────────────────────────────────────
+
+        /// <summary>Block section: vết cắt + AM_8 + đường thấy + Continuous symbol/(t) + "$". Gốc block = tâm khung bao hình
+        /// (<paramref name="basePt"/>, toạ độ section); <paramref name="keepBase"/> (Update Details) ⇒ dùng gốc đó để hình không xê dịch.</summary>
+        public static List<Entity> SectionEntities(SectionResult r, SectionFrame f, out P2 basePt, P2? keepBase = null)
+        {
+            basePt = keepBase ?? Centre(r);
+            var shift = new P2(-basePt.X, -basePt.Y);
+            var ents = new List<Entity>();
+            try
+            {
+                // Hộp cắt section chặn 2 đầu đường cắt: x = 0 và x = Length (toạ độ section, trước khi dời)
+                AddStructure(r, shift, ents, f == null ? (Func<P2, double>)null
+                    : p => Math.Min(Math.Abs(p.X - shift.X), Math.Abs(p.X - shift.X - f.Length)));
+
+                // Nét đã vẽ ⇒ vật cản cho chữ "(t)"
+                var segs = Segments(ents);
+                var taken = new List<(P2 Min, P2 Max)>();
+
+                // "$": 1 cho mỗi nét nối / nét đầu (đứng) của tấm song song mặt cắt, tâm chữ trên trung điểm nét
+                foreach (var pp in r.Parallel)
+                {
+                    var at = SectionSymbolRules.WeldTracePlacement(pp);
+                    if (at == null) continue;
+                    var p = at.Value + shift;
+                    ents.Add(Text("$", p, WeldTextH, AM10));
+                    taken.Add(Box(p, DetailComposeRules.TextWidth("$", WeldTextH), WeldTextH));
+                }
+
+                // Continuous: chỉ tấm đứng cắt liên tục (vết cắt lớn nhất của tấm), không phải HP — như bản vẽ tay
+                var members = ContinuousMembers(r);
+                if (members.Count > 0)
+                {
+                    ObjectId sym = BlockId(ContinuousBlock);
+                    foreach (var m in members)
+                    {
+                        var (at, rot) = SectionSymbolRules.ContinuousPlacement(m);
+                        var p = at + shift;
+                        var br = new BlockReference(new Point3d(p.X, p.Y, 0), sym) { Rotation = rot };
+                        br.SetDatabaseDefaults(Db);
+                        br.Layer = AM5;
+                        ents.Add(br);
+                        // 2 mũi tên của block: −59…41.5 dọc trục X block
+                        var ux = new P2(Math.Cos(rot), Math.Sin(rot));
+                        segs.Add((p + ux * -SymbolReachMinus, p + ux * SymbolReachPlus));
+                    }
+                }
+
+                // "(t)": chỉ cho tấm song song nhìn thấy (tấm cắt đã thể hiện chiều dày) — trong mặt tấm, không đè nét/chữ/ký hiệu
+                foreach (var lb in r.Labels)
+                {
+                    double w = DetailComposeRules.TextWidth(lb.Text, ThickTextH);
+                    var spots = lb.Spots.Select(s => s + shift).ToList();
+                    var c = DetailComposeRules.FreeSpot(spots, w, ThickTextH, segs, taken);
+                    if (c == null) continue;
+                    ents.Add(Text("{\\L" + lb.Text + "}", c.Value, ThickTextH, AM5));
+                    taken.Add(Box(c.Value, w, ThickTextH));
+                }
+                return ents;
+            }
+            catch
+            {
+                DisposeAll(ents);
+                throw;
+            }
+        }
+
+        /// <summary>Tấm nhận ký hiệu Continuous trong <see cref="SectionEntities"/>; rỗng ⇒ section không cần block "Continious symbol".</summary>
+        public static List<CutMember> ContinuousMembers(SectionResult r) =>
+            DetailComposeRules.ContinuousMembers(r.Cut.Select(c => (c.Handle, c.Type, (IList<P2>)c.Outline, c.MinSigned, c.MaxSigned)));
+
+        /// <summary>Ký hiệu mặt cắt trên block DET: 2 mũi tên (theo block mẫu A$C1A6307D4, AM_10) ở 2 đầu đường cắt chĩa theo Look
+        /// + chữ "nA" h30. Toạ độ cục bộ block DET (plan − <paramref name="basePt"/>).</summary>
+        public static List<Entity> SectionMarks(SectionFrame f, int n, string letter, P2 basePt, (P2 Min, P2 Max)? content = null)
+        {
+            var ents = new List<Entity>();
+            try
+            {
+                var shift = new P2(-basePt.X, -basePt.Y);
+                string label = DetailNaming.SectionMark(n, letter);
+                // Mũi tên đặt NGOÀI hình DET (kéo dài đường cắt qua khung bao nội dung + MarkGap), như bản vẽ tay
+                P2 s0 = f.Start + shift, s1 = f.End + shift;
+                if (content != null) (s0, s1) = DetailComposeRules.ExtendOutside(s0, s1, content.Value.Min, content.Value.Max);
+                foreach (var a in DetailComposeRules.SectionArrows(s0, s1, f.Look))
+                {
+                    // AM_10 mang linetype AM_ISO08W050 (nét đứt) ⇒ mũi tên đặt Continuous riêng cho liền nét như block mẫu
+                    var bar = Poly(new[] { a.BarA, a.BarB }, false, AM10);
+                    bar.Linetype = "Continuous";
+                    bar.ConstantWidth = DetailComposeRules.BarWidth;
+                    ents.Add(bar);
+                    var arrow = Poly(new[] { a.Base, a.Neck, a.Tip }, false, AM10);
+                    arrow.Linetype = "Continuous";
+                    arrow.SetStartWidthAt(1, DetailComposeRules.HeadWidth);
+                    arrow.SetEndWidthAt(1, 0);
+                    ents.Add(arrow);
+                    ents.Add(Text(label, a.Text, 30, AM10));
+                }
+                return ents;
+            }
+            catch
+            {
+                DisposeAll(ents);
+                throw;
+            }
+        }
+
+        // ─── Đồ 2D (chỉ Detail Plan / View) ────────────────────────────────────
+
+        /// <summary>Đồ chỉ có trên bản vẽ 2D, toạ độ plan (WCS): đi cây block _Assy (bỏ Top Plate; Structure chỉ lấy block ký hiệu; đi xuống
+        /// mọi block &lt;panel&gt;_* trừ Lashing Hole). Block khác giữ nguyên nếu điểm chèn trong vùng: nằm thẳng trong _Assy ⇒ AM_2,
+        /// trong block con ⇒ giữ layer gốc. Đường cong trong các block chứa: cắt theo vùng, bỏ AM_9; polyline của Wire guide support ⇒ AM_7 rộng 3.
+        /// Chỉ ĐỌC cây _Assy — entity trả về là bản chép.</summary>
+        public static List<Entity> TwoDItems(Transaction tr, BlockReference assyRef, DetailRegion region, List<string> warnings = null)
+        {
+            var res = new List<Entity>();
+            string assyName = Name(tr, assyRef);
+            string panel = assyName.EndsWith("_Assy", StringComparison.Ordinal) ? assyName.Substring(0, assyName.Length - 5) : assyName;
+            // Lashing Hole bỏ (kỹ sư 2026-11-18): lỗ lashing không dựng 3D ⇒ không vẽ vào detail.
+            // Lỗ khoét Top Plate lấy từ 3D (TopPlateOutline), không từ block 2D.
+            var skip = new HashSet<string>(StringComparer.Ordinal) { panel + "_Top Plate", panel + "_Lashing Hole" };
+            // _Structure: nét kết cấu lấy từ 3D, chỉ chép block ký hiệu bên trong (vd 4111818_7D_CNR72 — mẫu tay DET.4, dump 2026-11-19)
+            string structure = panel + "_Structure";
+            var withAttributes = new List<string>();   // phụ kiện có thuộc tính: bản chép mất giá trị ⇒ báo
+            Entity boundary = Boundary(region);
+            try
+            {
+                Walk((BlockTableRecord)tr.GetObject(assyRef.BlockTableRecord, OpenMode.ForRead), assyRef.BlockTransform, assyName, 0, false);
+                string note = DetailComposeRules.AttributesNote(withAttributes);
+                if (note != null) warnings?.Add(note);
+                return res;
+            }
+            catch
+            {
+                DisposeAll(res);
+                throw;
+            }
+            finally { boundary.Dispose(); }
+
+            void Walk(BlockTableRecord btr, Matrix3d xf, string container, int depth, bool symbolsOnly)
+            {
+                if (depth > 16) throw new InvalidOperationException($"Block nesting under {assyName} is too deep (over 16 levels).");
+                foreach (ObjectId id in btr)
+                {
+                    var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
+                    if (ent == null) continue;
+                    if (ent is BlockReference br)
+                    {
+                        string n = Name(tr, br);
+                        if (skip.Contains(n)) continue;
+                        if (n.StartsWith(panel + "_", StringComparison.Ordinal))
+                        {
+                            var child = (BlockTableRecord)tr.GetObject(br.BlockTableRecord, OpenMode.ForRead);
+                            Walk(child, xf * br.BlockTransform, n, depth + 1, symbolsOnly || n == structure);
+                            continue;
+                        }
+                        var at = br.Position.TransformBy(xf);
+                        if (!region.Contains(new P2(at.X, at.Y))) continue;
+                        if (br.AttributeCollection.Count > 0) withAttributes.Add(n);
+                        var leaf = (BlockReference)br.Clone();
+                        res.Add(leaf);
+                        leaf.TransformBy(xf);
+                        // Chỉ phụ kiện nằm TRỰC TIẾP trong _Assy ⇒ AM_2; block trong block con giữ layer gốc (kỹ sư 2026-11-18)
+                        if (depth == 0) leaf.Layer = AM2;
+                        continue;
+                    }
+                    if (symbolsOnly) continue;   // nét kết cấu 2D (trong _Structure): không chép
+                    if (!(ent is Curve c) || string.Equals(c.Layer, AM9, StringComparison.OrdinalIgnoreCase)) continue;
+                    bool wire = container == panel + "_Wire guide support" && c is Polyline;
+                    foreach (var piece in Clip(c, xf, region, boundary))
+                    {
+                        res.Add(piece);
+                        if (wire && piece is Polyline pl) { pl.Layer = AM7; pl.ConstantWidth = 3; }
+                    }
+                }
+            }
+        }
+
+        /// <summary>Bản chép đường cong (đổi sang plan) cắt theo vùng: phần có trung điểm trong vùng.</summary>
+        static List<Curve> Clip(Curve src, Matrix3d xf, DetailRegion region, Entity boundary)
+        {
+            var res = new List<Curve>();
+            var c = (Curve)src.Clone();
+            try
+            {
+                c.TransformBy(xf);
+                if (!Overlaps(c, region)) return res;
+                var pts = new Point3dCollection();
+                c.IntersectWith(boundary, Intersect.OnBothOperands, pts, IntPtr.Zero, IntPtr.Zero);
+                var ps = new List<double>();
+                foreach (Point3d p in pts)
+                {
+                    double t = c.GetParameterAtPoint(c.GetClosestPointTo(p, false));
+                    if (t > c.StartParam + 1e-9 && t < c.EndParam - 1e-9) ps.Add(t);
+                }
+                ps.Sort();
+                for (int i = ps.Count - 1; i > 0; i--) if (ps[i] - ps[i - 1] < 1e-9) ps.RemoveAt(i);
+                if (c.Closed && ps.Count < 2) ps.Clear();   // đường kín chỉ chạm biên 1 điểm ⇒ không tách
+                if (ps.Count == 0)
+                {
+                    if (Inside(c, c.StartParam, c.EndParam, region)) { res.Add(c); c = null; }
+                    return res;
+                }
+                var dc = new DoubleCollection(ps.ToArray());
+                DBObjectCollection parts = c.GetSplitCurves(dc);   // không Dispose collection: phần giữ lại phải sống
+                var all = parts.Cast<DBObject>().ToList();
+                try
+                {
+                    for (int i = 0; i < all.Count; i++)
+                        if (all[i] is Curve part && Inside(part, part.StartParam, part.EndParam, region)) { res.Add(part); all[i] = null; }
+                }
+                finally { foreach (var o in all) o?.Dispose(); }
+                return res;
+            }
+            catch
+            {
+                foreach (var x in res) x.Dispose();
+                throw;
+            }
+            finally { c?.Dispose(); }
+        }
+
+        static bool Inside(Curve c, double t0, double t1, DetailRegion region)
+        {
+            var p = c.GetPointAtParameter((t0 + t1) / 2);
+            return region.Contains(new P2(p.X, p.Y));
+        }
+
+        static bool Overlaps(Curve c, DetailRegion region)
+        {
+            Extents3d ext;
+            try { ext = c.GeometricExtents; } catch (Autodesk.AutoCAD.Runtime.Exception) { return true; }   // không có khung bao ⇒ thử cắt
+            var o = region.Outline(72);
+            return ext.MaxPoint.X >= o.Min(q => q.X) && ext.MinPoint.X <= o.Max(q => q.X)
+                && ext.MaxPoint.Y >= o.Min(q => q.Y) && ext.MinPoint.Y <= o.Max(q => q.Y);
+        }
+
+        static Entity Boundary(DetailRegion r)
+        {
+            if (r.IsCircle) return new Circle(new Point3d(r.Center.X, r.Center.Y, 0), Vector3d.ZAxis, r.Radius);
+            return Poly(r.Corners, true, null);
+        }
+
+        // ─── Chung ─────────────────────────────────────────────────────────────
+
+        /// <summary>Vết cắt + AM_8 + đường thấy, đã gộp đoạn trùng. Cạnh vết cắt nằm trên biên vùng / hộp cắt
+        /// (<paramref name="boundaryDist"/>, toạ độ đã dời) hoặc trùng break ⇒ AM_4 amzigzag, còn lại AM_0; đường thấy trên biên
+        /// ⇒ AM_4 amzigzag, bỏ phần đã có cạnh vết cắt break. Đường thấy còn lại ⇒ <paramref name="seenLayer"/> (section AM_0; Detail Plan
+        /// AM_4 liền như 5 mẫu: Flange, bụng HP — kỹ sư 2026-11-18). Thiếu linetype ⇒ Continuous + ghi chú.</summary>
+        static void AddStructure(SectionResult r, P2 shift, List<Entity> ents, Func<P2, double> boundaryDist,
+            IEnumerable<(P2, P2)> extraBreaks = null, string seenLayer = AM0)
+        {
+            ObjectId zig = LinetypeId(Zigzag);
+            bool anyBreak = false;
+            void Zig(Entity e) { anyBreak = true; if (!zig.IsNull) e.LinetypeId = zig; }
+
+            // 1. Đường thấy: tách đoạn thẳng (gộp được) và đường cong (chép ngay vào danh sách)
+            var m = Matrix3d.Displacement(new Vector3d(shift.X, shift.Y, 0));
+            var straight0 = new List<(P2, P2)>();
+            var straight4 = new List<(P2, P2)>();
+            var straightSolid = new List<(P2, P2)>();   // Detail Plan: bracket dưới HP ⇒ AM_0 như mẫu tay
+            var curved = new List<(Curve c, bool boundary, bool solid)>();
+            var cutHandles = new HashSet<string>(r.Cut.Where(c => !string.IsNullOrEmpty(c.Handle)).Select(c => c.Handle), StringComparer.Ordinal);
+            foreach (var v in r.Visible)
+            {
+                if (v.Curve == null || v.Curve.IsDisposed) continue;
+                bool solid = !v.OnBoundary && seenLayer != AM0 && DetailComposeRules.SolidInPlan(v.Type, v.Handle, cutHandles);
+                if (TryStraight(v.Curve, out P2 a, out P2 b))
+                    (v.OnBoundary ? straight4 : solid ? straightSolid : straight0).Add((a + shift, b + shift));
+                else
+                {
+                    var c = (Curve)v.Curve.Clone();
+                    ents.Add(c);   // vào danh sách ngay: lỗi sau đó ⇒ caller giải phóng
+                    c.TransformBy(m);
+                    curved.Add((c, v.OnBoundary, solid));
+                }
+            }
+            if (extraBreaks != null) straight4.AddRange(extraBreaks);   // đã ở toạ độ dời
+            var breaksRaw = DetailComposeRules.MergeCollinear(straight4, null, DedupeTol);
+
+            // 2. Vết cắt: tách cạnh break / cạnh thường
+            var cutSolid = new List<(P2, P2)>();
+            var cutBreak = new List<(P2, P2)>();
+            foreach (var cf in r.Cut)
+            {
+                if (cf.Outline == null || cf.Outline.Count < 3) continue;
+                var o = cf.Outline.Select(p => p + shift).ToList();
+                var flags = DetailComposeRules.BreakEdges(o, boundaryDist, breaksRaw, BoundaryTol);
+                foreach (var run in DetailComposeRules.Runs(o, flags))
+                {
+                    var pl = Poly(run.Pts, run.Closed, run.Break ? AM4 : AM0);
+                    ents.Add(pl);
+                    if (run.Break) Zig(pl);
+                    var bucket = run.Break ? cutBreak : cutSolid;
+                    for (int i = 1; i < run.Pts.Count; i++) bucket.Add((run.Pts[i - 1], run.Pts[i]));
+                    if (run.Closed) bucket.Add((run.Pts[run.Pts.Count - 1], run.Pts[0]));
+                }
+                foreach (var s in DetailComposeRules.MarkLines(o)) ents.Add(Line(s, AM8));
+            }
+
+            // 3. Break thẳng còn lại (bỏ phần trùng cạnh vết cắt break) + nét thấy AM_0 (bỏ phần trùng mọi thứ đã vẽ)
+            var breaks = DetailComposeRules.MergeCollinear(breaksRaw, cutBreak, BoundaryTol);
+            foreach (var s in breaks)
+            {
+                var pl = Poly(new[] { s.Item1, s.Item2 }, false, AM4);
+                ents.Add(pl);
+                Zig(pl);
+            }
+            var drawn = cutSolid.Concat(cutBreak).Concat(breaks).ToList();
+            var solidLines = DetailComposeRules.MergeCollinear(straightSolid, drawn, DedupeTol);
+            foreach (var s in solidLines) ents.Add(Line(s, AM0));
+            var lines = DetailComposeRules.MergeCollinear(straight0, drawn.Concat(solidLines), DedupeTol);
+            foreach (var s in lines) ents.Add(Line(s, seenLayer));
+
+            // 4. Đường cong: trên biên ⇒ AM_4 (bỏ nếu nằm trọn trên cạnh vết cắt break), bracket dưới HP ⇒ AM_0, còn lại seenLayer
+            foreach (var (c, boundary, solid) in curved)
+            {
+                if (boundary && cutBreak.Count > 0 && OnSegments(c, cutBreak))
+                {
+                    ents.Remove(c);
+                    c.Dispose();
+                    continue;
+                }
+                c.SetDatabaseDefaults(Db);
+                c.Layer = boundary ? AM4 : solid ? AM0 : seenLayer;
+                if (boundary) Zig(c);
+                else c.Linetype = "ByLayer";
+            }
+            if (anyBreak && zig.IsNull) r.Warnings.Add($"Linetype {Zigzag} is missing from the drawing; break lines are drawn Continuous.");
+        }
+
+        /// <summary>Đầu, giữa, cuối đường cong đều cách các đoạn ≤ BoundaryTol.</summary>
+        static bool OnSegments(Curve c, List<(P2, P2)> segs)
+        {
+            foreach (double k in new[] { 0, 0.25, 0.5, 0.75, 1 })
+            {
+                var p = c.GetPointAtParameter(c.StartParam + (c.EndParam - c.StartParam) * k);
+                var q = new P2(p.X, p.Y);
+                if (!segs.Any(s => SectionCurveRules.DistanceToSegment(q, s.Item1, s.Item2) <= BoundaryTol)) return false;
+            }
+            return true;
+        }
+
+        /// <summary>Line, hoặc polyline 2 đỉnh không cung ⇒ đoạn thẳng.</summary>
+        static bool TryStraight(Curve c, out P2 a, out P2 b)
+        {
+            a = b = default(P2);
+            if (c is Line l) { a = XY(l.StartPoint); b = XY(l.EndPoint); return true; }
+            if (c is Polyline pl && pl.NumberOfVertices == 2 && !pl.Closed && Math.Abs(pl.GetBulgeAt(0)) < 1e-12)
+            { a = XY(pl.GetPoint3dAt(0)); b = XY(pl.GetPoint3dAt(1)); return true; }
+            return false;
+        }
+
+        /// <summary>Tâm khung bao vết cắt + đường thấy; rỗng ⇒ (0,0).</summary>
+        static P2 Centre(SectionResult r)
+        {
+            double x0 = double.MaxValue, y0 = double.MaxValue, x1 = double.MinValue, y1 = double.MinValue;
+            void Add(double x, double y) { x0 = Math.Min(x0, x); y0 = Math.Min(y0, y); x1 = Math.Max(x1, x); y1 = Math.Max(y1, y); }
+            foreach (var cf in r.Cut) if (cf.Outline != null) foreach (var p in cf.Outline) Add(p.X, p.Y);
+            foreach (var v in r.Visible)
+            {
+                if (v.Curve == null || v.Curve.IsDisposed) continue;
+                try { var e = v.Curve.GeometricExtents; Add(e.MinPoint.X, e.MinPoint.Y); Add(e.MaxPoint.X, e.MaxPoint.Y); }
+                catch (Autodesk.AutoCAD.Runtime.Exception) { Add(v.Curve.StartPoint.X, v.Curve.StartPoint.Y); Add(v.Curve.EndPoint.X, v.Curve.EndPoint.Y); }
+            }
+            return x0 > x1 ? new P2(0, 0) : new P2((x0 + x1) / 2, (y0 + y1) / 2);
+        }
+
+        static Polyline Poly(IEnumerable<P2> pts, bool closed, string layer)
+        {
+            var pl = new Polyline();
+            if (layer != null) pl.SetDatabaseDefaults(Db);
+            int i = 0;
+            foreach (var p in pts) pl.AddVertexAt(i++, new Point2d(p.X, p.Y), 0, 0, 0);
+            pl.Closed = closed;
+            if (layer != null) pl.Layer = layer;
+            return pl;
+        }
+
+        static Line Line((P2 A, P2 B) s, string layer)
+        {
+            var l = new Line(new Point3d(s.A.X, s.A.Y, 0), new Point3d(s.B.X, s.B.Y, 0));
+            l.SetDatabaseDefaults(Db);
+            l.Layer = layer;
+            return l;
+        }
+
+        static MText Text(string contents, P2 at, double h, string layer)
+        {
+            var t = new MText();
+            t.SetDatabaseDefaults(Db);
+            t.Contents = contents;
+            t.TextHeight = h;
+            t.Attachment = AttachmentPoint.MiddleCenter;
+            t.Location = new Point3d(at.X, at.Y, 0);
+            t.Layer = layer;
+            t.ColorIndex = TextColor;
+            ObjectId style = TextStyleId();
+            if (!style.IsNull) t.TextStyleId = style;
+            return t;
+        }
+
+        /// <summary>Tra bảng trong transaction đang mở của caller (bảng có thể đã mở ghi); không có ⇒ OpenClose riêng.</summary>
+        static T Look<T>(Func<Transaction, T> f)
+        {
+            Transaction top = Db.TransactionManager.TopTransaction;
+            if (top != null) return f(top);
+            using (Transaction tr = Db.TransactionManager.StartOpenCloseTransaction()) return f(tr);
+        }
+
+        static ObjectId TextStyleId() => Look(tr =>
+            SymbolTables.Live((TextStyleTable)tr.GetObject(Db.TextStyleTableId, OpenMode.ForRead), TextStyle));
+
+        static ObjectId LinetypeId(string name) => Look(tr =>
+        {
+            var lt = (LinetypeTable)tr.GetObject(Db.LinetypeTableId, OpenMode.ForRead);
+            foreach (ObjectId id in lt)
+            {
+                var rec = (LinetypeTableRecord)tr.GetObject(id, OpenMode.ForRead);
+                if (!rec.IsErased && string.Equals(rec.Name, name, StringComparison.OrdinalIgnoreCase)) return id;
+            }
+            return ObjectId.Null;
+        });
+
+        /// <summary>Block phải có sẵn (caller đã bổ sung qua PlanViewBlockSource).</summary>
+        static ObjectId BlockId(string name) => Look(tr =>
+            SymbolTables.Require((BlockTable)tr.GetObject(Db.BlockTableId, OpenMode.ForRead), name, "Block"));
+
+        static string Name(Transaction tr, BlockReference br)
+        {
+            var id = br.IsDynamicBlock ? br.DynamicBlockTableRecord : br.BlockTableRecord;
+            return ((BlockTableRecord)tr.GetObject(id, OpenMode.ForRead)).Name;
+        }
+
+        static void DisposeAll(IEnumerable<Entity> ents)
+        {
+            foreach (var e in ents) if (e != null && !e.IsDisposed && e.ObjectId.IsNull) e.Dispose();
+        }
+
+        static P2 XY(Point3d p) => new P2(p.X, p.Y);
+
+        const double WeldTextH = 35, ThickTextH = DetailComposeRules.ThicknessTextH, SymbolReachMinus = 59.01, SymbolReachPlus = 41.53;
+
+        static (P2 Min, P2 Max) Box(P2 c, double w, double h) => (new P2(c.X - w / 2, c.Y - h / 2), new P2(c.X + w / 2, c.Y + h / 2));
+
+        /// <summary>Các đoạn thẳng xấp xỉ mọi đường cong trong <paramref name="ents"/> (cung lấy 16 điểm).</summary>
+        static List<(P2 A, P2 B)> Segments(IEnumerable<Entity> ents)
+        {
+            var res = new List<(P2, P2)>();
+            foreach (var e in ents)
+            {
+                if (e is Line l) { res.Add((XY(l.StartPoint), XY(l.EndPoint))); continue; }
+                if (e is Polyline pl && Enumerable.Range(0, pl.NumberOfVertices).All(i => Math.Abs(pl.GetBulgeAt(i)) < 1e-12))
+                {
+                    int n = pl.NumberOfVertices;
+                    for (int i = 1; i < n; i++) res.Add((XY(pl.GetPoint3dAt(i - 1)), XY(pl.GetPoint3dAt(i))));
+                    if (pl.Closed && n > 2) res.Add((XY(pl.GetPoint3dAt(n - 1)), XY(pl.GetPoint3dAt(0))));
+                    continue;
+                }
+                if (e is Curve c)
+                {
+                    try
+                    {
+                        P2? prev = null;
+                        for (int k = 0; k <= 16; k++)
+                        {
+                            var q = XY(c.GetPointAtParameter(c.StartParam + (c.EndParam - c.StartParam) * k / 16));
+                            if (prev != null) res.Add((prev.Value, q));
+                            prev = q;
+                        }
+                    }
+                    catch (Autodesk.AutoCAD.Runtime.Exception) { }
+                }
+            }
+            return res;
+        }
+
+        /// <summary>Khung bao (toạ độ block) của nội dung block DET, bỏ ký hiệu mặt cắt (AM_10) và chữ; rỗng ⇒ null.</summary>
+        public static (P2 Min, P2 Max)? ContentExtents(Transaction tr, ObjectId btrId)
+        {
+            double x0 = double.MaxValue, y0 = double.MaxValue, x1 = double.MinValue, y1 = double.MinValue;
+            foreach (ObjectId id in (BlockTableRecord)tr.GetObject(btrId, OpenMode.ForRead))
+            {
+                if (!(tr.GetObject(id, OpenMode.ForRead) is Entity e) || e.IsErased) continue;
+                if (e is MText || e is DBText || string.Equals(e.Layer, AM10, StringComparison.OrdinalIgnoreCase)) continue;
+                try
+                {
+                    var ext = e.GeometricExtents;
+                    x0 = Math.Min(x0, ext.MinPoint.X); y0 = Math.Min(y0, ext.MinPoint.Y);
+                    x1 = Math.Max(x1, ext.MaxPoint.X); y1 = Math.Max(y1, ext.MaxPoint.Y);
+                }
+                catch (Autodesk.AutoCAD.Runtime.Exception) { }
+            }
+            return x0 > x1 ? ((P2, P2)?)null : (new P2(x0, y0), new P2(x1, y1));
+        }
+    }
+}

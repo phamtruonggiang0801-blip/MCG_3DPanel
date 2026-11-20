@@ -355,6 +355,25 @@ namespace MCG_3DPanel.Commands
                     { "type", "Circle" }, { "layer", L }, { "color", c },
                     { "cx", cir.Center.X }, { "cy", cir.Center.Y }, { "r", cir.Radius },
                 };
+            if (ent is AttributeDefinition ad)
+            {
+                // Attribute trong định nghĩa block — AttributeDefinition kế thừa DBText ⇒ phải đứng TRƯỚC nhánh DBText
+                var ao = new JsonObject
+                {
+                    { "type", "AttDef" }, { "layer", L }, { "color", c }, { "tag", ad.Tag }, { "prompt", ad.Prompt },
+                    { "text", ad.TextString }, { "x", ad.Position.X }, { "y", ad.Position.Y }, { "h", ad.Height },
+                    { "style", ad.TextStyleName }, { "rot", ad.Rotation },
+                    { "invisible", ad.Invisible }, { "constant", ad.Constant }, { "preset", ad.Preset }, { "verify", ad.Verifiable },
+                };
+                if (ad.IsMTextAttributeDefinition) ao.Add("mtext", Safe(() => ad.MTextAttributeDefinition?.Contents));
+                if (ad.Justify != AttachmentPoint.BaseLeft)
+                {
+                    ao.Add("justify", ad.Justify.ToString());
+                    ao.Add("alignX", ad.AlignmentPoint.X);
+                    ao.Add("alignY", ad.AlignmentPoint.Y);
+                }
+                return ao;
+            }
             if (ent is DBText t)
             {
                 var to = new JsonObject
@@ -392,6 +411,7 @@ namespace MCG_3DPanel.Commands
                     { "type", "Leader" }, { "layer", L }, { "color", c },
                     { "dimStyle", ld.DimensionStyleName }, { "arrow", ld.HasArrowHead },
                     { "spline", ld.IsSplined }, { "annoType", ld.AnnoType.ToString() }, { "vertices", vs },
+                    { "annotation", Safe(() => AnnotationOf(ld, tr)) },
                 };
             }
             if (ent is MLeader ml)
@@ -494,10 +514,57 @@ namespace MCG_3DPanel.Commands
             // Còn lại (Spline, Ellipse, proxy của AutoCAD Mechanical…): tên lớp DXF + khung bao.
             string dxf;
             try { dxf = ent.GetRXClass().DxfName; } catch { dxf = ""; }
-            return new JsonObject
+            var rest = new JsonObject
             {
                 { "type", ent.GetType().Name }, { "dxf", dxf }, { "layer", L }, { "color", c }, { "extents", Extents(ent) },
             };
+            // Đối tượng AutoCAD Mechanical (Leader Note AMDTNOTE, balloon, …) không có API .NET: explode trong bộ nhớ (không
+            // đổi bản vẽ) ⇒ ghi các phần bên trong (leader, chữ, …) — kỹ sư 2026-11-18 cần nội dung Leader Note của mẫu
+            if (ent.GetType().Name == "ImpEntity" || dxf.StartsWith("AM", StringComparison.OrdinalIgnoreCase))
+            {
+                var parts = ExplodedParts(ent, tr);
+                if (parts != null) rest.Add("parts", parts);
+            }
+            return rest;
+        }
+
+        /// <summary>Explode trong bộ nhớ, mô tả từng phần (đệ quy 1 cấp cho phần vẫn là đối tượng lạ); không explode được ⇒ null.
+        /// </summary>
+        private static List<object> ExplodedParts(Entity ent, Transaction tr, int depth = 0)
+        {
+            var coll = new DBObjectCollection();
+            try { ent.Explode(coll); }
+            catch { foreach (DBObject o in coll) o.Dispose(); return null; }
+            var parts = new List<object>();
+            try
+            {
+                foreach (DBObject o in coll)
+                {
+                    if (!(o is Entity e)) continue;
+                    object d;
+                    try { d = Describe(e, tr); }
+                    catch (System.Exception ex) { d = new JsonObject { { "type", e.GetType().Name }, { "error", ex.Message } }; }
+                    if (depth == 0 && d is JsonObject jo && e.GetType().Name == "ImpEntity")
+                    {
+                        var sub = ExplodedParts(e, tr, depth + 1);
+                        if (sub != null) jo.Add("parts", sub);
+                    }
+                    parts.Add(d);
+                }
+            }
+            finally { foreach (DBObject o in coll) o.Dispose(); }
+            return parts;
+        }
+
+        /// <summary>Chú thích gắn vào Leader (MText / block / tolerance): loại, handle, chữ.</summary>
+        private static object AnnotationOf(Leader ld, Transaction tr)
+        {
+            if (ld.Annotation.IsNull) return null;
+            var a = tr.GetObject(ld.Annotation, OpenMode.ForRead);
+            var o = new JsonObject { { "type", a.GetType().Name }, { "handle", a.Handle.ToString() } };
+            if (a is MText m) o.Add("text", m.Text);
+            else if (a is BlockReference b) o.Add("name", NameOf(b.BlockTableRecord, tr));
+            return o;
         }
 
         /// <summary>Kích thước: dim style, chữ, các điểm định nghĩa theo từng loại, và những biến DIM*

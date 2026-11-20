@@ -72,5 +72,14 @@ namespace MCG_3DPanel.Tests
             Assert.True(HandDrawnRules.IsOwn(e));
             Assert.False(R(e));
         }
+
+        /// <summary>Biên / nhãn / tiêu đề Detail (XData MCG3D_DETAIL) không bao giờ là phần vẽ tay của Plan View (final review #1).</summary>
+        [Theory]
+        [InlineData("Polyline", "Mechanical-AM_7", null)] [InlineData("Line", "Mechanical-AM_7", null)]
+        [InlineData("Text", "Mechanical-AM_1", "T1")] [InlineData("BlockRef", null, null)]
+        public void DetailMarked_NeverReplaceable(string type, string layer, string text)
+            => Assert.False(R(new PvExisting { Type = type, Layer = layer, Text = text, BlockName = "7D-17P_X-X", HasDetailMark = true, InModelSpace = true }));
+
+        [Fact] public void DetLabel_NotReplaceable() => Assert.False(R(T("Mechanical-AM_1", "DET.1")));
     }
 }

@@ -4,7 +4,7 @@ namespace MCG_3DPanel.Services.PlanView
 {
     // ⚠️ File THUẦN C# — KHÔNG using Autodesk.* (link sang tests/MCG_3DPanel.Tests).
 
-    /// <summary>1 nét trong định nghĩa block. Kind "Line" (2 điểm) | "Polyline" (kín) | "Solid" (4 điểm) | "MText" | "BlockRef".
+    /// <summary>1 nét trong định nghĩa block. Kind "Line" (2 điểm) | "Polyline" (kín) | "Solid" (4 điểm) | "MText" | "BlockRef" | "Leader" (có mũi tên).
     /// Color 256 = ByLayer.</summary>
     public sealed class ShapeItem
     {
@@ -19,6 +19,11 @@ namespace MCG_3DPanel.Services.PlanView
         public double Rotation { get; set; }
         public string Block { get; set; }
         public double LtScale { get; set; } = 1;
+        /// <summary>Leader: dim style ưu tiên (thiếu ⇒ AM_ISO ⇒ dim style hiện hành).</summary>
+        public string DimStyle { get; set; }
+        /// <summary>AttDef: tag + prompt; Text = giá trị mặc định; Points[0] = điểm căn (alignment), Attach = kiểu căn.</summary>
+        public string Tag { get; set; }
+        public string Prompt { get; set; }
     }
 
     public sealed class LayerSpec
@@ -57,6 +62,19 @@ namespace MCG_3DPanel.Services.PlanView
             {
                 P("Mechanical-AM_8", 0.5, (-19.9995, -1.0149), (20.0005, -1.0149), (20.0005, -9.0149), (-19.9995, -9.0149)),
             },
+            // Tờ Detail (dump 7D-16P): 2 leader ngược chiều, có mũi tên, dim style AM_ISO$7 — ký hiệu "tấm liên tục" trên mặt cắt.
+            ["Continious symbol"] = new List<ShapeItem>
+            {
+                new ShapeItem { Kind = "Leader", Layer = "Mechanical-AM_5", Points = { (-59.0088, 0), (12.5307, 0) }, DimStyle = "AM_ISO$7" },
+                new ShapeItem { Kind = "Leader", Layer = "Mechanical-AM_5", Points = { (41.5316, 0), (-30.3533, 0) }, DimStyle = "AM_ISO$7" },
+            },
+            // Title detail (dump bản vẽ kỹ sư 2026-11-18): chỉ 5 attribute, layer 0; chèn scale 10 ở tờ Detail 1:10.
+            ["DETAIL TITLE"] = new List<ShapeItem>
+            {
+                new ShapeItem { Kind = "AttDef", Layer = "0", Color = 161, Tag = "TITLE", Prompt = "NAMEOFDETAIL", Text = "DETAIL",
+                    Height = 3.5, Attach = "BottomCenter", Points = { (-0.0169, -0.74) } },
+                Note(-1.74), Note(-6.74), Note(-11.74), Note(-16.74),
+            },
             ["M.D1"] = Diagonal("D1"),
             ["M.D2"] = Diagonal("D2"),
             ["Measurements_Tolerances vFuture"] = new List<ShapeItem>
@@ -83,6 +101,7 @@ namespace MCG_3DPanel.Services.PlanView
             ["Mechanical-AM_0"] = new LayerSpec { Name = "Mechanical-AM_0", Color = 7, Linetype = "Continuous", LineweightHundredths = 40 },
             ["Mechanical-AM_3"] = new LayerSpec { Name = "Mechanical-AM_3", Color = 6, Linetype = "AM_ISO02W050", LineweightHundredths = 35 },
             ["Mechanical-AM_4"] = new LayerSpec { Name = "Mechanical-AM_4", Color = 3, Linetype = "Continuous", LineweightHundredths = 25 },
+            ["Mechanical-AM_5"] = new LayerSpec { Name = "Mechanical-AM_5", Color = 3, Linetype = "Continuous", LineweightHundredths = 25 },
             ["Mechanical-AM_6"] = new LayerSpec { Name = "Mechanical-AM_6", Color = 2, Linetype = "Continuous", LineweightHundredths = 35 },
             ["Mechanical-AM_8"] = new LayerSpec { Name = "Mechanical-AM_8", Color = 1, Linetype = "Continuous", LineweightHundredths = 25 },
             ["Mechanical-AM_7"] = new LayerSpec { Name = "Mechanical-AM_7", Color = 4, Linetype = "AM_ISO08W050", LineweightHundredths = 25 },
@@ -114,6 +133,10 @@ namespace MCG_3DPanel.Services.PlanView
 
         private static ShapeItem L(string layer, double x0, double y0, double x1, double y1, double lts)
             => new ShapeItem { Kind = "Line", Layer = layer, Points = { (x0, y0), (x1, y1) }, LtScale = lts };
+        private static ShapeItem Note(double y)
+            => new ShapeItem { Kind = "AttDef", Layer = "0", Color = 2, Tag = "NOTE", Prompt = "NOTE", Text = "", Height = 2.5,
+                Attach = "TopCenter", Points = { (-0.0462, y) } };
+
         private static ShapeItem L3(double x0, double y0, double x1, double y1)
             => new ShapeItem { Kind = "Line", Layer = "Mechanical-AM_3", Color = 32, Points = { (x0, y0), (x1, y1) } };
         private static ShapeItem S3(params (double, double)[] p)

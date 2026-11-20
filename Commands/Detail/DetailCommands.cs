@@ -1,0 +1,1351 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using Autodesk.AutoCAD.ApplicationServices;
+using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.EditorInput;
+using Autodesk.AutoCAD.Geometry;
+using Autodesk.AutoCAD.Runtime;
+using MCG_3DPanel.Services.Classify;
+using MCG_3DPanel.Services.Detail;
+
+[assembly: CommandClass(typeof(MCG_3DPanel.Commands.Detail.DetailCommands))]
+
+namespace MCG_3DPanel.Commands.Detail
+{
+    /// <summary>Create Drawing ▸ Detail Plan / Detail View (spec 2026-11-16): chạy trong bản vẽ 2D. Chọn biên AM_7 → tìm _Assy
+    /// → đọc file 3D → cắt solid → 1 transaction: định nghĩa &lt;panel&gt;_DET.n, kéo-thả chèn, tiêu đề, nhãn DET.n, XData biên.
+    /// Esc ở bất kỳ bước nào / lỗi ⇒ không để lại gì.</summary>
+    public class DetailCommands
+    {
+        public const string PlanCommand = "MCG_DetailPlan", ViewCommand = "MCG_DetailView", SectionCommand = "MCG_DetailSection",
+                            UpdateCommand = "MCG_DetailUpdate";
+        const string LabelLayer = "Mechanical-AM_5";   // Leader Note trên mẫu: AM_5
+        const double LabelHeight = 150, LabelGap = 50, LabelLift = 40, LabelCharWidth = 0.6, PlanScale = 50;   // đo Leader Note mẫu
+        const short LabelColor = 2;
+
+        public static event Action<string, bool> Finished;
+
+        /// <summary>Gọi từ palette: chạy lệnh trong ngữ cảnh lệnh của document đang active. Chỉ nhận đúng tên lệnh Detail.</summary>
+        public static void Request(string command)
+        {
+            Document doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null || !DetailCommandRules.IsCommand(command)) return;
+            doc.SendStringToExecute(command.Trim() + " ", true, false, false);
+        }
+
+        /// <summary>Kiểm rẻ cho menu palette (bản vẽ <paramref name="doc"/> đang active): có reference *_Assy trong Model Space mà thư mục
+        /// của bản vẽ có file &lt;panel&gt;_3D*.dwg; <paramref name="hasDetail"/> = có block / reference mang bản ghi MCG3D_DETAIL.
+        /// Khớp đầy đủ do lệnh làm. Chỉ đọc.</summary>
+        public static bool HasPanelWith3DFile(Document doc, out bool hasDetail)
+        {
+            hasDetail = false;
+            bool found = false;
+            string dir = string.IsNullOrEmpty(doc.Name) ? null : Path.GetDirectoryName(doc.Name);
+            var checkedPanels = new HashSet<string>(StringComparer.Ordinal);
+            using (Transaction tr = doc.Database.TransactionManager.StartOpenCloseTransaction())
+            {
+                var ms = (BlockTableRecord)tr.GetObject(SymbolUtilityServices.GetBlockModelSpaceId(doc.Database), OpenMode.ForRead);
+                foreach (ObjectId id in ms)
+                {
+                    if (!(tr.GetObject(id, OpenMode.ForRead) is BlockReference br)) continue;
+                    if (!hasDetail)
+                        hasDetail = DetailWriter.Read(br) != null
+                            || DetailWriter.Read(tr.GetObject(br.BlockTableRecord, OpenMode.ForRead)) != null;
+                    if (found) { if (hasDetail) break; continue; }
+                    string n = PartCollector.GetName(tr, br);
+                    if (n == null || !n.EndsWith("_Assy", StringComparison.Ordinal) || n.Length <= 5) continue;
+                    string panel = n.Substring(0, n.Length - 5);
+                    if (dir != null && checkedPanels.Add(panel) && Directory.Exists(dir)
+                        && Directory.EnumerateFiles(dir, Detail3DMatch.CandidatePattern(n)).Any()) found = true; // tên file 3D = tên block _Assy + "_3D"
+                }
+                tr.Commit();
+            }
+            return found;
+        }
+
+        [CommandMethod(PlanCommand, CommandFlags.Modal | CommandFlags.UsePickSet)]
+        public void DetailPlan() => Run("Detail Plan", doc => Create(doc, false));
+
+        [CommandMethod(ViewCommand, CommandFlags.Modal | CommandFlags.UsePickSet)]
+        public void DetailView() => Run("Detail View", doc => Create(doc, true));
+
+        [CommandMethod(SectionCommand, CommandFlags.Modal | CommandFlags.UsePickSet)]
+        public void DetailSection() => Run("Section Detail", CreateSection);
+
+        [CommandMethod(UpdateCommand, CommandFlags.Modal)]
+        public void DetailUpdate() => Run("Update Details", UpdateDetails, "Nothing was changed.");
+
+        static void Run(string what, Func<Document, string> create, string nothing = "Nothing was drawn.")
+        {
+            Document doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            try { Finish(create(doc), false); }
+            catch (StopException stop) { Finish(stop.Message, true); }
+            catch (System.Exception ex)
+            {
+                // Lỗi lập trình: stack trace đầy đủ ra dòng lệnh; transaction chưa commit ⇒ không để lại gì
+                try { doc.Editor.WriteMessage($"\n[MCG_3DPanel] {what} error detail:\n" + ex + "\n"); } catch { }
+                Finish($"{what} failed: {ex.Message} (details on the command line). {nothing}", true);
+            }
+        }
+
+        /// <summary>Trả status; lỗi / huỷ người dùng cần biết ⇒ <see cref="StopException"/>.</summary>
+        static string Create(Document doc, bool view)
+        {
+            Editor ed = doc.Editor;
+            Database db = doc.Database;
+            string what = view ? "Detail View" : "Detail Plan";
+            string cancelled = what + " cancelled. Nothing was drawn.";
+
+            // 1. Biên AM_7: người dùng VẼ khung (kỹ sư 2026-11-18); [Select] chọn khung có sẵn, chọn trước vẫn nhận
+            BoundaryInput bnd = AskBoundary(ed, view) ?? throw new StopException(cancelled);
+            try { return Create(doc, view, bnd, what, cancelled); }
+            finally { if (bnd.New != null && bnd.New.ObjectId.IsNull) bnd.New.Dispose(); }   // chưa vào bản vẽ (Esc / lỗi)
+        }
+
+        static string Create(Document doc, bool view, BoundaryInput bnd, string what, string cancelled)
+        {
+            Editor ed = doc.Editor;
+            Database db = doc.Database;
+            DetailRegion region = bnd.Region;
+
+            var missing = DetailWriter.Missing(db);
+            if (missing.Count > 0)
+                throw new StopException($"{what} stopped; the drawing is missing: {string.Join(", ", missing)}. Nothing was drawn.");
+
+            // 2. _Assy chứa tâm vùng
+            P2 centre = DetailCommandRules.Centre(region);
+            ObjectId assyId = FindAssy(db, centre, out string assyName);
+            if (assyId.IsNull) throw new StopException(view ? "The boundary is not on a panel." : "The rectangle is not on a panel.");
+            string panel = assyName.Substring(0, assyName.Length - "_Assy".Length);
+
+            // 3. Số DET + điểm đặt tên (Leader Note) ngay sau khi vẽ khung — người dùng tự tránh đè (kỹ sư 2026-11-18)
+            int n = DetailNaming.NextDetailNumber(panel, BlockNames(db));
+            P2 labelAt = AskLabelPoint(ed, region, DetailNaming.PlanLabel(n)) ?? throw new StopException(cancelled);
+
+            // 4. File 3D + kiểm 3D cũ
+            var notes = new List<string>();
+            using (Detail3DSource src = Open3D(doc, assyId, panel, what, cancelled, notes, out string file3D))
+            {
+                // Tỉ lệ (Detail View) + tên (gợi ý "DET.n" như Leader Note mẫu) — hỏi TRƯỚC khi cắt, chưa ghi gì
+                double scale = 1;
+                if (view) scale = AskScale(ed) ?? throw new StopException(cancelled);
+                string typed = AskName(ed, n) ?? throw new StopException(cancelled);
+                string shown = DetailCommandRules.LabelName(typed, n);
+                string title = DetailCommandRules.TitleOf(shown);
+
+                // 5. Cắt (transaction riêng, net-empty) TRƯỚC transaction ghi
+                SectionResult result = null;
+                try
+                {
+                    result = SectionEngine.Plan(db, src, region);
+                    if (result.Cut.Count == 0 && result.Visible.Count == 0)
+                        throw new StopException("No structure inside the boundary. Nothing was drawn.");
+                    TopPlateResult top = SectionEngine.TopPlateOutline(db, src, region);
+
+                    // 6. MỘT transaction: không commit (Esc / lỗi) ⇒ huỷ hết; block DETAIL TITLE thiếu ⇒ bổ sung trước (lỗi ⇒ xoá)
+                    WithBlocks(db, new[] { DetailWriter.TitleBlock }, what, "Nothing was drawn.", notes, () =>
+                    {
+                    using (Transaction tr = db.TransactionManager.StartTransaction())
+                    {
+                        var assyRef = (BlockReference)tr.GetObject(assyId, OpenMode.ForRead);
+                        ObjectId boundaryId = bnd.Existing.IsNull ? AppendBoundary(tr, db, bnd.New) : bnd.Existing;
+                        var boundary = (Entity)tr.GetObject(boundaryId, OpenMode.ForWrite, false, true);   // kể cả layer khoá
+                        var rec = new DetailRecord
+                        {
+                            Kind = view ? DetailKind.View : DetailKind.Plan,
+                            Panel = panel,
+                            Number = n,
+                            AssyRefHandle = assyId.Handle.ToString(),
+                            BoundaryHandle = boundaryId.Handle.ToString(),
+                            Region = DetailCommandRules.RegionData(region),
+                            Circle = region.IsCircle,
+                            Scale = scale,
+                            Title = title,
+                            BaseX = centre.X,
+                            BaseY = centre.Y,
+                        };
+
+                        List<Entity> twoD = DetailComposer.TwoDItems(tr, assyRef, region, result.Warnings);
+                        List<Entity> ents;
+                        try { ents = DetailComposer.PlanEntities(result, top.Loops, twoD, centre, region); }
+                        catch
+                        {
+                            // PlanEntities chỉ giải phóng phần đã nhận ⇒ phần còn lại do ta giải phóng
+                            foreach (var e in twoD) if (!e.IsDisposed && e.ObjectId.IsNull) e.Dispose();
+                            throw;
+                        }
+
+                        ObjectId btrId = DetailWriter.DefineBlock(tr, db, DetailNaming.DetailBlock(panel, n), ents, rec);
+                        // Khung + leader tên hiện trên plan trong lúc kéo-thả block
+                        AddLabel(tr, db, region, labelAt, shown, rec);
+                        DetailWriter.Tag(boundary, rec);
+                        tr.TransactionManager.QueueForGraphicsFlush();
+                        doc.TransactionManager.FlushGraphics();
+                        if (!DetailWriter.Place(ed, tr, btrId, scale, $"Insertion point of {shown}:", out BlockReference br))
+                            throw new StopException(cancelled);   // tr chưa commit ⇒ huỷ block, khung vẽ mới, leader, RegApp…
+                        DetailWriter.Tag(br, rec);
+                        DetailWriter.AddTitle(tr, br, title);
+                        tr.Commit();
+                    }
+                    });
+
+                    notes.AddRange(result.Warnings);
+                    notes.AddRange(top.Warnings);
+                }
+                finally { result?.DisposeCurves(); }
+
+                string tail = DetailCommandRules.Notes(notes);
+                return $"{shown} created from {file3D}." + (tail.Length > 0 ? " " + tail : "");
+            }
+        }
+
+        /// <summary>Mở file 3D của panel + kiểm 3D cũ (hỏi Yes/No). Huỷ ⇒ <see cref="StopException"/>; ghi chú 3D cũ vào
+        /// <paramref name="notes"/>.</summary>
+        static Detail3DSource Open3D(Document doc, ObjectId assyId, string panel, string what, string cancelled,
+            List<string> notes, out string file3D)
+        {
+            Editor ed = doc.Editor;
+            Detail3DSource src = Detail3DSource.Open(doc.Database, doc.Name, assyId, paths => Choose(ed, paths), out string why);
+            if (src == null) throw new StopException(why == "Cancelled." ? cancelled : why + " Nothing was drawn.");
+            try
+            {
+                file3D = AskStale(src, panel, what, cancelled, notes);
+                return src;
+            }
+            catch { src.Dispose(); throw; }
+        }
+
+        /// <summary>Kiểm 3D cũ của <paramref name="src"/>: hỏi Yes/No (No ⇒ <see cref="StopException"/>), ghi chú vào
+        /// <paramref name="notes"/>. Trả tên file 3D.</summary>
+        static string AskStale(Detail3DSource src, string panel, string what, string cancelled, List<string> notes)
+        {
+            string file3D = Path.GetFileName(src.FilePath);
+            string question = DetailCommandRules.StaleQuestion(src.Stale, file3D, panel);
+            if (question != null)
+            {
+                var answer = System.Windows.MessageBox.Show(question, what, System.Windows.MessageBoxButton.YesNo,
+                    System.Windows.MessageBoxImage.Warning, System.Windows.MessageBoxResult.No);
+                if (answer != System.Windows.MessageBoxResult.Yes) throw new StopException(cancelled);
+                notes.Add(DetailCommandRules.StaleNote(src.Stale, file3D));
+            }
+            return file3D;
+        }
+
+        // ─── Section Detail ────────────────────────────────────────────────────
+
+        /// <summary>Section Detail: chọn DET (Detail Plan) → đầu/cuối đường cắt (bắt ngang/dọc) → bên nhìn → cắt → 1 transaction:
+        /// ký hiệu vào block DET, định nghĩa &lt;panel&gt;_DET.n_nL-nL, kéo-thả chèn, tiêu đề. Esc / lỗi ⇒ không để lại gì.</summary>
+        static string CreateSection(Document doc)
+        {
+            Editor ed = doc.Editor;
+            Database db = doc.Database;
+            const string what = "Section Detail";
+            const string cancelled = what + " cancelled. Nothing was drawn.";
+
+            // 1. Reference DET của Detail Plan
+            ObjectId detRefId = PickDetailPlan(ed, out DetailRecord det, out DetailRegion region);
+            if (detRefId.IsNull) throw new StopException(cancelled);
+
+            var missing = DetailWriter.Missing(db);
+            if (missing.Count > 0)
+                throw new StopException($"{what} stopped; the drawing is missing: {string.Join(", ", missing)}. Nothing was drawn.");
+
+            string panel = det.Panel;
+            int n = det.Number;
+            ObjectId assyId = AssyOf(db, det);
+            if (assyId.IsNull) throw new StopException($"The {panel}_Assy block of DET.{n} is no longer in this drawing. Nothing was drawn.");
+
+            var notes = new List<string>();
+            using (Detail3DSource src = Open3D(doc, assyId, panel, what, cancelled, notes, out string file3D))
+            {
+                // 2–3. Đường cắt + bên nhìn (toạ độ plan)
+                SectionFrame f = AskCut(ed, db, detRefId, det, region, out P2 cutA, out P2 cutB, out P2 side, out double depth)
+                    ?? throw new StopException(cancelled);
+
+                // 4. Chữ section
+                string letter = DetailNaming.NextSectionLetter(UsedSectionLetters(db, panel, n));
+                string title = DetailNaming.SectionTitle(n, letter, f.Vertical);
+
+                // 5. Cắt (transaction riêng, net-empty) TRƯỚC transaction ghi
+                SectionResult result = null;
+                try
+                {
+                    result = SectionEngine.Section(db, src, region, f);
+                    if (result.Cut.Count == 0 && result.Visible.Count == 0)
+                        throw new StopException("The cut line crosses no structure. Nothing was drawn.");
+
+                    WithBlocks(db, DetailComposer.ContinuousMembers(result).Count > 0
+                            ? new[] { DetailComposer.ContinuousBlock, DetailWriter.TitleBlock } : new[] { DetailWriter.TitleBlock },
+                        what, "Nothing was drawn.", notes, () =>
+                    {
+                        // 6. MỘT transaction: không commit (Esc / lỗi) ⇒ huỷ hết, kể cả ký hiệu đã thêm vào block DET
+                        using (Transaction tr = db.TransactionManager.StartTransaction())
+                        {
+                            var detRef = (BlockReference)tr.GetObject(detRefId, OpenMode.ForRead);
+                            var rec = new DetailRecord
+                            {
+                                Kind = DetailKind.Section,
+                                Panel = panel,
+                                Number = n,
+                                Letter = letter,
+                                AssyRefHandle = assyId.Handle.ToString(),
+                                BoundaryHandle = det.BoundaryHandle,
+                                Region = det.Region,
+                                Circle = det.Circle,
+                                CutA = new[] { cutA.X, cutA.Y },
+                                CutB = new[] { cutB.X, cutB.Y },
+                                Side = new[] { side.X, side.Y },
+                                Depth = depth,
+                                Scale = 1,
+                                Title = title,
+                            };
+
+                            // Ký hiệu nA trong block DET (toạ độ cục bộ = plan − gốc DET)
+                            var marks = DetailComposer.SectionMarks(f, n, letter, new P2(det.BaseX, det.BaseY),
+                                DetailComposer.ContentExtents(tr, detRef.BlockTableRecord));
+                            DetailWriter.AddToBlock(tr, detRef.BlockTableRecord, marks, rec);
+
+                            List<Entity> ents = DetailComposer.SectionEntities(result, f, out P2 basePt);
+                            rec.BaseX = basePt.X;   // gốc block section, toạ độ section
+                            rec.BaseY = basePt.Y;
+                            ObjectId btrId = DetailWriter.DefineBlock(tr, db, DetailNaming.SectionBlock(panel, n, letter), ents, rec);
+                            tr.TransactionManager.QueueForGraphicsFlush();
+                            doc.TransactionManager.FlushGraphics();   // ký hiệu hiện trên DET trong lúc kéo-thả
+                            if (!DetailWriter.Place(ed, tr, btrId, 1, $"Insertion point of {title}:", out BlockReference br))
+                                throw new StopException(cancelled);   // tr chưa commit ⇒ huỷ ký hiệu + block section
+                            DetailWriter.Tag(br, rec);
+                            DetailWriter.AddTitle(tr, br, title);
+                            tr.Commit();
+                        }
+                        // Sau khi ghi: SectionEntities cũng đẩy cảnh báo (thiếu amzigzag) vào result.Warnings
+                        notes.AddRange(result.Warnings);
+                    });
+                }
+                finally { result?.DisposeCurves(); }
+
+                string tail = DetailCommandRules.Notes(notes);
+                return $"{title} created from {file3D}." + (tail.Length > 0 ? " " + tail : "");
+            }
+        }
+
+        /// <summary>Reference DET của Detail Plan (chọn trước, rồi hỏi lại tới khi đúng). Esc ⇒ Null.</summary>
+        static ObjectId PickDetailPlan(Editor ed, out DetailRecord rec, out DetailRegion region)
+        {
+            rec = null; region = null;
+            PromptSelectionResult pre = ed.SelectImplied();
+            if (pre.Status == PromptStatus.OK && pre.Value != null)
+            {
+                ed.SetImpliedSelection(new ObjectId[0]);
+                if (pre.Value.Count == 1)
+                {
+                    ObjectId id = pre.Value[0].ObjectId;
+                    string why = CheckDetailPlan(id, out rec, out region);
+                    if (why == null) return id;
+                    ed.WriteMessage("\n" + why);
+                }
+                else ed.WriteMessage("\nSelect only one Detail Plan.");
+            }
+
+            var opt = new PromptEntityOptions("\nSelect the Detail Plan (DET block) to cut: ");
+            opt.SetRejectMessage("\nSelect a Detail Plan block.");
+            opt.AddAllowedClass(typeof(BlockReference), true);
+            while (true)
+            {
+                PromptEntityResult r = ed.GetEntity(opt);
+                if (r.Status != PromptStatus.OK) return ObjectId.Null;
+                string why = CheckDetailPlan(r.ObjectId, out rec, out region);
+                if (why == null) return r.ObjectId;
+                ed.WriteMessage("\n" + why);
+            }
+        }
+
+        /// <summary>Null ⇒ là reference DET của Detail Plan (bản ghi + vùng đã điền); ngược lại là lý do để hỏi lại.</summary>
+        static string CheckDetailPlan(ObjectId id, out DetailRecord rec, out DetailRegion region)
+        {
+            rec = null; region = null;
+            using (Transaction tr = id.Database.TransactionManager.StartOpenCloseTransaction())
+            {
+                const string other = "Select a Detail Plan block (DET.n) made by the tool.";
+                if (!(tr.GetObject(id, OpenMode.ForRead) is BlockReference br)) return other;
+                // Bản ghi đầy đủ trên reference; thiếu ⇒ bản ghi trên định nghĩa block
+                DetailRecord r = DetailWriter.Read(br) ?? DetailWriter.Read(tr.GetObject(br.BlockTableRecord, OpenMode.ForRead));
+                if (r == null) return other;
+                if (r.Kind == DetailKind.View) return "Sections are only made on Detail Plans.";
+                if (r.Kind != DetailKind.Plan) return other;
+                region = DetailCommandRules.RegionFromData(r.Region, r.Circle);
+                if (region == null) return $"The detail data of DET.{r.Number} is damaged (no valid boundary). Select another Detail Plan.";
+                rec = r;
+                return null;
+            }
+        }
+
+        /// <summary>_Assy của DET: theo handle trong bản ghi (đúng tên &lt;panel&gt;_Assy), mất ⇒ tìm theo gốc DET trên plan.</summary>
+        static ObjectId AssyOf(Database db, DetailRecord det)
+        {
+            string want = det.Panel + "_Assy";
+            if (long.TryParse(det.AssyRefHandle, System.Globalization.NumberStyles.HexNumber, null, out long h)
+                && db.TryGetObjectId(new Handle(h), out ObjectId id) && !id.IsErased)
+            {
+                using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
+                {
+                    bool ok = tr.GetObject(id, OpenMode.ForRead) is BlockReference br && PartCollector.GetName(tr, br) == want;
+                    tr.Commit();
+                    if (ok) return id;
+                }
+            }
+            ObjectId found = FindAssy(db, new P2(det.BaseX, det.BaseY), out string name);
+            return name == want ? found : ObjectId.Null;
+        }
+
+        /// <summary>Khung mặt cắt vẽ như hình chữ nhật 3 điểm (kỹ sư 2026-11-18): đầu, cuối đường cắt (rubber band từ đầu, bắt
+        /// ngang/dọc), rồi cạnh đối (khung cao su đi theo con trỏ) ⇒ bên nhìn + chiều sâu <paramref name="depth"/> (mm từ đường cắt,
+        /// vẫn chặn ở biên DET). Toạ độ plan. Khung sai ⇒ nói lý do, hỏi lại. Esc ở bất kỳ câu nào ⇒ null.</summary>
+        static SectionFrame AskCut(Editor ed, Database db, ObjectId detRefId, DetailRecord det, DetailRegion region,
+            out P2 a, out P2 b, out P2 side, out double depth)
+        {
+            a = b = side = default;
+            depth = 0;
+            Matrix3d toLocal;
+            using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
+            {
+                toLocal = ((BlockReference)tr.GetObject(detRefId, OpenMode.ForRead)).BlockTransform.Inverse();
+                tr.Commit();
+            }
+            // WCS → cục bộ block DET → plan (+ gốc DET)
+            Matrix3d toPlan = Matrix3d.Displacement(new Vector3d(det.BaseX, det.BaseY, 0)) * toLocal;
+            Matrix3d toWcs = toPlan.Inverse();
+            Matrix3d ucs = ed.CurrentUserCoordinateSystem;
+
+            P2 Plan(Point3d wcs) { Point3d p = wcs.TransformBy(toPlan); return new P2(p.X, p.Y); }
+            Point3d Wcs(P2 plan) => new Point3d(plan.X, plan.Y, 0).TransformBy(toWcs);
+            Point3d? Ask(string prompt, Point3d? fromWcs)
+            {
+                var opt = new PromptPointOptions("\n" + prompt) { AllowNone = false };
+                if (fromWcs.HasValue)
+                {
+                    opt.UseBasePoint = true;
+                    opt.UseDashedLine = true;
+                    opt.BasePoint = fromWcs.Value.TransformBy(ucs.Inverse());
+                }
+                PromptPointResult r = ed.GetPoint(opt);
+                return r.Status == PromptStatus.OK ? r.Value.TransformBy(ucs) : (Point3d?)null;
+            }
+
+            Point3d? startW = Ask("Start point of the section rectangle (cut line):", null);
+            if (startW == null) return null;
+            a = Plan(startW.Value);
+            while (true)
+            {
+                Point3d? endW = Ask("End point of the cut line:", startW);
+                if (endW == null) return null;
+                b = SectionFrame.Snap(a, Plan(endW.Value));
+                // Đường cắt sai (không dài / không qua vùng) ⇒ hỏi lại điểm cuối ngay
+                string lineWhy = DetailCommandRules.CutLineProblem(a, b, region);
+                if (lineWhy != null) { ed.WriteMessage("\n" + lineWhy); continue; }
+                while (true)
+                {
+                    var jig = new SectionRectJig(startW.Value, Wcs(b), "\nOpposite side (viewing side and depth):");
+                    PromptResult jr = ed.Drag(jig);
+                    if (jr.Status != PromptStatus.OK) return null;
+                    side = Plan(jig.Cursor);
+                    string why = DetailCommandRules.FrameProblem(a, b, side, region, out bool endAgain);
+                    if (why == null)
+                    {
+                        depth = DetailCommandRules.SectionDepth(a, b, side);
+                        return SectionFrame.From(a, b, side, region, depth);
+                    }
+                    ed.WriteMessage("\n" + why);
+                    if (endAgain) break;
+                }
+            }
+        }
+
+        /// <summary>Khung cao su của Section: cạnh A–B cố định, cạnh đối theo con trỏ (vuông góc A–B), WCS.</summary>
+        sealed class SectionRectJig : DrawJig
+        {
+            readonly Point3d _a, _b;
+            readonly string _prompt;
+            public Point3d Cursor;
+
+            public SectionRectJig(Point3d a, Point3d b, string prompt) { _a = a; _b = b; _prompt = prompt; Cursor = b; }
+
+            protected override SamplerStatus Sampler(JigPrompts prompts)
+            {
+                var o = new JigPromptPointOptions(_prompt) { UserInputControls = UserInputControls.Accept3dCoordinates };
+                PromptPointResult r = prompts.AcquirePoint(o);
+                if (r.Status != PromptStatus.OK) return SamplerStatus.Cancel;
+                if (r.Value.DistanceTo(Cursor) < 1e-9) return SamplerStatus.NoChange;
+                Cursor = r.Value;
+                return SamplerStatus.OK;
+            }
+
+            protected override bool WorldDraw(Autodesk.AutoCAD.GraphicsInterface.WorldDraw draw)
+            {
+                Vector3d ab = _b - _a;
+                if (ab.Length < 1e-9) return true;
+                Vector3d n = new Vector3d(-ab.Y, ab.X, 0).GetNormal();
+                Vector3d off = n * (Cursor - _a).DotProduct(n);
+                draw.Geometry.Polygon(new Point3dCollection { _a, _b, _b + off, _a + off });
+                return true;
+            }
+        }
+
+        /// <summary>Chữ section đã dùng của DET n: bản ghi Section trên các định nghĩa block + tên block nL-nL.</summary>
+        static IEnumerable<string> UsedSectionLetters(Database db, string panel, int n)
+        {
+            var recs = new List<DetailRecord>();
+            var names = new List<string>();
+            using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
+            {
+                var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                foreach (ObjectId id in bt)
+                {
+                    if (id.IsErased) continue;
+                    var btr = (BlockTableRecord)tr.GetObject(id, OpenMode.ForRead);
+                    names.Add(btr.Name);
+                    var r = DetailWriter.Read(btr);
+                    if (r != null) recs.Add(r);
+                }
+                tr.Commit();
+            }
+            return DetailCommandRules.UsedLetters(panel, n, recs, names);
+        }
+
+        /// <summary>Block cần cho lần ghi (<paramref name="names"/>: "Continious symbol" khi có tấm cắt liên tục, "DETAIL TITLE"
+        /// cho tiêu đề). Thiếu ⇒ bổ sung (bản vẽ → CAS.dwt → tự vẽ) TRƯỚC, commit riêng như Plan View, rồi chạy
+        /// <paramref name="write"/> (transaction ghi duy nhất, tự commit). <paramref name="write"/> ném lỗi / huỷ ⇒ xoá mọi bản ghi lần
+        /// bổ sung đã tạo (handle ≥ Handseed trước khi bổ sung). Thành công ⇒ ghi chú nguồn block vào <paramref name="notes"/>.</summary>
+        static void WithBlocks(Database db, IList<string> names, string what, string nothing, List<string> notes, Action write)
+        {
+            var blocks = names.Count == 0 ? new PlanViewBlockSource.Plan() : PlanViewBlockSource.Prepare(db, names);
+            if (blocks.Unavailable.Count > 0)
+                throw new StopException($"{what} stopped; the drawing is missing: block {string.Join(", ", blocks.Unavailable)}. {nothing}");
+            bool added = blocks.FromTemplate.Count + blocks.Drawn.Count > 0;
+            long seed = db.Handseed.Value;
+            bool done = false;
+            try
+            {
+                if (added)
+                {
+                    PlanViewBlockSource.Apply(db, blocks);
+                    var dead = PlanViewBlockSource.NotLive(db, names);
+                    if (dead.Count > 0)
+                        throw new StopException($"{what} stopped; block {string.Join(", ", dead)} could not be added. {nothing}");
+                }
+                write();
+                done = true;
+            }
+            finally
+            {
+                if (added && !done) RemoveCreatedSince(db, seed);
+            }
+            foreach (var b in blocks.FromTemplate) notes.Add($"block {b} added from CAS.dwt");
+            foreach (var b in blocks.Drawn) notes.Add($"block {b} drawn by the tool");
+        }
+
+        /// <summary>Huỷ phần bổ sung block khi lần chạy không commit: xoá mọi bản ghi bảng ký hiệu / mục dictionary có handle ≥
+        /// <paramref name="seed"/> (chỉ của lần chạy này, không bao giờ bản ghi có sẵn). Block trước (kéo theo entity bên trong), rồi
+        /// lặp Purge cho phần còn lại (dim style, text style, linetype, layer… chỉ xoá khi không còn ai tham chiếu).
+        /// Còn sót ⇒ liệt kê trên dòng lệnh.</summary>
+        static void RemoveCreatedSince(Database db, long seed)
+        {
+            var leftover = new List<string>();
+            try
+            {
+                var blocks = new List<ObjectId>();
+                var others = new List<ObjectId>();
+                using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
+                {
+                    ObjectId[] tables =
+                    {
+                        db.BlockTableId, db.DimStyleTableId, db.TextStyleTableId, db.LinetypeTableId, db.LayerTableId, db.RegAppTableId,
+                    };
+                    foreach (ObjectId t in tables)
+                        foreach (ObjectId id in (SymbolTable)tr.GetObject(t, OpenMode.ForRead))
+                            if (!id.IsErased && SectionCleanupRules.CreatedThisRun(seed, id.Handle.Value))
+                                (t == db.BlockTableId ? blocks : others).Add(id);
+                    CollectNew(tr, db.NamedObjectsDictionaryId, seed, others, 0);
+                    tr.Commit();
+                }
+                if (blocks.Count + others.Count == 0) return;
+
+                using (Transaction tr = db.TransactionManager.StartTransaction())
+                {
+                    // 2 lượt: xoá entity của MỌI block mới trước (gỡ reference block lồng), rồi mới xoá định nghĩa —
+                    // thứ tự bảng block theo tên nên block lồng có thể đứng trước block cha
+                    foreach (ObjectId id in blocks)
+                        foreach (ObjectId e in (BlockTableRecord)tr.GetObject(id, OpenMode.ForRead))
+                            tr.GetObject(e, OpenMode.ForWrite, false, true).Erase();
+                    foreach (ObjectId id in blocks)
+                    {
+                        // openErased: định nghĩa đã bị xoá (vd theo block cha) không làm hỏng lượt dọn
+                        var b = tr.GetObject(id, OpenMode.ForWrite, true);
+                        if (!b.IsErased) b.Erase();
+                    }
+                    tr.Commit();
+                }
+                // Purge lặp: xoá cái không còn tham chiếu sẽ giải phóng cái nó tham chiếu (dim style → text style → …)
+                for (int round = 0; round < 8 && others.Count > 0; round++)
+                {
+                    var free = new ObjectIdCollection(others.ToArray());
+                    db.Purge(free);
+                    if (free.Count == 0) break;
+                    using (Transaction tr = db.TransactionManager.StartTransaction())
+                    {
+                        foreach (ObjectId id in free) tr.GetObject(id, OpenMode.ForWrite).Erase();
+                        tr.Commit();
+                    }
+                    var gone = new HashSet<ObjectId>(free.Cast<ObjectId>());
+                    others.RemoveAll(gone.Contains);
+                }
+                using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
+                {
+                    foreach (ObjectId id in others)
+                    {
+                        var o = tr.GetObject(id, OpenMode.ForRead);
+                        leftover.Add(o is SymbolTableRecord s ? s.Name : o.GetRXClass().DxfName + " " + id.Handle);
+                    }
+                    tr.Commit();
+                }
+            }
+            catch (System.Exception ex) { leftover.Add("(" + ex.Message + ")"); }
+            if (leftover.Count > 0)
+                try { Application.DocumentManager.MdiActiveDocument?.Editor?.WriteMessage(
+                    $"\n[MCG_3DPanel] Could not remove the blocks added for this run: {string.Join(", ", leftover)}\n"); } catch { }
+        }
+
+        /// <summary>Mục mới (handle ≥ seed) trong dictionary và dictionary con (mục mới là dictionary ⇒ đi vào trong, rồi tự nó).</summary>
+        static void CollectNew(Transaction tr, ObjectId dictId, long seed, List<ObjectId> into, int depth)
+        {
+            if (depth > 3 || !(tr.GetObject(dictId, OpenMode.ForRead) is DBDictionary dict)) return;
+            foreach (DBDictionaryEntry e in dict)
+            {
+                if (e.Value.IsErased) continue;
+                bool isNew = SectionCleanupRules.CreatedThisRun(seed, e.Value.Handle.Value);
+                if (tr.GetObject(e.Value, OpenMode.ForRead) is DBDictionary) CollectNew(tr, e.Value, seed, into, depth + 1);
+                if (isNew) into.Add(e.Value);
+            }
+        }
+
+        // ─── Update Details ────────────────────────────────────────────────────
+
+        /// <summary>1 block Detail cần dựng lại (mọi reference của cùng 1 định nghĩa).</summary>
+        sealed class UpdateItem
+        {
+            public ObjectId BtrId;
+            public readonly List<ObjectId> Refs = new List<ObjectId>();
+            public DetailRecord Rec;            // bản ghi hiện có (định nghĩa block, thiếu ⇒ reference)
+            public DetailRecord New;            // bản ghi sau Update
+            public DetailRegion Region;         // Plan/View: vùng dùng; Section: vùng hiện tại của DET
+            public DetailRegion OldRegion;      // vùng trong bản ghi (dời nhãn / gốc section)
+            public SectionFrame Frame;          // Section; null ⇒ đường cắt không còn qua vùng
+            public SectionResult Result;
+            public TopPlateResult Top;
+            public bool Empty;                  // Section: để block rỗng
+            public ObjectId AssyId;
+        }
+
+        /// <summary>Chữ trong Model Space mang bản ghi (nhãn DET.n = DBText, tiêu đề = MText).</summary>
+        sealed class TaggedText
+        {
+            public ObjectId Id;
+            public DetailRecord Rec;
+            public TextRole Role;
+        }
+
+        /// <summary>Label = chữ tên trên plan (MText Leader Note / DBText cũ), Leader = leader của nó (dời cùng), Title = tiêu đề.</summary>
+        enum TextRole { Label, Leader, Title }
+
+        /// <summary>Update Details: dựng lại nội dung mọi block Detail (Plan / View / Section) do tool tạo từ file 3D hiện tại và
+        /// biên AM_7 hiện tại; giữ reference, tiêu đề, kích thước người dùng; dời nhãn DET.n theo biên. Esc / No / lỗi ⇒ không đổi gì.</summary>
+        static string UpdateDetails(Document doc)
+        {
+            Editor ed = doc.Editor;
+            Database db = doc.Database;
+            const string what = "Update Details";
+            const string nothing = "Nothing was changed.";
+            const string cancelled = what + " cancelled. " + nothing;
+
+            // 1. Block Detail trong Model Space (theo định nghĩa) + chữ mang bản ghi + mọi bản ghi Section (ký hiệu trên DET)
+            var items = new List<UpdateItem>();
+            var texts = new List<TaggedText>();
+            var sectionRecs = new List<DetailRecord>();
+            Collect(db, items, texts, sectionRecs);
+            if (items.Count == 0) throw new StopException("There are no details made by the tool in this drawing. " + nothing);
+
+            var missing = DetailWriter.Missing(db);
+            if (missing.Count > 0)
+                throw new StopException($"{what} stopped; the drawing is missing: {string.Join(", ", missing)}. {nothing}");
+
+            var notes = new List<string>();
+            var sources = new Dictionary<string, Detail3DSource>(StringComparer.Ordinal);
+            try
+            {
+                // 2. File 3D mỗi panel 1 lần (+ hỏi 3D cũ 1 lần). Không có _Assy / file 3D ⇒ bỏ panel đó, ghi chú
+                foreach (var g in items.GroupBy(i => i.Rec.Panel, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal))
+                {
+                    string panel = g.Key;
+                    DetailRecord any = g.FirstOrDefault(i => i.Rec.Kind != DetailKind.Section)?.Rec ?? g.First().Rec;
+                    ObjectId assyId = AssyOf(db, any);
+                    if (assyId.IsNull)
+                    {
+                        notes.Add($"the {panel}_Assy block is no longer in this drawing; its details were not updated");
+                        continue;
+                    }
+                    Detail3DSource src = Detail3DSource.Open(db, doc.Name, assyId, paths => Choose(ed, paths), out string why);
+                    if (src == null)
+                    {
+                        if (why == "Cancelled.") throw new StopException(cancelled);
+                        notes.Add($"{panel}: {why?.TrimEnd('.')}; its details were not updated");
+                        continue;
+                    }
+                    sources[panel] = src;
+                    AskStale(src, panel, what, cancelled, notes);
+                    foreach (var i in g) i.AssyId = assyId;
+                }
+                items.RemoveAll(i => !sources.ContainsKey(i.Rec.Panel));
+
+                // Vùng: Plan/View theo biên (còn sống) hoặc bản ghi; Section theo vùng hiện tại của DET
+                items = DetailUpdateRules.Order(items, i => i.Rec);
+                var damaged = new List<UpdateItem>();
+                foreach (var i in items.Where(i => i.Rec.Kind != DetailKind.Section))
+                {
+                    i.OldRegion = DetailCommandRules.RegionFromData(i.Rec.Region, i.Rec.Circle);
+                    i.Region = CurrentRegion(db, i.Rec, i.OldRegion, notes);
+                    if (i.Region == null) damaged.Add(i);
+                }
+                foreach (var i in items.Where(i => i.Rec.Kind == DetailKind.Section))
+                {
+                    i.OldRegion = DetailCommandRules.RegionFromData(i.Rec.Region, i.Rec.Circle);
+                    UpdateItem det = items.FirstOrDefault(d => d.Rec.Kind == DetailKind.Plan && d.Region != null
+                        && d.Rec.Number == i.Rec.Number && d.Rec.Panel == i.Rec.Panel);
+                    i.Region = det != null ? det.Region : CurrentRegion(db, i.Rec, i.OldRegion, notes);
+                    if (i.Region == null) { damaged.Add(i); continue; }
+                    i.Frame = SectionFrame.From(P(i.Rec.CutA), P(i.Rec.CutB), P(i.Rec.Side), i.Region, i.Rec.Depth);
+                }
+                foreach (var i in damaged)
+                {
+                    items.Remove(i);
+                    notes.Add($"the detail data of {DetailUpdateRules.DisplayName(i.Rec)} is damaged (no valid boundary); it was not updated");
+                }
+                if (items.Count == 0)
+                    throw new StopException("No detail could be updated. " + DetailCommandRules.Notes(notes) + " " + nothing);
+
+                // 3. Xác nhận
+                var answer = System.Windows.MessageBox.Show(DetailUpdateRules.ConfirmQuestion(items.Count), what,
+                    System.Windows.MessageBoxButton.OKCancel, System.Windows.MessageBoxImage.Question,
+                    System.Windows.MessageBoxResult.Cancel);
+                if (answer != System.Windows.MessageBoxResult.OK) throw new StopException(cancelled);
+
+                var changed = new List<string>();
+                try
+                {
+                    // 4a. Cắt mọi detail (transaction riêng, net-empty) TRƯỚC transaction ghi
+                    foreach (var i in items)
+                    {
+                        Detail3DSource src = sources[i.Rec.Panel];
+                        if (i.Rec.Kind == DetailKind.Section)
+                        {
+                            if (i.Frame != null) i.Result = SectionEngine.Section(db, src, i.Region, i.Frame);
+                            i.Empty = i.Frame == null || i.Result.Cut.Count == 0 && i.Result.Visible.Count == 0;
+                            if (i.Empty) notes.Add(DetailUpdateRules.EmptySectionNote(i.Rec));
+                        }
+                        else
+                        {
+                            i.Result = SectionEngine.Plan(db, src, i.Region);
+                            i.Top = SectionEngine.TopPlateOutline(db, src, i.Region);
+                            if (i.Result.Cut.Count == 0 && i.Result.Visible.Count == 0)
+                                notes.Add($"{DetailUpdateRules.DisplayName(i.Rec)}: no structure inside the boundary");
+                        }
+                    }
+                    // 4b. MỘT transaction cho tất cả: không commit (lỗi) ⇒ không đổi gì; block ký hiệu vừa bổ sung bị xoá
+                    bool needSymbol = items.Any(i => !i.Empty && i.Rec.Kind == DetailKind.Section
+                        && DetailComposer.ContinuousMembers(i.Result).Count > 0);
+                    WithBlocks(db, needSymbol ? new[] { DetailComposer.ContinuousBlock } : new string[0], what, nothing, notes, () =>
+                    {
+                        using (Transaction tr = db.TransactionManager.StartTransaction())
+                        {
+                            foreach (var i in items)
+                            {
+                                bool diff = i.Rec.Kind == DetailKind.Section
+                                    ? RebuildSection(tr, db, i)
+                                    : RebuildPlan(tr, db, i, items, sectionRecs);
+                                if (diff) changed.Add(DetailUpdateRules.DisplayName(i.Rec));
+                                RetagTexts(tr, i, texts);
+                            }
+                            tr.Commit();
+                        }
+                        // Sau khi ghi: PlanEntities / SectionEntities cũng đẩy cảnh báo (thiếu amzigzag) vào Warnings
+                        foreach (var i in items)
+                        {
+                            if (i.Result != null) notes.AddRange(i.Result.Warnings);
+                            if (i.Top != null) notes.AddRange(i.Top.Warnings);
+                        }
+                    });
+                }
+                finally
+                {
+                    foreach (var i in items) i.Result?.DisposeCurves();
+                }
+
+                // 5. Status
+                return DetailUpdateRules.Status(items.Count, changed, notes);
+            }
+            finally
+            {
+                foreach (var s in sources.Values) s.Dispose();
+            }
+        }
+
+        static P2 P(double[] a) => new P2(a[0], a[1]);
+
+        /// <summary>Reference Model Space mang bản ghi (gom theo định nghĩa block), chữ Model Space mang bản ghi, bản ghi Section trên
+        /// mọi định nghĩa block.</summary>
+        static void Collect(Database db, List<UpdateItem> items, List<TaggedText> texts, List<DetailRecord> sectionRecs)
+        {
+            var byBtr = new Dictionary<ObjectId, UpdateItem>();
+            using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
+            {
+                var ms = (BlockTableRecord)tr.GetObject(SymbolUtilityServices.GetBlockModelSpaceId(db), OpenMode.ForRead);
+                foreach (ObjectId id in ms)
+                {
+                    DBObject o = tr.GetObject(id, OpenMode.ForRead);
+                    if (o is BlockReference br)
+                    {
+                        if (byBtr.TryGetValue(br.BlockTableRecord, out UpdateItem known)) { known.Refs.Add(id); continue; }
+                        // Tiêu đề = reference DETAIL TITLE mang bản ghi: KHÔNG phải block detail (không dựng lại định nghĩa của nó)
+                        if (string.Equals(PartCollector.GetName(tr, br), DetailWriter.TitleBlock, StringComparison.OrdinalIgnoreCase))
+                        {
+                            DetailRecord tRec = DetailWriter.Read(br);
+                            if (tRec != null) texts.Add(new TaggedText { Id = id, Rec = tRec, Role = TextRole.Title });
+                            continue;
+                        }
+                        DetailRecord rec = DetailWriter.Read(tr.GetObject(br.BlockTableRecord, OpenMode.ForRead)) ?? DetailWriter.Read(br);
+                        if (rec == null) continue;
+                        var item = new UpdateItem { BtrId = br.BlockTableRecord, Rec = rec };
+                        item.Refs.Add(id);
+                        byBtr[br.BlockTableRecord] = item;
+                        items.Add(item);
+                    }
+                    else if (o is DBText t)
+                    {
+                        DetailRecord rec = DetailWriter.Read(t);
+                        if (rec != null) texts.Add(new TaggedText { Id = id, Rec = rec, Role = TextRole.Label });   // nhãn DET.n cũ
+                    }
+                    else if (o is MText m)
+                    {
+                        // MText AM_5 = chữ Leader Note; MText khác = tiêu đề kiểu cũ (AM_1)
+                        DetailRecord rec = DetailWriter.Read(m);
+                        bool label = string.Equals(m.Layer, LabelLayer, StringComparison.OrdinalIgnoreCase);
+                        if (rec != null) texts.Add(new TaggedText { Id = id, Rec = rec, Role = label ? TextRole.Label : TextRole.Title });
+                    }
+                    else if (o is Leader ld)
+                    {
+                        DetailRecord rec = DetailWriter.Read(ld);
+                        if (rec != null) texts.Add(new TaggedText { Id = id, Rec = rec, Role = TextRole.Leader });
+                    }
+                }
+                var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                foreach (ObjectId id in bt)
+                {
+                    if (id.IsErased) continue;
+                    var btr = (BlockTableRecord)tr.GetObject(id, OpenMode.ForRead);
+                    DetailRecord r = DetailWriter.Read(btr);
+                    // Section đã xoá hết reference (người dùng xoá section) ⇒ bỏ ký hiệu của nó khỏi DET khi Update (kỹ sư 2026-11-18)
+                    if (r != null && r.Kind == DetailKind.Section && btr.GetBlockReferenceIds(true, false).Count > 0) sectionRecs.Add(r);
+                }
+                tr.Commit();
+            }
+            // Section có reference mà định nghĩa thiếu bản ghi: vẫn cần ký hiệu trên DET
+            foreach (var i in items)
+                if (i.Rec.Kind == DetailKind.Section && !sectionRecs.Any(r => DetailUpdateRules.SameDetail(r, i.Rec))) sectionRecs.Add(i.Rec);
+        }
+
+        /// <summary>Vùng hiện tại theo biên của bản ghi: biên còn sống + hợp lệ ⇒ vùng của biên; bị xoá / không dùng được ⇒
+        /// <paramref name="stored"/> + ghi chú. Bản ghi hỏng ⇒ null.</summary>
+        static DetailRegion CurrentRegion(Database db, DetailRecord rec, DetailRegion stored, List<string> notes)
+        {
+            ObjectId bid = ObjectId.Null;
+            if (long.TryParse(rec.BoundaryHandle, System.Globalization.NumberStyles.HexNumber, null, out long h)
+                && db.TryGetObjectId(new Handle(h), out ObjectId id) && !id.IsErased) bid = id;
+            if (bid.IsNull)
+            {
+                if (stored != null) notes.Add(DetailUpdateRules.ErasedNote(rec.Number));
+                return stored;
+            }
+            string why = Check(bid, rec.Kind == DetailKind.View, out DetailRegion region);
+            if (why == null) return region;
+            if (stored != null) notes.Add(DetailUpdateRules.UnusableNote(rec.Number, why.TrimEnd('.')));
+            return stored;
+        }
+
+        /// <summary>Dựng lại block DET (Plan/View) theo vùng hiện tại, giữ gốc block (reference không xê dịch), thêm lại ký hiệu của
+        /// mọi section của DET này. Trả true nếu nội dung đổi.</summary>
+        static bool RebuildPlan(Transaction tr, Database db, UpdateItem i, List<UpdateItem> items, List<DetailRecord> sectionRecs)
+        {
+            var btr = (BlockTableRecord)tr.GetObject(i.BtrId, OpenMode.ForRead);
+            string before = Signature(tr, btr);
+            P2 basePt = new P2(i.Rec.BaseX, i.Rec.BaseY);
+
+            i.New = DetailRecord.FromJson(i.Rec.ToJson());
+            i.New.Region = DetailCommandRules.RegionData(i.Region);
+            i.New.Circle = i.Region.IsCircle;
+            i.New.AssyRefHandle = i.AssyId.Handle.ToString();
+
+            var assyRef = (BlockReference)tr.GetObject(i.AssyId, OpenMode.ForRead);
+            List<Entity> twoD = DetailComposer.TwoDItems(tr, assyRef, i.Region, i.Result.Warnings);
+            List<Entity> ents;
+            try { ents = DetailComposer.PlanEntities(i.Result, i.Top?.Loops, twoD, basePt, i.Region); }
+            catch
+            {
+                foreach (var e in twoD) if (!e.IsDisposed && e.ObjectId.IsNull) e.Dispose();
+                throw;
+            }
+            // Định nghĩa thiếu bản ghi (chỉ reference có) ⇒ gắn trước để DefineBlock thay nội dung, không tạo tên _MCG
+            if (DetailWriter.Read(btr) == null) DetailWriter.Tag(btr, i.New);
+            DetailWriter.DefineBlock(tr, db, btr.Name, ents, i.New);
+
+            // Ký hiệu section trên DET: theo đường cắt đã lưu + vùng mới (gốc DET giữ nguyên); khung bao lấy TRƯỚC khi thêm ký hiệu
+            var content = DetailComposer.ContentExtents(tr, i.BtrId);
+            foreach (DetailRecord s in DetailUpdateRules.SectionsOf(sectionRecs, i.Rec))
+            {
+                SectionFrame f = SectionFrame.From(P(s.CutA), P(s.CutB), P(s.Side), i.Region, s.Depth);
+                if (f == null) continue;
+                DetailWriter.AddToBlock(tr, i.BtrId, DetailComposer.SectionMarks(f, i.Rec.Number, s.Letter, basePt, content), s);
+            }
+            Redraw(tr, btr);
+            foreach (ObjectId r in i.Refs) DetailWriter.Tag((DBObject)tr.GetObject(r, OpenMode.ForWrite, false, true), i.New);
+            return DetailUpdateRules.Changed(before, Signature(tr, btr));
+        }
+
+        /// <summary>Dựng lại block section từ đường cắt đã lưu + vùng hiện tại của DET; gốc block chọn để ánh xạ plan → block giữ
+        /// nguyên. Đường cắt không còn qua vật liệu ⇒ block rỗng. Trả true nếu nội dung đổi.</summary>
+        static bool RebuildSection(Transaction tr, Database db, UpdateItem i)
+        {
+            var btr = (BlockTableRecord)tr.GetObject(i.BtrId, OpenMode.ForRead);
+            string before = Signature(tr, btr);
+
+            i.New = DetailRecord.FromJson(i.Rec.ToJson());
+            i.New.Region = DetailCommandRules.RegionData(i.Region);
+            i.New.Circle = i.Region.IsCircle;
+            i.New.AssyRefHandle = i.AssyId.Handle.ToString();
+
+            var ents = new List<Entity>();
+            SectionFrame oldFrame = i.OldRegion == null ? null
+                : SectionFrame.From(P(i.Rec.CutA), P(i.Rec.CutB), P(i.Rec.Side), i.OldRegion, i.Rec.Depth);
+            P2? keep = DetailUpdateRules.SectionBase(new P2(i.Rec.BaseX, i.Rec.BaseY), oldFrame, i.Frame);
+            if (keep.HasValue)
+            {
+                // Có đủ 2 khung ⇒ luôn dời gốc theo vùng, kể cả section rỗng (lần Update sau không lệch)
+                i.New.BaseX = keep.Value.X;
+                i.New.BaseY = keep.Value.Y;
+            }
+            if (!i.Empty)
+            {
+                ents = DetailComposer.SectionEntities(i.Result, i.Frame, out P2 basePt, keep);
+                i.New.BaseX = basePt.X;
+                i.New.BaseY = basePt.Y;
+            }
+            if (DetailWriter.Read(btr) == null) DetailWriter.Tag(btr, i.New);
+            DetailWriter.DefineBlock(tr, db, btr.Name, ents, i.New);
+            Redraw(tr, btr);
+            foreach (ObjectId r in i.Refs) DetailWriter.Tag((DBObject)tr.GetObject(r, OpenMode.ForWrite, false, true), i.New);
+            return DetailUpdateRules.Changed(before, Signature(tr, btr));
+        }
+
+        /// <summary>Tiêu đề (block DETAIL TITLE / MText cũ): chỉ cập nhật bản ghi. Leader Note (leader + chữ): dời theo góc biên mà mũi
+        /// tên đang chỉ (nhãn DBText cũ không có leader ⇒ theo góc trên-phải) + cập nhật bản ghi.</summary>
+        static void RetagTexts(Transaction tr, UpdateItem i, List<TaggedText> texts)
+        {
+            var mine = texts.Where(t => t.Role != TextRole.Title && DetailUpdateRules.IsLabelOf(t.Rec, i.Rec)).ToList();
+            P2 d = new P2(0, 0);
+            if (i.OldRegion != null)
+            {
+                var leader = mine.FirstOrDefault(t => t.Role == TextRole.Leader);
+                if (leader != null)
+                {
+                    Point3d head = ((Leader)tr.GetObject(leader.Id, OpenMode.ForRead, false, true)).VertexAt(0);
+                    d = DetailUpdateRules.LabelShift(i.OldRegion, i.Region, new P2(head.X, head.Y));
+                }
+                else d = DetailUpdateRules.LabelShift(i.OldRegion, i.Region, LabelGap);
+            }
+            foreach (var t in mine)
+            {
+                var e = (Entity)tr.GetObject(t.Id, OpenMode.ForWrite, false, true);
+                if (d.Length > 1e-9) e.TransformBy(Matrix3d.Displacement(new Vector3d(d.X, d.Y, 0)));
+                DetailWriter.Tag(e, i.New);
+            }
+            foreach (var t in texts)
+                if (t.Role == TextRole.Title && DetailUpdateRules.SameDetail(t.Rec, i.Rec))
+                    DetailWriter.Tag((DBObject)tr.GetObject(t.Id, OpenMode.ForWrite, false, true), i.New);
+        }
+
+        /// <summary>Chữ ký nội dung block: loại + layer + khung bao từng entity.</summary>
+        static string Signature(Transaction tr, BlockTableRecord btr)
+        {
+            var list = new List<(string, string, double[])>();
+            foreach (ObjectId id in btr)
+            {
+                if (id.IsErased || !(tr.GetObject(id, OpenMode.ForRead, false, true) is Entity e)) continue;
+                double[] ext = null;
+                try { var x = e.GeometricExtents; ext = new[] { x.MinPoint.X, x.MinPoint.Y, x.MaxPoint.X, x.MaxPoint.Y }; }
+                catch (Autodesk.AutoCAD.Runtime.Exception) { }
+                list.Add((e.GetRXClass().DxfName, e.Layer, ext));
+            }
+            return DetailUpdateRules.Signature(list);
+        }
+
+        /// <summary>Báo vẽ lại mọi reference của block (nội dung vừa thay).</summary>
+        static void Redraw(Transaction tr, BlockTableRecord btr)
+        {
+            foreach (ObjectId id in btr.GetBlockReferenceIds(true, false))
+                ((Entity)tr.GetObject(id, OpenMode.ForWrite, false, true)).RecordGraphicsModified(true);
+        }
+
+        // ─── Chọn biên ─────────────────────────────────────────────────────────
+
+        /// <summary>Biên detail: khung có sẵn (<see cref="Existing"/>) hoặc khung vừa vẽ, chưa vào bản vẽ (<see cref="New"/>,
+        /// layer AM_7 — thêm trong transaction ghi, Esc ⇒ không để lại gì).</summary>
+        sealed class BoundaryInput
+        {
+            public ObjectId Existing;
+            public Entity New;
+            public DetailRegion Region;
+        }
+
+        /// <summary>Chọn trước hợp lệ ⇒ dùng. Không thì hỏi vẽ: góc thứ nhất → góc đối (khung cao su); [Circle] (Detail View) tâm →
+        /// bán kính; [Select] chọn khung AM_7 có sẵn. Esc ⇒ null.</summary>
+        static BoundaryInput AskBoundary(Editor ed, bool view)
+        {
+            PromptSelectionResult pre = ed.SelectImplied();
+            if (pre.Status == PromptStatus.OK && pre.Value != null)
+            {
+                ed.SetImpliedSelection(new ObjectId[0]);
+                if (pre.Value.Count == 1 && Check(pre.Value[0].ObjectId, view, out DetailRegion r0) == null)
+                    return new BoundaryInput { Existing = pre.Value[0].ObjectId, Region = r0 };
+            }
+
+            Matrix3d ucs = ed.CurrentUserCoordinateSystem;
+            if (!ucs.CoordinateSystem3d.Zaxis.IsParallelTo(Vector3d.ZAxis))
+                ed.WriteMessage("\nThe current UCS is not parallel to the plan; points are projected onto the plan (XY) plane.");
+            P2 Wcs(Point3d u) { Point3d w = u.TransformBy(ucs); return new P2(w.X, w.Y); }
+
+            string kw = view ? "Circle Select" : "Select";
+            while (true)
+            {
+                var o1 = new PromptPointOptions(
+                    $"\nFirst corner of the detail rectangle or [{(view ? "Circle/" : "")}Select]: ", kw);
+                PromptPointResult r1 = ed.GetPoint(o1);
+                if (r1.Status == PromptStatus.Keyword)
+                {
+                    if (r1.StringResult == "Select")
+                    {
+                        ObjectId id = PickBoundary(ed, view, out DetailRegion picked);
+                        return id.IsNull ? null : new BoundaryInput { Existing = id, Region = picked };
+                    }
+                    var c = AskCircle(ed, ucs);
+                    if (c == null) return null;
+                    if (c.Region != null) return c;
+                    continue;
+                }
+                if (r1.Status != PromptStatus.OK) return null;
+
+                PromptPointResult r2 = ed.GetCorner(new PromptCornerOptions("\nOpposite corner: ", r1.Value));
+                if (r2.Status != PromptStatus.OK) return null;
+                // 4 góc theo UCS (khung cao su vẽ theo UCS) → WCS
+                Point3d a = r1.Value, b = r2.Value;
+                var pts = new[]
+                {
+                    Wcs(new Point3d(a.X, a.Y, a.Z)), Wcs(new Point3d(b.X, a.Y, a.Z)),
+                    Wcs(new Point3d(b.X, b.Y, a.Z)), Wcs(new Point3d(a.X, b.Y, a.Z)),
+                };
+                DetailRegion region = DetailRegion.FromPolyline(pts.Select(p => (p.X, p.Y, 0.0)).ToList(), true, out _);
+                if (region == null) { ed.WriteMessage("\nThe rectangle has no size. Draw it again."); continue; }
+                var pl = new Polyline();
+                for (int i = 0; i < 4; i++) pl.AddVertexAt(i, new Point2d(pts[i].X, pts[i].Y), 0, 0, 0);
+                pl.Closed = true;
+                return new BoundaryInput { New = pl, Region = region };
+            }
+        }
+
+        /// <summary>Tâm → bán kính (đường cao su từ tâm). Esc ⇒ null; bán kính 0 ⇒ BoundaryInput rỗng (hỏi lại từ đầu).</summary>
+        static BoundaryInput AskCircle(Editor ed, Matrix3d ucs)
+        {
+            PromptPointResult c = ed.GetPoint(new PromptPointOptions("\nCenter of the detail circle: "));
+            if (c.Status != PromptStatus.OK) return null;
+            var o = new PromptDistanceOptions("\nRadius: ") { BasePoint = c.Value, UseBasePoint = true, UseDashedLine = true,
+                AllowNegative = false, AllowZero = false };
+            PromptDoubleResult r = ed.GetDistance(o);
+            if (r.Status != PromptStatus.OK) return null;
+            Point3d w = c.Value.TransformBy(ucs);
+            if (r.Value <= 0) { ed.WriteMessage("\nThe circle has no size."); return new BoundaryInput(); }
+            var center = new P2(w.X, w.Y);
+            return new BoundaryInput
+            {
+                New = new Circle(new Point3d(w.X, w.Y, 0), Vector3d.ZAxis, r.Value),
+                Region = DetailRegion.FromCircle(center, r.Value),
+            };
+        }
+
+        /// <summary>Thêm khung vừa vẽ vào Model Space, layer AM_7 (trong transaction ghi).</summary>
+        static ObjectId AppendBoundary(Transaction tr, Database db, Entity e)
+        {
+            e.SetDatabaseDefaults(db);
+            e.Layer = DetailComposer.AM7;
+            var ms = (BlockTableRecord)tr.GetObject(SymbolUtilityServices.GetBlockModelSpaceId(db), OpenMode.ForWrite);
+            ObjectId id = ms.AppendEntity(e);
+            tr.AddNewlyCreatedDBObject(e, true);
+            return id;
+        }
+
+        /// <summary>Biên hợp lệ (chọn trước, rồi hỏi lại tới khi đúng). Esc ⇒ Null.</summary>
+        static ObjectId PickBoundary(Editor ed, bool view, out DetailRegion region)
+        {
+            region = null;
+            PromptSelectionResult pre = ed.SelectImplied();
+            if (pre.Status == PromptStatus.OK && pre.Value != null)
+            {
+                ed.SetImpliedSelection(new ObjectId[0]);
+                if (pre.Value.Count == 1)
+                {
+                    ObjectId id = pre.Value[0].ObjectId;
+                    string why = Check(id, view, out region);
+                    if (why == null) return id;
+                    ed.WriteMessage("\n" + why);
+                }
+                else ed.WriteMessage("\nSelect only one boundary.");
+            }
+
+            string prompt = view ? "\nSelect the AM_7 rectangle or circle of the detail: " : "\nSelect the AM_7 rectangle of the detail: ";
+            var opt = new PromptEntityOptions(prompt);
+            opt.SetRejectMessage(view ? "\nSelect a closed polyline or a circle." : "\nSelect a closed polyline.");
+            opt.AddAllowedClass(typeof(Polyline), true);
+            if (view) opt.AddAllowedClass(typeof(Circle), true);
+            while (true)
+            {
+                PromptEntityResult r = ed.GetEntity(opt);
+                if (r.Status != PromptStatus.OK) return ObjectId.Null;
+                string why = Check(r.ObjectId, view, out region);
+                if (why == null) return r.ObjectId;
+                ed.WriteMessage("\n" + why);
+            }
+        }
+
+        /// <summary>Null ⇒ hợp lệ (<paramref name="region"/> đã điền); ngược lại là lý do để hỏi lại.</summary>
+        static string Check(ObjectId id, bool view, out DetailRegion region)
+        {
+            region = null;
+            using (Transaction tr = id.Database.TransactionManager.StartOpenCloseTransaction())
+            {
+                var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
+                string kinds = view ? "a rectangle or a circle" : "a rectangle";
+                if (ent == null) return $"Select {kinds}.";
+                if (!string.Equals(ent.Layer, DetailComposer.AM7, StringComparison.OrdinalIgnoreCase))
+                    return $"The boundary must be on layer {DetailComposer.AM7} (it is on {ent.Layer}).";
+                if (ent is Polyline pl)
+                {
+                    if (!pl.Normal.IsEqualTo(Vector3d.ZAxis)) return "The polyline is not drawn in the plan (XY) plane.";
+                    var v = new List<(double, double, double)>();
+                    for (int i = 0; i < pl.NumberOfVertices; i++)
+                    {
+                        Point2d p = pl.GetPoint2dAt(i);
+                        v.Add((p.X, p.Y, pl.GetBulgeAt(i)));
+                    }
+                    region = DetailRegion.FromPolyline(v, pl.Closed, out string why);
+                    if (region == null) return "The polyline " + (why == "has arcs" ? why : "is " + why) + ".";
+                    return null;
+                }
+                if (view && ent is Circle c)
+                {
+                    if (!c.Normal.IsParallelTo(Vector3d.ZAxis)) return "The circle is not drawn in the plan (XY) plane.";
+                    if (c.Radius <= 0) return "The circle has no size.";
+                    region = DetailRegion.FromCircle(new P2(c.Center.X, c.Center.Y), c.Radius);
+                    return null;
+                }
+                return $"Select {kinds} (a closed polyline{(view ? " or a circle" : "")}).";
+            }
+        }
+
+        // ─── Tìm panel / file / tên ────────────────────────────────────────────
+
+        /// <summary>Reference *_Assy trong Model Space có khung bao chứa <paramref name="p"/>; nhiều ⇒ khung nhỏ nhất.</summary>
+        static ObjectId FindAssy(Database db, P2 p, out string name)
+        {
+            name = null;
+            ObjectId best = ObjectId.Null;
+            double bestArea = double.MaxValue;
+            using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
+            {
+                var ms = (BlockTableRecord)tr.GetObject(SymbolUtilityServices.GetBlockModelSpaceId(db), OpenMode.ForRead);
+                foreach (ObjectId id in ms)
+                {
+                    if (!(tr.GetObject(id, OpenMode.ForRead) is BlockReference br)) continue;
+                    string n = PartCollector.GetName(tr, br);
+                    if (n == null || !n.EndsWith("_Assy", StringComparison.Ordinal) || n.Length <= 5) continue;
+                    Extents3d ext;
+                    try { ext = br.GeometricExtents; }
+                    catch (Autodesk.AutoCAD.Runtime.Exception) { continue; }
+                    if (p.X < ext.MinPoint.X || p.X > ext.MaxPoint.X || p.Y < ext.MinPoint.Y || p.Y > ext.MaxPoint.Y) continue;
+                    double area = (ext.MaxPoint.X - ext.MinPoint.X) * (ext.MaxPoint.Y - ext.MinPoint.Y);
+                    if (area < bestArea) { bestArea = area; best = id; name = n; }
+                }
+                tr.Commit();
+            }
+            return best;
+        }
+
+        static List<string> BlockNames(Database db)
+        {
+            var names = new List<string>();
+            using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
+            {
+                var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                foreach (ObjectId id in bt)
+                    if (!id.IsErased) names.Add(((BlockTableRecord)tr.GetObject(id, OpenMode.ForRead)).Name);
+                tr.Commit();
+            }
+            return names;
+        }
+
+        /// <summary>Nhiều file 3D khớp (mới lưu nhất đứng đầu) ⇒ liệt kê kèm ngày giờ lưu trên dòng lệnh, gõ số; Enter ⇒ 1. Esc ⇒ null.</summary>
+        static string Choose(Editor ed, IList<string> paths)
+        {
+            ed.WriteMessage("\nSeveral 3D files match this panel:");
+            for (int i = 0; i < paths.Count; i++)
+            {
+                string saved;
+                try { saved = File.GetLastWriteTime(paths[i]).ToString("yyyy-MM-dd HH:mm"); } catch { saved = "?"; }
+                ed.WriteMessage($"\n  {i + 1}. {Path.GetFileName(paths[i])}  (saved {saved})");
+            }
+            var opt = new PromptIntegerOptions($"\nWhich 3D file [1-{paths.Count}] <1>: ")
+            {
+                AllowNone = true, AllowZero = false, AllowNegative = false, LowerLimit = 1, UpperLimit = paths.Count,
+            };
+            PromptIntegerResult r = ed.GetInteger(opt);
+            if (r.Status == PromptStatus.None) return paths[0];
+            return r.Status == PromptStatus.OK ? paths[r.Value - 1] : null;
+        }
+
+        /// <summary>"Scale &lt;1&gt;:" — số dương, Enter ⇒ 1, Esc ⇒ null.</summary>
+        static double? AskScale(Editor ed)
+        {
+            var opt = new PromptDoubleOptions("\nScale <1>: ") { AllowNone = true, AllowZero = false, AllowNegative = false };
+            PromptDoubleResult r = ed.GetDouble(opt);
+            if (r.Status == PromptStatus.None) return 1;
+            return r.Status == PromptStatus.OK ? r.Value : (double?)null;
+        }
+
+        /// <summary>"Detail name &lt;DET.n&gt;:" — gợi ý số kế tiếp; Enter ⇒ "" (dùng gợi ý), Esc ⇒ null.</summary>
+        static string AskName(Editor ed, int n)
+        {
+            var opt = new PromptStringOptions($"\nDetail name <{DetailNaming.PlanLabel(n)}>: ") { AllowSpaces = true };
+            PromptResult r = ed.GetString(opt);
+            if (r.Status == PromptStatus.None) return "";
+            return r.Status == PromptStatus.OK ? r.StringResult ?? "" : null;
+        }
+
+        // ─── Ghi ───────────────────────────────────────────────────────────────
+
+        /// <summary>Tên detail trên plan như Leader Note của mẫu (AMDTNOTE, dump 2026-11-18): leader AM_5 mũi tên tại góc biên gần
+        /// điểm chọn, gãy tại <paramref name="pick"/>, đoạn ngang đỡ chữ chạy ra xa biên; MText "DET.n" h150 màu 2 trên đoạn ngang.
+        /// Cả hai mang bản ghi MCG3D_DETAIL (Update Details dời theo biên).</summary>
+        static void AddLabel(Transaction tr, Database db, DetailRegion region, P2 pick, string name, DetailRecord rec)
+        {
+            var ms = (BlockTableRecord)tr.GetObject(SymbolUtilityServices.GetBlockModelSpaceId(db), OpenMode.ForWrite);
+            var t = new MText();
+            t.SetDatabaseDefaults(db);
+            t.Contents = name;
+            t.TextHeight = LabelHeight;
+            t.Layer = LabelLayer;
+            t.ColorIndex = LabelColor;
+            var ts = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
+            ObjectId style = SymbolTables.Live(ts, "STANDARD");
+            if (!style.IsNull) t.TextStyleId = style;
+            double w;
+            try { w = t.ActualWidth; } catch { w = 0; }
+            if (!(w > 0)) w = LabelCharWidth * LabelHeight * name.Length;
+            var g = DetailCommandRules.LabelLeader(region, pick, w, LabelGap, LabelLift);
+            t.Attachment = AttachmentPoint.BottomLeft;
+            t.Location = new Point3d(g.TextCorner.X, g.TextCorner.Y, 0);
+            ms.AppendEntity(t);
+            tr.AddNewlyCreatedDBObject(t, true);
+            DetailWriter.Tag(t, rec);
+
+            var ld = new Leader();
+            ld.SetDatabaseDefaults(db);
+            foreach (P2 p in new[] { g.Head, g.Elbow, g.End }) ld.AppendVertex(new Point3d(p.X, p.Y, 0));
+            ld.Layer = LabelLayer;
+            var ds = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
+            if (SymbolTables.HasLive(ds, "AM_ISO")) ld.DimensionStyle = SymbolTables.Live(ds, "AM_ISO");
+            ld.HasArrowHead = true;
+            ms.AppendEntity(ld);
+            tr.AddNewlyCreatedDBObject(ld, true);
+            ld.Dimscale = PlanScale;   // override SAU khi vào bản vẽ (như Plan View): mũi tên theo tỉ lệ tờ plan 1:50
+            DetailWriter.Tag(ld, rec);
+        }
+
+        /// <summary>Hỏi điểm đặt tên detail: leader + chữ đi theo con trỏ (mũi tên vào góc biên gần nhất). Esc ⇒ null.</summary>
+        static P2? AskLabelPoint(Editor ed, DetailRegion region, string name)
+        {
+            var jig = new LabelJig(region, name);
+            PromptResult r = ed.Drag(jig);
+            return r.Status == PromptStatus.OK ? new P2(jig.Cursor.X, jig.Cursor.Y) : (P2?)null;
+        }
+
+        /// <summary>Xem trước Leader Note khi chọn điểm đặt tên (toạ độ WCS = toạ độ plan).</summary>
+        sealed class LabelJig : DrawJig
+        {
+            readonly DetailRegion _region;
+            readonly string _name;
+            public Point3d Cursor;
+
+            public LabelJig(DetailRegion region, string name)
+            {
+                _region = region; _name = name;
+                P2 c = DetailCommandRules.LabelAt(region, 0);
+                Cursor = new Point3d(c.X + 300, c.Y + 300, 0);
+            }
+
+            protected override SamplerStatus Sampler(JigPrompts prompts)
+            {
+                var o = new JigPromptPointOptions("\nLocation of the detail name (leader note): ")
+                { UserInputControls = UserInputControls.Accept3dCoordinates };
+                PromptPointResult r = prompts.AcquirePoint(o);
+                if (r.Status != PromptStatus.OK) return SamplerStatus.Cancel;
+                var p = new Point3d(r.Value.X, r.Value.Y, 0);
+                if (p.DistanceTo(Cursor) < 1e-9) return SamplerStatus.NoChange;
+                Cursor = p;
+                return SamplerStatus.OK;
+            }
+
+            protected override bool WorldDraw(Autodesk.AutoCAD.GraphicsInterface.WorldDraw draw)
+            {
+                double w = LabelCharWidth * LabelHeight * _name.Length;
+                var g = DetailCommandRules.LabelLeader(_region, new P2(Cursor.X, Cursor.Y), w, LabelGap, LabelLift);
+                draw.Geometry.Polyline(new Point3dCollection
+                {
+                    new Point3d(g.Head.X, g.Head.Y, 0), new Point3d(g.Elbow.X, g.Elbow.Y, 0), new Point3d(g.End.X, g.End.Y, 0),
+                }, Vector3d.ZAxis, IntPtr.Zero);
+                draw.Geometry.Text(new Point3d(g.TextCorner.X, g.TextCorner.Y, 0), Vector3d.ZAxis, Vector3d.XAxis,
+                    LabelHeight, 1.0, 0.0, _name);
+                return true;
+            }
+        }
+
+        static void Finish(string msg, bool error)
+        {
+            if (msg == null) return;
+            Finished?.Invoke(msg, error);
+            try { Application.DocumentManager.MdiActiveDocument?.Editor?.WriteMessage("\n[MCG_3DPanel] " + msg + "\n"); } catch { }
+        }
+
+        /// <summary>Dừng có lý do người dùng cần đọc (không phải lỗi lập trình).</summary>
+        sealed class StopException : System.Exception
+        {
+            public StopException(string message) : base(message) { }
+        }
+    }
+}

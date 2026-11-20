@@ -512,12 +512,23 @@ namespace MCG_3DPanel.Commands
             string ext = Path.GetExtension(file);
             if (!ext.Equals(".dwg", System.StringComparison.OrdinalIgnoreCase) && !ext.Equals(".dwt", System.StringComparison.OrdinalIgnoreCase)) return false;
             // Bit 8 (window) và 16 (view): file 3D đọc từ đĩa nên đổi khung nhìn (zoom, pan) không ảnh hưởng nội dung.
-            try { return (System.Convert.ToInt32(Application.GetSystemVariable("DBMOD")) & ~DBMOD_VIEW_ONLY) == 0; }
+            try { return (Dbmod(doc) & ~DBMOD_VIEW_ONLY) == 0; }
             catch (System.Exception ex)
             {
                 Debug.WriteLine($"{LOG_PREFIX} DBMOD: {ex.Message}");
                 return false;   // không đọc được ⇒ coi như chưa lưu, người dùng vẫn thấy thông báo
             }
+        }
+
+        /// <summary>DBMOD của CHÍNH <paramref name="doc"/>. Application.GetSystemVariable chỉ đọc bản vẽ đang active ⇒ file 3D mở nền
+        /// (Detail chạy trong file 2D) bị báo "chưa lưu" theo thay đổi của file 2D (kỹ sư 2026-11-18). Bản vẽ khác ⇒ COM GetVariable.</summary>
+        private static int Dbmod(Document doc)
+        {
+            if (doc == Application.DocumentManager.MdiActiveDocument)
+                return System.Convert.ToInt32(Application.GetSystemVariable("DBMOD"));
+            object acad = doc.GetAcadDocument();
+            object v = acad.GetType().InvokeMember("GetVariable", System.Reflection.BindingFlags.InvokeMethod, null, acad, new object[] { "DBMOD" });
+            return System.Convert.ToInt32(v);
         }
 
         /// <summary>Đọc tên block của từng panel từ bản vẽ nguồn (chỉ đọc) và tính file đích, TRƯỚC khi đổi document.</summary>
@@ -782,6 +793,24 @@ namespace MCG_3DPanel.Commands
         }
         // ─── Dữ liệu panel lưu trong block 3D (XRecord MCG3D_PANEL) ─────────────
 
+        /// <summary>Dấu vân tay block 2D nguồn (đọc từ bản đã nhập trong chính file 3D); lỗi ⇒ "" kèm cảnh báo (không làm hỏng build).</summary>
+        static string Fingerprint3D(Database db, BuildResult build)
+        {
+            ObjectId srcBtr = build.SourceBtrId;
+            if (srcBtr.IsNull) return "";
+            try
+            {
+                using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
+                    return Services.Detail.Detail3DMatch.Fingerprint(Detail.SourceFingerprintReader.Records(tr, srcBtr));
+            }
+            catch (System.Exception ex)
+            {
+                build.Report.Add($"[PanelMeta] không tính được fingerprint 2D: {ex.Message}");
+                build.Warnings.Add($"Source fingerprint could not be computed: {ex.Message}. Detail Drawing cannot check whether this 3D file is out of date.");
+                return "";
+            }
+        }
+
         /// <summary>Ghi PanelMeta (nguồn 2D, input, vị trí, danh sách solid) vào BTR 3D để mở lại file vẫn điền được các tab.
         /// Cần LockDocument; lỗi ghi KHÔNG làm hỏng build — chỉ thêm cảnh báo.</summary>
         internal static void WritePanelMeta(Database db, BuildResult build)
@@ -794,6 +823,7 @@ namespace MCG_3DPanel.Commands
                     SourceRefHandle = build.SourceRefId.IsNull ? "" : build.SourceRefId.Handle.ToString(),
                     SourceBtrHandle = build.SourceBtrId.IsNull ? "" : build.SourceBtrId.Handle.ToString(),
                     SourcePath = build.SourcePath ?? "",
+                    SourceFingerprint = Fingerprint3D(db, build),
                     Input = build.Input,
                     Position = (int)build.Position,
                 };

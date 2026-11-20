@@ -62,6 +62,19 @@
                         <MenuItem x:Name="MnuPlanView" Header="Plan View" Click="MnuPlanView_Click"
                                   ToolTipService.ShowOnDisabled="True"
                                   ToolTip="Write the Plan View sheet of this panel into the 2D drawing it was built from"/>
+                        <Separator/>
+                        <MenuItem x:Name="MnuDetailPlan" Header="Detail Plan" Click="MnuDetailPlan_Click"
+                                  ToolTipService.ShowOnDisabled="True"
+                                  ToolTip="Cut a detail (inserted at scale 1) from an AM_7 rectangle on the Plan View"/>
+                        <MenuItem x:Name="MnuSectionDetail" Header="Section Detail" Click="MnuSectionDetail_Click"
+                                  ToolTipService.ShowOnDisabled="True"
+                                  ToolTip="Cut a section through a Detail Plan"/>
+                        <MenuItem x:Name="MnuDetailView" Header="Detail View" Click="MnuDetailView_Click"
+                                  ToolTipService.ShowOnDisabled="True"
+                                  ToolTip="Cut a detail at any scale from an AM_7 circle or rectangle"/>
+                        <MenuItem x:Name="MnuUpdateDetails" Header="Update Details" Click="MnuUpdateDetails_Click"
+                                  ToolTipService.ShowOnDisabled="True"
+                                  ToolTip="Redraw every detail from the current 3D file"/>
                     </ContextMenu>
                 </Button.ContextMenu>
             </Button>

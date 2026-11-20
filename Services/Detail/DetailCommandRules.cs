@@ -1,0 +1,196 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.RegularExpressions;
+
+namespace MCG_3DPanel.Services.Detail
+{
+    // ⚠️ File THUẦN C# — KHÔNG using Autodesk.* (link sang tests/MCG_3DPanel.Tests).
+
+    /// <summary>Quy tắc của lệnh Detail Plan / Detail View: gốc block, dữ liệu vùng cho bản ghi, chỗ đặt nhãn DET.n,
+    /// tiêu đề Detail View, câu hỏi 3D cũ, dòng ghi chú cho status.</summary>
+    public static class DetailCommandRules
+    {
+        /// <summary>Gốc block DET (toạ độ plan) = tâm tròn / trọng tâm 4 góc.</summary>
+        public static P2 Centre(DetailRegion r)
+        {
+            if (r.IsCircle) return r.Center;
+            double x = 0, y = 0;
+            foreach (var c in r.Corners) { x += c.X; y += c.Y; }
+            return new P2(x / r.Corners.Length, y / r.Corners.Length);
+        }
+
+        /// <summary>DetailRecord.Region: 4 góc [x,y] hoặc 1 bộ [cx,cy,r].</summary>
+        public static List<double[]> RegionData(DetailRegion r) => r.IsCircle
+            ? new List<double[]> { new[] { r.Center.X, r.Center.Y, r.Radius } }
+            : r.Corners.Select(c => new[] { c.X, c.Y }).ToList();
+
+        /// <summary>Điểm trái-dưới của nhãn DET.n: góc trên-phải của biên (x+y lớn nhất, hoà ⇒ y cao hơn; tròn ⇒ điểm 45°)
+        /// dời thêm <paramref name="gap"/> theo +X, +Y.</summary>
+        public static P2 LabelAt(DetailRegion r, double gap)
+        {
+            P2 corner;
+            if (r.IsCircle)
+            {
+                double k = r.Radius / Math.Sqrt(2);
+                corner = new P2(r.Center.X + k, r.Center.Y + k);
+            }
+            else
+            {
+                const double tol = 1e-6;
+                corner = r.Corners[0];
+                foreach (var c in r.Corners.Skip(1))
+                {
+                    double d = (c.X + c.Y) - (corner.X + corner.Y);
+                    if (d > tol || (Math.Abs(d) <= tol && c.Y > corner.Y)) corner = c;
+                }
+            }
+            return new P2(corner.X + gap, corner.Y + gap);
+        }
+
+        /// <summary>Tên ở Leader Note trên plan: gõ (bỏ "%%U", trim) hoặc rỗng ⇒ "DET.n" như Leader Note của mẫu (dump 2026-11-18).</summary>
+        public static string LabelName(string typed, int n)
+        {
+            string t = (typed ?? "").Trim();
+            if (t.StartsWith("%%U", StringComparison.OrdinalIgnoreCase)) t = t.Substring(3).Trim();
+            return t.Length == 0 ? DetailNaming.PlanLabel(n) : t;
+        }
+
+        /// <summary>TITLE của block DETAIL TITLE (gạch chân): "DET.x" ⇒ "%%UDETAIL x" như mẫu tay; tên khác giữ nguyên.</summary>
+        public static string TitleOf(string label)
+        {
+            string t = (label ?? "").Trim();
+            if (t.StartsWith("DET.", StringComparison.OrdinalIgnoreCase) && t.Length > 4) t = "DETAIL " + t.Substring(4).Trim();
+            return "%%U" + t;
+        }
+
+        /// <summary>Đầu mũi tên của Leader Note: góc biên gần điểm chọn nhất (tròn ⇒ điểm trên đường tròn theo hướng điểm chọn).</summary>
+        public static P2 LabelHead(DetailRegion r, P2 pick)
+        {
+            if (r.IsCircle)
+            {
+                var d = pick - r.Center;
+                double l = d.Length;
+                return l < 1e-9 ? new P2(r.Center.X + r.Radius, r.Center.Y) : r.Center + d * (r.Radius / l);
+            }
+            return r.Corners.OrderBy(c => (c - pick).Length).First();
+        }
+
+        /// <summary>Leader Note như mẫu: mũi tên tại <see cref="LabelHead"/>, gãy tại điểm người dùng chọn (<paramref name="pick"/>),
+        /// đoạn ngang đỡ chữ chạy RA XA biên (điểm chọn bên trái đầu mũi tên ⇒ sang trái). Chữ dài <paramref name="textWidth"/>, cách
+        /// điểm gãy <paramref name="gap"/>, nằm trên đoạn ngang <paramref name="lift"/>. <c>TextCorner</c> = góc trái-dưới của chữ.</summary>
+        public static (P2 Head, P2 Elbow, P2 End, P2 TextCorner, bool Left) LabelLeader(DetailRegion r, P2 pick, double textWidth,
+            double gap, double lift)
+        {
+            P2 head = LabelHead(r, pick);
+            bool left = pick.X < head.X;
+            double run = textWidth + 2 * gap;
+            P2 end = new P2(pick.X + (left ? -run : run), pick.Y);
+            P2 text = new P2(left ? pick.X - gap - textWidth : pick.X + gap, pick.Y + lift);
+            return (head, pick, end, text, left);
+        }
+
+        /// <summary>Câu hỏi Continue/Cancel khi file 3D có thể đã cũ; Fresh/Unknown ⇒ null (không hỏi).</summary>
+        public static string StaleQuestion(StaleState s, string file3D, string panel)
+        {
+            switch (s)
+            {
+                case StaleState.Unsaved3D:
+                    return $"{file3D} has unsaved changes. The detail is cut from the open, unsaved 3D model, so it will not match {file3D} on disk until you save it.\n\nContinue anyway?";
+                case StaleState.Changed2D:
+                    return $"The {panel} block changed in this drawing after {file3D} was built. The 3D file may be out of date (run Build/Update 3D first).\n\nContinue anyway?";
+                default:
+                    return null;
+            }
+        }
+
+        /// <summary>Ghi chú status sau khi người dùng chọn tiếp tục với 3D chưa lưu / có thể cũ.</summary>
+        public static string StaleNote(StaleState s, string file3D)
+            => s == StaleState.Unsaved3D
+                ? $"cut from the open, unsaved {file3D} (save it so the file matches this detail)"
+                : $"{file3D} may be out of date";
+
+        // ─── Section Detail ────────────────────────────────────────────────────
+
+        /// <summary>Lệnh palette được phép gửi qua Request (chỉ đúng tên lệnh, không kèm gì khác).</summary>
+        public static readonly string[] Commands = { "MCG_DetailPlan", "MCG_DetailSection", "MCG_DetailView", "MCG_DetailUpdate" };
+
+        public static bool IsCommand(string command) =>
+            !string.IsNullOrWhiteSpace(command) && Commands.Contains(command.Trim(), StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Ngược của <see cref="RegionData"/>: 4 góc [x,y] (phải là chữ nhật) hoặc 1 bộ [cx,cy,r] (r &gt; 0). Hỏng ⇒ null.</summary>
+        public static DetailRegion RegionFromData(List<double[]> data, bool circle)
+        {
+            if (data == null || data.Any(p => p == null)) return null;
+            if (circle)
+            {
+                if (data.Count != 1 || data[0].Length != 3 || !(data[0][2] > 0)) return null;
+                return DetailRegion.FromCircle(new P2(data[0][0], data[0][1]), data[0][2]);
+            }
+            if (data.Count != 4 || data.Any(p => p.Length != 2)) return null;
+            return DetailRegion.FromPolyline(data.Select(p => (p[0], p[1], 0.0)).ToList(), true, out _);
+        }
+
+        /// <summary>Chữ section đã dùng của DET n: bản ghi Section cùng panel + số, và tên block "[NEW_]&lt;panel&gt;_DET.n_nL-nL…"
+        /// (kể cả block vẽ tay / hậu tố _MCG).</summary>
+        public static IEnumerable<string> UsedLetters(string panel, int n, IEnumerable<DetailRecord> records, IEnumerable<string> blockNames)
+        {
+            var used = new List<string>();
+            foreach (var r in records ?? Enumerable.Empty<DetailRecord>())
+                if (r != null && r.Kind == DetailKind.Section && r.Number == n && string.Equals(r.Panel, panel, StringComparison.Ordinal)
+                    && !string.IsNullOrEmpty(r.Letter)) used.Add(r.Letter);
+            if (!string.IsNullOrEmpty(panel))
+            {
+                var re = new Regex("^(?:NEW_)?" + Regex.Escape(panel) + @"_DET\." + n + "_" + n + "([A-Za-z]+)-" + n + @"\1(?:_|$)",
+                    RegexOptions.CultureInvariant);
+                foreach (var name in blockNames ?? Enumerable.Empty<string>())
+                {
+                    var m = name == null ? null : re.Match(name);
+                    if (m != null && m.Success) used.Add(m.Groups[1].Value.ToUpperInvariant());
+                }
+            }
+            return used.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        /// <summary>Vì sao <see cref="SectionFrame.From"/> trả null (toạ độ plan); hợp lệ ⇒ null.
+        /// <paramref name="pickEndAgain"/> = true ⇒ hỏi lại điểm cuối (rồi hướng nhìn), false ⇒ chỉ hỏi lại hướng nhìn.</summary>
+        public static string FrameProblem(P2 start, P2 end, P2 side, DetailRegion region, out bool pickEndAgain)
+        {
+            pickEndAgain = false;
+            if (SectionFrame.From(start, end, side, region) != null) return null;
+            string line = CutLineProblem(start, end, region);
+            if (line != null) { pickEndAgain = true; return line; }
+            return "The viewing side is on the cut line. Pick a point to one side of it.";
+        }
+
+        /// <summary>Chiều sâu khung Section = khoảng cách điểm cạnh đối tới đường cắt a–b.</summary>
+        public static double SectionDepth(P2 a, P2 b, P2 side)
+        {
+            var d = b - a;
+            double l = d.Length;
+            return l < 1e-9 ? 0 : Math.Abs(d.X * (side.Y - a.Y) - d.Y * (side.X - a.X)) / l;
+        }
+
+        /// <summary>Đường cắt (chưa có bên nhìn) dùng được không: không dài / không qua vùng ⇒ lý do; được ⇒ null.</summary>
+        public static string CutLineProblem(P2 start, P2 end, DetailRegion region)
+        {
+            var d = end - start;
+            if (d.Length < 1e-6) return "The cut line has no length. Pick the end point again.";
+            // Bên nhìn đặt xa hẳn đường cắt mà vẫn null ⇒ đường cắt không qua vùng
+            var far = new P2(-d.Y, d.X) * (1.0 / d.Length) * 1e3;
+            if (SectionFrame.From(start, end, start + far, region) == null)
+                return "The cut line does not cross the detail. Pick the end point again.";
+            return null;
+        }
+
+        /// <summary>Ghi chú status: các cảnh báo khác nhau, nối "; ", kết thúc bằng "."; không có ⇒ "".</summary>
+        public static string Notes(IEnumerable<string> warnings)
+        {
+            var list = (warnings ?? Enumerable.Empty<string>())
+                .Where(w => !string.IsNullOrWhiteSpace(w))
+                .Select(w => w.Trim().TrimEnd('.'))
+                .Distinct(StringComparer.Ordinal).ToList();
+            return list.Count == 0 ? "" : "Notes: " + string.Join("; ", list) + ".";
+        }
+    }
+}

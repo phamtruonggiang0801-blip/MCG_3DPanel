@@ -15,6 +15,18 @@ namespace MCG_3DPanel.Tests
 
         [Fact] public void Catalog_NotProfilesOrOthers() { Assert.False(SymbolBlockShapes.Has("HP120x6")); Assert.False(SymbolBlockShapes.Has("A1")); }
 
+        [Fact] public void Has_ContinuousSymbol()
+        {
+            Assert.True(SymbolBlockShapes.Has("Continious symbol"));
+            var s = SymbolBlockShapes.Get("Continious symbol");
+            Assert.Equal(2, s.Count);
+            Assert.All(s, x => { Assert.Equal("Leader", x.Kind); Assert.Equal("Mechanical-AM_5", x.Layer); Assert.Equal(2, x.Points.Count); });
+            Assert.Equal((-59.0088, 0.0), s[0].Points[0]); Assert.Equal((12.5307, 0.0), s[0].Points[1]);
+            Assert.Equal((41.5316, 0.0), s[1].Points[0]); Assert.Equal((-30.3533, 0.0), s[1].Points[1]);
+            Assert.Empty(SymbolBlockShapes.Dependencies("Continious symbol"));
+            Assert.NotNull(SymbolBlockShapes.Layer("Mechanical-AM_5"));
+        }
+
         [Fact] public void CsHorl_IsCsSymbolRotated180_AndDependsOnIt()
         {
             var s = SymbolBlockShapes.Get("CS_horl_up_right").Single();

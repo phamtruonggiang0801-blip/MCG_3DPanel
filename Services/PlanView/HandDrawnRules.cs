@@ -20,6 +20,8 @@ namespace MCG_3DPanel.Services.PlanView
         public double Y2 { get; set; }
         public double Rotation { get; set; }
         public bool HasOwnMark { get; set; }
+        /// <summary>Mang XData MCG3D_DETAIL (biên / nhãn DET.n / tiêu đề / block Detail) ⇒ không bao giờ là phần vẽ tay.</summary>
+        public bool HasDetailMark { get; set; }
         public bool InModelSpace { get; set; }
     }
 
@@ -39,7 +41,7 @@ namespace MCG_3DPanel.Services.PlanView
         public static bool IsReplaceable(PvExisting e, string panel, IReadOnlyList<(double Rotation, double Lo, double Hi)> known,
             (double MinX, double MinY, double MaxX, double MaxY) plate)
         {
-            if (e.HasOwnMark || !e.InModelSpace) return false;
+            if (e.HasOwnMark || e.HasDetailMark || !e.InModelSpace) return false;
             switch (e.Type)
             {
                 case "Text":

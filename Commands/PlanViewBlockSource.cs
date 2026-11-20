@@ -170,6 +170,26 @@ namespace MCG_3DPanel.Commands
                             TextStyleId = SymbolTables.HasLive(ts, "STANDARD") ? SymbolTables.Live(ts, "STANDARD") : db.Textstyle,
                         };
                         break;
+                    case "Leader":
+                        var ld = new Leader();
+                        foreach (var q in s.Points) ld.AppendVertex(new Point3d(q.Item1, q.Item2, 0));
+                        var ds = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
+                        ObjectId style = SymbolTables.Live(ds, s.DimStyle ?? "");
+                        if (style.IsNull) style = SymbolTables.Live(ds, "AM_ISO");
+                        if (!style.IsNull) ld.DimensionStyle = style;
+                        ld.HasArrowHead = true;
+                        e = ld;
+                        break;
+                    case "AttDef":
+                        var tst = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
+                        var at = new Point3d(s.Points[0].Item1, s.Points[0].Item2, 0);
+                        var ad = new AttributeDefinition(at, s.Text ?? "", s.Tag, s.Prompt ?? s.Tag,
+                            SymbolTables.HasLive(tst, "STANDARD") ? SymbolTables.Live(tst, "STANDARD") : db.Textstyle)
+                        { Height = s.Height };
+                        ad.Justify = (AttachmentPoint)Enum.Parse(typeof(AttachmentPoint), s.Attach);
+                        ad.AlignmentPoint = at;   // căn ≠ BaseLeft ⇒ vị trí = điểm căn
+                        e = ad;
+                        break;
                     default:   // BlockRef — block lồng đã được vẽ/chép trước (Prepare xếp thứ tự)
                         e = new BlockReference(Point3d.Origin, SymbolTables.Require(bt, s.Block, "Block")) { Rotation = s.Rotation };
                         break;
