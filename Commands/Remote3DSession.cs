@@ -255,6 +255,9 @@ namespace MCG_3DPanel.Commands
         {
             RemoteLink r = b?.Remote;
             if (r == null || idPath3D == null || idPath3D.Length == 0) return null;
+            // Block 2D đã DC lại / sửa sau lần Update cuối: handle của file 3D có thể đã thuộc đối tượng KHÁC ⇒ không dò (zoom sai chỗ —
+            // kỹ sư 2026-11-20); người dùng chạy Update 3D Model để khớp lại.
+            if (r.LockReason == Changed2D) return null;
             Database db2D = r.AssyRef2D.Database;
             var path = new ObjectId[idPath3D.Length];
             path[0] = r.AssyRef2D;
@@ -263,7 +266,24 @@ namespace MCG_3DPanel.Commands
                 path[i] = Resolve(db2D, idPath3D[i].Handle.ToString());
                 if (path[i].IsNull || path[i].IsErased) return null;
             }
-            return path;
+            return OwnedChain(path) ? path : null;
+        }
+
+        /// <summary>Mỗi phần tử của đường dẫn nằm đúng trong định nghĩa block của reference ngay trước nó — handle trùng tình cờ với đối
+        /// tượng khác thì chuỗi gãy ⇒ không dùng.</summary>
+        private static bool OwnedChain(ObjectId[] path)
+        {
+            try
+            {
+                using (Transaction tr = path[0].Database.TransactionManager.StartOpenCloseTransaction())
+                    for (int i = 1; i < path.Length; i++)
+                    {
+                        if (!(tr.GetObject(path[i - 1], OpenMode.ForRead) is BlockReference parent)) return false;
+                        if (tr.GetObject(path[i], OpenMode.ForRead).OwnerId != parent.BlockTableRecord) return false;
+                    }
+                return true;
+            }
+            catch (System.Exception) { return false; }
         }
 
         /// <summary>Khung WCS của entity cuối <paramref name="path"/> trong bản 2D (qua transform các reference bọc ngoài); lỗi ⇒ null.</summary>

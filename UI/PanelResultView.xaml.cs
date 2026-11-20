@@ -577,7 +577,16 @@ namespace MCG_3DPanel.UI
                 EntityHighlighter.Clear();
                 if (rows.All(r => r.Deleted)) SetStatus("Deleted — right-click Restore to bring it back.");
                 else if (rows.Any(r => r.Build?.Remote != null && r.Path == null))
-                    SetStatus("This part has no object of its own in the 2D drawing — it is made by the tool.");
+                {
+                    var r0 = rows.First(r => r.Build?.Remote != null && r.Path == null);
+                    // Đúng lý do (kỹ sư 2026-11-20): block 2D đã đổi ⇒ chờ Update 3D Model; part sinh thêm ⇒ không có hình 2D riêng.
+                    if (r0.Build.Remote.LockReason == Commands.Remote3DSession.Changed2D)
+                        SetStatus("The 2D panel changed since the last Update — run Update 3D Model, then the rows find their objects again.", error: true);
+                    else if (r0.Solid?.Part == null)
+                        SetStatus("This part has no object of its own in the 2D drawing — it is made by the tool.");
+                    else
+                        SetStatus("The 2D object of this row was not found in the drawing — run Update 3D Model.", error: true);
+                }
                 // Sau Ctrl+Z (undo rebuild) solid của bảng có thể đã bị xoá — không highlight, chỉ báo.
                 else SetStatus("Solid no longer exists — rebuild or re-run Build 3D.", error: true);
                 return;
