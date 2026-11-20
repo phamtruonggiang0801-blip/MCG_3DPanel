@@ -145,7 +145,8 @@ namespace MCG_3DPanel.Commands
 
             bool drawings = PlanViewWriter.HasPlanView(doc2D.Database, r.AssyBtr2D.Handle.ToString())
                             || (DetailCommands.HasPanelWith3DFile(doc2D, out bool hasDetail) && hasDetail);
-            string extra = run.Problems.Count > 0 ? " " + string.Join(" · ", run.Problems) : "";
+            var tail = run.Notes.Concat(run.Problems).ToList();   // đỏ chỉ khi có Problems
+            string extra = tail.Count > 0 ? " " + string.Join(" · ", tail) : "";
             Finish(UpdateChainRules.Summary(false, null, false, null, run.PendingApplied)
                    + (drawings ? " Run Update Drawing to redraw the Plan View and details." : "") + extra,
                    run.Problems.Count > 0);

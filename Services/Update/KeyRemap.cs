@@ -86,10 +86,18 @@ namespace MCG_3DPanel.Services.Update
         public static string Note(int kept, int dropped, IEnumerable<(string Block, MCG_3DPanel.Services.Detail.P2 Offset)> shifts)
         {
             var inv = System.Globalization.CultureInfo.InvariantCulture;
+            string N(double v) { double r = System.Math.Round(v, 1, System.MidpointRounding.AwayFromZero); return (r == 0 ? 0 : r).ToString("0.#", inv); }   // không in "-0"
+            string At(MCG_3DPanel.Services.Detail.P2 p) => $"({N(p.X)}, {N(p.Y)})";
             var lines = new List<string>();
-            if (kept + dropped > 0) lines.Add($"{kept} edits kept on unchanged parts; {dropped} dropped because their 2D part changed.");
-            foreach (var (block, off) in shifts ?? Enumerable.Empty<(string, MCG_3DPanel.Services.Detail.P2)>())
-                lines.Add($"The base point of {block} moved by ({off.X.ToString("0.#", inv)}, {off.Y.ToString("0.#", inv)}).");
+            // Chỉ báo khi có chỉnh sửa bị bỏ — "n kept; 0 dropped" làm người dùng rối (kỹ sư 2026-11-20).
+            if (dropped > 0) lines.Add($"{kept} edits kept on unchanged parts; {dropped} dropped because their 2D part changed.");
+            var s = (shifts ?? Enumerable.Empty<(string, MCG_3DPanel.Services.Detail.P2)>()).ToList();
+            if (s.Count > 2)
+            {
+                var big = s.OrderByDescending(x => x.Item2.Length).First();
+                lines.Add($"The base point moved in {s.Count} blocks (largest: {big.Item1} by {At(big.Item2)}).");
+            }
+            else foreach (var (block, off) in s) lines.Add($"The base point of {block} moved by {At(off)}.");
             return lines.Count == 0 ? null : string.Join("\n", lines);
         }
 

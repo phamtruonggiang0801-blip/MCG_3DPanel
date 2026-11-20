@@ -97,7 +97,9 @@ namespace MCG_3DPanel.Services.Update
             if (rival.Value != null && rival.Value.Count == best.Value.Count) return new P2(0, 0);
             var near = pairs.Where(p => Near(p.Bin, best.Key, 1)).ToList();
             var mean = new P2(near.Average(p => p.D.X), near.Average(p => p.D.Y));
-            return mean.Length < 0.01 ? new P2(0, 0) : mean;
+            // Dưới 1 ô lưới (0.5 = dung sai so khớp) là nhiễu số thực, không phải dời base point (kỹ sư 2026-11-20: DC lại không dời
+            // gì vẫn bị báo "moved by (-0, -0.1)").
+            return mean.Length < Grid ? new P2(0, 0) : mean;
         }
 
         static string SizeKey(ShapeRecord r)

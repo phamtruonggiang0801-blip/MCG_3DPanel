@@ -80,3 +80,23 @@ public class RemapNoteTests
         Assert.Equal("The base point of B moved by (10, 0).", KeyRemap.Note(0, 0, s));
     }
 }
+
+public class RemapNoteCompactTests
+{
+    static MCG_3DPanel.Services.Detail.P2 P(double x, double y) => new MCG_3DPanel.Services.Detail.P2(x, y);
+
+    [Fact]
+    public void NegativeZero_PrintedAsZero() =>
+        Assert.Equal("The base point of B moved by (0, 10).", KeyRemap.Note(0, 0, new List<(string, MCG_3DPanel.Services.Detail.P2)> { ("B", P(-0.04, 10)) }));
+
+    [Fact]
+    public void ManyShifts_OneLine()
+    {
+        var s = new List<(string, MCG_3DPanel.Services.Detail.P2)> { ("A", P(5, 0)), ("B", P(0, 120)), ("C", P(3, 4)) };
+        Assert.Equal("The base point moved in 3 blocks (largest: B by (0, 120)).", KeyRemap.Note(0, 0, s));
+    }
+
+    [Fact]
+    public void AllKept_NoneDropped_NoCountLine() =>
+        Assert.Null(KeyRemap.Note(3, 0, new List<(string, MCG_3DPanel.Services.Detail.P2)>()));
+}

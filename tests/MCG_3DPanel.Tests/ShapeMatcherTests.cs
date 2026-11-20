@@ -205,4 +205,25 @@ public class ShapeMatcherTests
         var m = ShapeMatcher.Match(new[] { f1 }, new[] { f1Stretched, f3 });
         Assert.False(m.Map.ContainsKey("F1"));
     }
+
+    // Kỹ sư 2026-11-20: DC lại block không dời gì nhưng nhiễu số thực (−0.1) bị báo "base point moved" ⇒ độ lệch dưới dung sai = 0.
+    [Fact]
+    public void SubToleranceShift_NotReported()
+    {
+        var o = new[] { Rect("1", 60, 12734), Rect("2", 324, 12744, 455, 10), Rect("3", 900, 100, 300, 12) };
+        var n = new[] { Shift(o[0], "1", -0.04, -0.1), Shift(o[1], "2", -0.04, -0.1), Shift(o[2], "3", -0.04, -0.1) };
+        var m = ShapeMatcher.Match(o, n);
+        Assert.Empty(m.Shifts);
+        Assert.Equal("1", m.Map["1"]);
+    }
+
+    [Fact]
+    public void RealShift_StillReported()
+    {
+        var o = new[] { Rect("1", 60, 12734), Rect("2", 324, 12744, 455, 10), Rect("3", 900, 100, 300, 12) };
+        var n = new[] { Shift(o[0], "A", 50, 0), Shift(o[1], "B", 50, 0), Shift(o[2], "C", 50, 0) };
+        var m = ShapeMatcher.Match(o, n);
+        Assert.Single(m.Shifts);
+        Assert.Equal("A", m.Map["1"]);
+    }
 }

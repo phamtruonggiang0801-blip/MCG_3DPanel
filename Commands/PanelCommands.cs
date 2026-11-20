@@ -341,7 +341,13 @@ namespace MCG_3DPanel.Commands
             {
                 Panel3DFile.DeleteOwnBak(job.Target, saving);
                 Say($"\n{LOG_PREFIX} The previous version of {file} was kept as {Path.GetFileName(backup)}.\n");
-                if (carry.RemapNote != null) run.Problems.AddRange(carry.RemapNote.Split('\n'));
+                if (carry.RemapNote != null)
+                {
+                    // Dòng "n dropped" (mất chỉnh sửa) là cảnh báo; dời base point chỉ là thông tin — không tô đỏ (kỹ sư 2026-11-20).
+                    var lines = carry.RemapNote.Split('\n').ToList();
+                    if (carry.RemapDropped > 0 && lines.Count > 0) { run.Problems.Add(lines[0]); lines.RemoveAt(0); }
+                    run.Notes.AddRange(lines);
+                }
                 run.BuiltFiles.Add(job.Target);
                 if (closed) run.Reopen.Add(job.Target);   // người dùng đang mở file này trước Update ⇒ mở lại như cũ
                 if (carry.HasPending)   // cả pending chỉ có "bỏ gộp / bỏ tách" (không đếm khoá) cũng phải xoá — review 2026-11-20
@@ -556,6 +562,7 @@ namespace MCG_3DPanel.Commands
             carry.CorrectionsJson = Services.Update.KeyRemap.Corrections(carry.CorrectionsJson, match.Map, ref kept, ref dropped);
             carry.NamesJson = Services.Update.KeyRemap.Names(carry.NamesJson, match.Map, ref kept, ref dropped);
             carry.RemapNote = Services.Update.KeyRemap.Note(kept, dropped, match.Shifts);
+            carry.RemapDropped = dropped;
         }
 
         /// <summary>Chỉnh sửa cũ không còn part 2D tương ứng ⇒ báo số lượng. Chạy SAU khi đã lưu: lỗi ở đây không được làm hỏng lần Update.</summary>
@@ -1074,6 +1081,8 @@ namespace MCG_3DPanel.Commands
         public List<string> Problems = new List<string>();
         /// <summary>Số sửa chờ từ bản 2D đã áp vào 3D và xoá khỏi bản 2D.</summary>
         public int PendingApplied;
+        /// <summary>Thông tin (không phải lỗi) cho thanh trạng thái, vd base point dời — hiện màu thường.</summary>
+        public List<string> Notes = new List<string>();
         /// <summary>File 3D đã dựng / Update xong (dựng ngầm, chưa mở) — cuối lô hỏi người dùng có mở không.</summary>
         public List<string> BuiltFiles = new List<string>();
         /// <summary>File 3D đang mở trước Update (đã phải đóng để thay) — mở lại sau khi xong, không hỏi.</summary>
