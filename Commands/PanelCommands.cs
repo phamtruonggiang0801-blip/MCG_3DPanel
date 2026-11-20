@@ -284,6 +284,7 @@ namespace MCG_3DPanel.Commands
             {
                 Panel3DFile.DeleteOwnBak(job.Target, saving);
                 Say($"\n{LOG_PREFIX} The previous version of {file} was kept as {Path.GetFileName(backup)}.\n");
+                if (carry.RemapNote != null) run.Problems.AddRange(carry.RemapNote.Split('\n'));
                 AddUnmatchedNote(carry, build, run);
                 fileDoc = doc;
                 return build;
@@ -338,8 +339,16 @@ namespace MCG_3DPanel.Commands
             try { carry = Panel3DFile.ReadOld(job.Target); }
             catch (System.Exception ex) { return $"Could not read {file} ({ex.Message}). Use New copy."; }
 
-            string refusal = Panel3DPath.UpdateRefusal(file, carry.Meta, job.RefId.Handle.ToString());
+            string selectedBlock;
+            List<Services.Update.ShapeRecord> newShapes;
+            try { newShapes = ReadSelectedShapes(job.RefId, out selectedBlock); }
+            catch (System.Exception ex) { return $"Could not match the 2D parts of {file}: {ex.Message}. The old file was not changed."; }
+
+            string refusal = Panel3DPath.UpdateRefusal(file, carry.Meta, job.RefId.Handle.ToString(), selectedBlock, carry.BlockName);
             if (refusal != null) return refusal;
+
+            try { RemapCarry(carry, newShapes); }
+            catch (System.Exception ex) { return $"Could not match the 2D parts of {file}: {ex.Message}. The old file was not changed."; }
 
             try { Panel3DFile.Create(sourceFile, job.RefId, newFile, carry); }
             catch (System.Exception ex)   // Create nói tên file tạm trong Message ⇒ lấy lý do gốc
@@ -434,6 +443,41 @@ namespace MCG_3DPanel.Commands
             run.Failed++;
             run.Problems.Add(text);
             Say($"\n{LOG_PREFIX} {tag} {text}\n");
+        }
+
+        /// <summary>Tên block panel đang chọn + entity 2D của nó (toạ độ từng định nghĩa), đọc từ bản vẽ nguồn. Chỉ đọc.</summary>
+        private static List<Services.Update.ShapeRecord> ReadSelectedShapes(ObjectId refId, out string blockName)
+        {
+            using (Transaction tr = refId.Database.TransactionManager.StartOpenCloseTransaction())
+            {
+                var br = (BlockReference)tr.GetObject(refId, OpenMode.ForRead);
+                var btr = (BlockTableRecord)tr.GetObject(br.BlockTableRecord, OpenMode.ForRead);
+                blockName = btr.Name;
+                return ShapeRecordReader.Records(tr, br.BlockTableRecord);
+            }
+        }
+
+        /// <summary>Block 2D đã được chèn lại (DC từ Global): khớp part theo hình giữa block 2D trong file 3D cũ và block đang chọn,
+        /// đổi khoá correction + tên sang handle mới, ghi dòng báo vào <c>carry.RemapNote</c> (spec 2026-11-20 update-after-dc-block).
+        /// Handle có mặt ở cả 2 bên là cùng đối tượng (sửa tại chỗ) ⇒ giữ như Update cũ dù hình đổi. Không DC lại ⇒ không đổi gì.</summary>
+        private static void RemapCarry(Panel3DFile.OldPanelData carry, List<Services.Update.ShapeRecord> newShapes)
+        {
+            var match = Services.Update.ShapeMatcher.Match(carry.Shapes, newShapes);
+            var newHandles = new HashSet<string>(newShapes.Select(s => s.Handle), System.StringComparer.OrdinalIgnoreCase);
+            foreach (var s in carry.Shapes)
+                if (!match.Map.ContainsKey(s.Handle) && newHandles.Contains(s.Handle)) match.Map[s.Handle] = s.Handle;
+
+            bool identity = match.Map.All(kv => string.Equals(kv.Key, kv.Value, System.StringComparison.OrdinalIgnoreCase));
+            if (identity && match.Shifts.Count == 0) return;   // không chèn lại: Update như cũ
+
+            int kept = 0, dropped = 0;
+            carry.CorrectionsJson = Services.Update.KeyRemap.Corrections(carry.CorrectionsJson, match.Map, ref kept, ref dropped);
+            carry.NamesJson = Services.Update.KeyRemap.Names(carry.NamesJson, match.Map, ref kept, ref dropped);
+            var lines = new List<string> { $"{kept} edits kept on unchanged parts; {dropped} dropped because their 2D part changed." };
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            foreach (var (block, off) in match.Shifts)
+                lines.Add($"The base point of {block} moved by ({off.X.ToString("0.#", inv)}, {off.Y.ToString("0.#", inv)}).");
+            carry.RemapNote = string.Join("\n", lines);
         }
 
         /// <summary>Chỉnh sửa cũ không còn part 2D tương ứng ⇒ báo số lượng. Chạy SAU khi đã lưu: lỗi ở đây không được làm hỏng lần Update.</summary>

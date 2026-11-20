@@ -106,6 +106,11 @@ namespace MCG_3DPanel.Commands
             public PanelMeta Meta;
             public string CorrectionsJson;
             public string NamesJson;
+            /// <summary>Tên block 2D panel trong file cũ (vd "7D-16P_Assy") + entity của nó, để so khớp theo hình (spec 2026-11-20).</summary>
+            public string BlockName;
+            public List<Services.Update.ShapeRecord> Shapes = new List<Services.Update.ShapeRecord>();
+            /// <summary>Dòng báo kết quả đổi khoá (giữ / bỏ, base point dời), cách nhau "\n"; null = không có gì để báo.</summary>
+            public string RemapNote;
         }
 
         /// <summary>Đọc file 3D cũ từ đĩa bằng database phụ (chỉ đọc, chia sẻ), luôn giải phóng database. Meta null ⇒ file không có dữ liệu panel
@@ -127,6 +132,8 @@ namespace MCG_3DPanel.Commands
                     ObjectId btr2D = ResolveBtr(db, old.Meta.SourceBtrHandle);
                     old.CorrectionsJson = CorrectionXRecord.Read(tr, btr2D, CorrectionXRecord.CorrectionsKey);
                     old.NamesJson = CorrectionXRecord.Read(tr, btr2D, CorrectionXRecord.NamesKey);
+                    old.BlockName = ((BlockTableRecord)tr.GetObject(btr2D, OpenMode.ForRead)).Name;
+                    old.Shapes = ShapeRecordReader.Records(tr, btr2D);
                 }
                 return old;
             }
