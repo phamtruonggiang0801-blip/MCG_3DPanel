@@ -72,6 +72,19 @@ namespace MCG_3DPanel.Naming
                 From3D = b.Kept && !b.BlockRefId.IsNull,
                 Build = b,
             };
+            if (b.Remote != null)
+            {
+                // Đọc nền từ file 3D khi đang ở bản 2D: thuộc bản 2D, highlight entity 2D gốc (spec 2026-11-20 3d-controls-in-2d).
+                p.Db = b.Remote.AssyRef2D.Database;
+                p.From3D = false;
+                Fill(p, b.ClassifiedParts, b.SourceTransform.Inverse(), b.Input, part =>
+                {
+                    var path = part.IdPath != null && part.IdPath.Length > 0 ? MCG_3DPanel.Commands.Remote3DSession.PathIn2D(b, part.IdPath) : null;
+                    return (path, MCG_3DPanel.Commands.Remote3DSession.BoundsIn2D(path));
+                });
+                p.Recompute();
+                return p;
+            }
             if (!p.From3D)
             {
                 // Bỏ 3D (No) ⇒ block 2D vẫn còn: highlight polyline 2D.

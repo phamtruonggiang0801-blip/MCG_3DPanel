@@ -20,6 +20,11 @@
                         <Setter Property="Foreground" Value="#FF0050C8"/>
                         <Setter Property="FontWeight" Value="SemiBold"/>
                     </DataTrigger>
+                    <!-- Sửa trên bản 2D đang chờ Update: nền vàng nhạt + tooltip. -->
+                    <DataTrigger Binding="{Binding Pending}" Value="True">
+                        <Setter Property="Background" Value="#FFFFF2CC"/>
+                        <Setter Property="ToolTip" Value="Waiting for Update"/>
+                    </DataTrigger>
                     <!-- Solid đã Delete: xám nghiêng (chuột phải → Restore). Đặt SAU để thắng màu xanh. -->
                     <DataTrigger Binding="{Binding Deleted}" Value="True">
                         <Setter Property="Foreground" Value="#FF9A9A9A"/>

@@ -217,6 +217,38 @@ namespace MCG_3DPanel.Commands
             return path;
         }
 
+        /// <summary>Khung WCS của entity cuối <paramref name="path"/> trong bản 2D (qua transform các reference bọc ngoài); lỗi ⇒ null.</summary>
+        public static Extents3d? BoundsIn2D(ObjectId[] path)
+        {
+            if (path == null || path.Length == 0) return null;
+            try
+            {
+                using (Transaction tr = path[0].Database.TransactionManager.StartOpenCloseTransaction())
+                {
+                    var ent = (Entity)tr.GetObject(path[path.Length - 1], OpenMode.ForRead);
+                    Extents3d e = ent.GeometricExtents;
+                    for (int i = path.Length - 2; i >= 0; i--)
+                        if (tr.GetObject(path[i], OpenMode.ForRead) is BlockReference br) e.TransformBy(br.BlockTransform);
+                    return e;
+                }
+            }
+            catch (System.Exception) { return null; }
+        }
+
+        /// <summary>Đường dẫn 2D cho khoá (dòng sinh thêm: Collar, Tripping…): part 2D đầu tiên có handle trong khoá.</summary>
+        public static ObjectId[] PathForKey(BuildResult b, string key)
+        {
+            if (b == null || string.IsNullOrEmpty(key)) return null;
+            foreach (string h in KeyRemap.Handles(key))
+            {
+                var part = b.ClassifiedParts.FirstOrDefault(p => p.IdPath != null && p.IdPath.Length > 0
+                    && string.Equals(p.IdPath[p.IdPath.Length - 1].Handle.ToString(), h, StringComparison.OrdinalIgnoreCase));
+                var path = part == null ? null : PathIn2D(b, part.IdPath);
+                if (path != null) return path;
+            }
+            return null;
+        }
+
         /// <summary>Entity 2D của handle (trong định nghĩa block thuộc reference _Assy); không có ⇒ Null.</summary>
         public static ObjectId EntityIn2D(BuildResult b, string handle) =>
             b?.Remote == null ? ObjectId.Null : Resolve(b.Remote.AssyRef2D.Database, handle);

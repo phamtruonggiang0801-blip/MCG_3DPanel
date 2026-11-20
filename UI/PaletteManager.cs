@@ -62,6 +62,7 @@ namespace MCG_3DPanel.UI
                 {
                     var db = e.Document?.Database;
                     Guarded(() => MCG_3DPanel.Commands.PanelSession.Forget(db));
+                    Guarded(() => MCG_3DPanel.Commands.Remote3DSession.Forget(db));   // database phụ file 3D của bản 2D này
                     Guarded(() => MCG_3DPanel.Commands.PanelCommands.ForgetDatabase(db));
                     Guarded(() => MCG_3DPanel.Commands.EntityHighlighter.ForgetDatabase(db));
                     Guarded(() => MCG_3DPanel.Services.Corrections.CorrectionStore.ClearDatabase(db));
@@ -112,12 +113,28 @@ namespace MCG_3DPanel.UI
                 var db = eventDb ?? Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument?.Database;
                 if (db == null) { _input.ShowPanel(null); return; }   // đóng hết drawing: OnDocumentClosing đã dọn bảng
                 var builds = MCG_3DPanel.Commands.PanelSession.For(db, out string message);
+                // Bản vẽ 2D (không có panel 3D): đọc nền file <panel>_3D*.dwg cạnh nó — sửa chờ Update (spec 2026-11-20 3d-controls-in-2d).
+                if (builds.Count == 0 && !MCG_3DPanel.Commands.Panel3DFile.HoldsSourceReference(db))
+                {
+                    var doc = FindDoc(db);
+                    if (doc != null) builds = MCG_3DPanel.Commands.Remote3DSession.For2D(doc, out message);
+                }
                 // Input TRƯỚC các tab: Naming đọc Position từ ô Input qua PositionProvider.
                 _input.ShowPanel(builds.Count > 0 ? builds[0] : null);
                 // Highlight dùng chung 1 trạng thái ⇒ tab ĐANG MỞ chạy SAU để vùng chọn của nó thắng.
                 if (_activeTab == "Naming") { _result.ShowFile(builds, message); _naming.ShowFile(builds, message); }
                 else { _naming.ShowFile(builds, message); _result.ShowFile(builds, message); }
             });
+        }
+
+        /// <summary>Nạp lại các tab theo drawing đang active (sau khi ghi sửa chờ trên bản 2D).</summary>
+        internal void Refresh() => RefreshTabs();
+
+        private static Autodesk.AutoCAD.ApplicationServices.Document FindDoc(Autodesk.AutoCAD.DatabaseServices.Database db)
+        {
+            foreach (Autodesk.AutoCAD.ApplicationServices.Document d in Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager)
+                if (d.Database == db) return d;
+            return null;
         }
 
         /// <summary>Handler của document/palette: exception lọt ra ngoài có thể làm AutoCAD crash ⇒ bắt, báo trên thanh trạng thái.</summary>

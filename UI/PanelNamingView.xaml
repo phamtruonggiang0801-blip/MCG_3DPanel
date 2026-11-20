@@ -9,6 +9,15 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="PanelStyles.xaml"/>
             </ResourceDictionary.MergedDictionaries>
+            <!-- Sửa trên bản 2D đang chờ Update: nền vàng nhạt + tooltip (cùng kiểu tab Result). -->
+            <Style x:Key="PendingRowStyle" TargetType="DataGridRow">
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding Pending}" Value="True">
+                        <Setter Property="Background" Value="#FFFFF2CC"/>
+                        <Setter Property="ToolTip" Value="Waiting for Update"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
         </ResourceDictionary>
     </UserControl.Resources>
 
@@ -34,6 +43,7 @@
                   MinRowHeight="24" RowHeaderWidth="0" CanUserResizeRows="False"
                   SelectionMode="Extended"
                   SelectionChanged="GridNaming_SelectionChanged"
+                  RowStyle="{StaticResource PendingRowStyle}"
                   PreviewMouseLeftButtonDown="GridNaming_PreviewMouseDown"
                   MouseDoubleClick="GridNaming_MouseDoubleClick"
                   PreviewKeyDown="Grid_PreviewKeyDown">

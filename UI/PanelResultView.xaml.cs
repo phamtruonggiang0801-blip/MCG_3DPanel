@@ -186,6 +186,12 @@ namespace MCG_3DPanel.UI
                 ? "No solids in the 3D block."
                 : $"{rows.Count} solids  ·  {Summary(rows)}  ·  {where}"
                   + (report != null ? $"  ·  debug JSON: {System.IO.Path.GetFileName(report)}" : "");
+            if (kept.Any(b => b.Remote != null))
+            {
+                // Bản 2D đọc nền file 3D: báo số sửa chờ; bị khoá ⇒ lý do thay thông báo (ux: không để nút sửa im lặng).
+                string locked = kept.Select(b => b.Remote).FirstOrDefault(x => x != null && x.Locked)?.LockReason;
+                _summary = (locked ?? PendingText(kept)) + "  ·  " + _summary;
+            }
             if (_notBuilt != null) SetStatus(_notBuilt + "  ·  " + _summary, error: true);
             else SetStatus(_summary);
 
@@ -240,8 +246,13 @@ namespace MCG_3DPanel.UI
         {
             var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
             var b = r?.Build;
+            if (doc != null && b?.Remote != null) return b.Remote.AssyRef2D.Database == doc.Database;   // đọc nền từ file 3D: thuộc bản 2D
             return doc != null && b != null && !b.SourceRefId.IsNull && b.SourceRefId.Database == doc.Database;
         }
+
+        /// <summary>Lý do không sửa được trên bản 2D (block lệch file 3D / file 3D đang mở) của dòng đầu tiên bị khoá; null = sửa được.</summary>
+        private static string LockedReason(IEnumerable<ResultRow> rows) =>
+            rows?.Select(r => r?.Build?.Remote).FirstOrDefault(x => x != null && x.Locked)?.LockReason;
 
         /// <summary>Trả control về trạng thái thật (dropdown/toggle/ô đã đổi trên màn hình nhưng KHÔNG lưu) + báo.
         /// Hoãn: đang ở giữa cập nhật binding của chính control đó.</summary>
@@ -266,6 +277,8 @@ namespace MCG_3DPanel.UI
             // Vùng chọn LÚC NHẤN CHUỘT (WPF có thể đã thu về 1 dòng khi mở dropdown — review), không thì vùng chọn hiện tại.
             var sel = _clickSnapshot != null && _clickSnapshot.Contains(clicked) ? _clickSnapshot : Selected;
             _clickSnapshot = null;
+            string locked = LockedReason(sel.Contains(clicked) ? sel : new List<ResultRow> { clicked });
+            if (locked != null) { DeferRevert(locked, sel); return; }
             var plan = BulkEdit.Plan(clicked, sel, supports, InActiveDrawing);
             if (plan.Targets.Count == 0)
             {
@@ -422,6 +435,8 @@ namespace MCG_3DPanel.UI
         {
             var sel = Selected;
             if (sel.Count == 0) return;
+            string locked = LockedReason(sel);
+            if (locked != null) { SetStatus(locked, error: true); return; }
             var plan = BulkEdit.Plan(sel[0], sel, r => !string.IsNullOrEmpty(r.DeleteKey) && r.Deleted != deleted, InActiveDrawing);
             string what = deleted ? "Deleted" : "Restored";
             if (plan.Targets.Count == 0) { DeferRevert(plan.OtherDrawing > 0 ? OtherDrawingText(sel) : $"{what}: nothing to change.", sel); return; }
@@ -434,6 +449,8 @@ namespace MCG_3DPanel.UI
         {
             var sel = Selected;
             if (sel.Count == 0) return;
+            string locked = LockedReason(sel);
+            if (locked != null) { SetStatus(locked, error: true); return; }
             var plan = BulkEdit.Plan(sel[0], sel, r => CorrectionStore.Get(r.PanelKey, r.SourceKey) != null, InActiveDrawing);
             if (plan.Targets.Count == 0)
             {
@@ -502,6 +519,21 @@ namespace MCG_3DPanel.UI
             _reselect = Keys(sel.Contains(clicked) ? sel : new List<ResultRow> { clicked });
             _bulkNote = note;
             var builds = targets.Select(r => r.Build).Where(b => b != null).Distinct().ToList();
+            var remote = builds.Where(b => b.Remote != null).ToList();
+            if (remote.Count > 0)
+            {
+                // Bản 2D: không rebuild — ghi phần sửa chờ Update (spec 2026-11-20 3d-controls-in-2d), đọc lại dòng.
+                var errors = remote.Select(Commands.Remote3DSession.SavePending).Where(x => x != null).ToList();
+                var keep = _reselect;
+                _reselect = null;
+                _bulkNote = null;
+                PaletteManager.Instance.Refresh();
+                Load(_builds, keep);
+                string msg = (note != null ? note + "  ·  " : "") + PendingText(_builds);
+                if (errors.Count > 0) SetStatus(string.Join(" · ", errors), error: true); else SetStatus(msg);
+                builds = builds.Where(b => b.Remote == null).ToList();
+                if (builds.Count == 0) return;
+            }
             SetStatus(CadPick.IsPicking
                 ? "Change saved — the 3D rebuilds as soon as you finish picking (Enter in the drawing)."
                 : builds.Count == 1 ? $"Rebuilding {targets[0].Panel}…" : $"Rebuilding {builds.Count} panels…");
@@ -510,17 +542,26 @@ namespace MCG_3DPanel.UI
             foreach (var b in builds) PanelCommands.RequestRebuild(b);
         }
 
+        /// <summary>"{n} edits waiting — press Update…" theo các panel đọc nền từ file 3D; không có sửa chờ ⇒ rỗng.</summary>
+        internal static string PendingText(IEnumerable<BuildResult> builds)
+        {
+            int n = builds.Where(b => b?.Remote != null).GroupBy(b => b.Remote.AssyBtr2D).Sum(g => g.First().Remote.PendingKeys.Count);
+            return n == 0 ? "No edits waiting for Update." : $"{n} edit{(n > 1 ? "s" : "")} waiting — press Update to apply them to the 3D and the drawings.";
+        }
+
         // ─── Highlight / zoom (cả vùng chọn) ────────────────────────────────
 
         /// <summary>Highlight các dòng <paramref name="rows"/>; <paramref name="zoom"/> ⇒ zoom bao trọn.</summary>
         private void Show(IReadOnlyList<ResultRow> rows, bool zoom)
         {
             if (rows == null || rows.Count == 0) { EntityHighlighter.Clear(); return; }
-            var live = rows.Where(r => !r.Deleted && r.Solid != null && !r.Solid.SolidId.IsNull && !r.Solid.SolidId.IsErased).ToList();
+            var live = rows.Where(r => !r.Deleted && r.Solid != null && !r.Solid.SolidId.IsNull && !r.Solid.SolidId.IsErased && r.Path != null).ToList();
             if (live.Count == 0)
             {
                 EntityHighlighter.Clear();
                 if (rows.All(r => r.Deleted)) SetStatus("Deleted — right-click Restore to bring it back.");
+                else if (rows.Any(r => r.Build?.Remote != null && r.Path == null))
+                    SetStatus("This part has no object of its own in the 2D drawing — it is made by the tool.");
                 // Sau Ctrl+Z (undo rebuild) solid của bảng có thể đã bị xoá — không highlight, chỉ báo.
                 else SetStatus("Solid no longer exists — rebuild or re-run Build 3D.", error: true);
                 return;
@@ -585,7 +626,10 @@ namespace MCG_3DPanel.UI
         /// <summary>Chọn THÊM dòng của solid vừa pick (drawing đang mở), cuộn tới, highlight. Không có dòng ⇒ false (im lặng).</summary>
         public bool SelectFromCad(Autodesk.AutoCAD.DatabaseServices.ObjectId picked, bool remove)
         {
-            var row = Rows.FirstOrDefault(r => r.Solid != null && r.Solid.SolidId == picked);
+            // Bản 2D: dòng có entity 2D cuối đường dẫn = đối tượng vừa pick.
+            var row = Rows.FirstOrDefault(r => r.Solid != null && (r.Build?.Remote != null
+                ? r.Path != null && r.Path[r.Path.Length - 1] == picked
+                : r.Solid.SolidId == picked));
             if (row == null) return false;
             _suspendShow = true;
             try { if (remove) GridResult.SelectedItems.Remove(row); else if (!GridResult.SelectedItems.Contains(row)) GridResult.SelectedItems.Add(row); }
@@ -601,7 +645,7 @@ namespace MCG_3DPanel.UI
             var adoc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
             if (adoc == null) return 0;
             var rows = Rows.Where(r => !r.Deleted && r.Solid != null && !r.Solid.SolidId.IsNull && !r.Solid.SolidId.IsErased
-                                       && r.Solid.SolidId.Database == adoc.Database && hit(r.Path, r.Bounds)).ToList();
+                                       && r.Path != null && r.Path[0].Database == adoc.Database && hit(r.Path, r.Bounds)).ToList();
             int added = 0;
             _suspendShow = true;
             try { foreach (var r in rows) { if (remove) { if (GridResult.SelectedItems.Contains(r)) { GridResult.SelectedItems.Remove(r); added++; } } else if (!GridResult.SelectedItems.Contains(r)) { GridResult.SelectedItems.Add(r); added++; } } }

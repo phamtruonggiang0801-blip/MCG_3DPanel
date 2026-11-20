@@ -17,7 +17,7 @@ namespace MCG_3DPanel.UI
         /// <summary>Tên đã đổi (Resolve lại tại chỗ) ⇒ báo grid, KHÔNG nạp lại bảng (giữ ô/vùng chọn người dùng vừa bấm).</summary>
         public void Refresh()
         {
-            foreach (var n in new[] { nameof(Name), nameof(Label), nameof(IsUserName), nameof(NameTip) })
+            foreach (var n in new[] { nameof(Name), nameof(Label), nameof(IsUserName), nameof(NameTip), nameof(Pending) })
                 PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(n));
         }
 
@@ -35,6 +35,16 @@ namespace MCG_3DPanel.UI
         public string Kind => Line.Kind.ToString();
         /// <summary>Cột Kind: "Web" / "Web (merged)".</summary>
         public string KindText => Line.IsMerged ? $"{Kind} (merged)" : Kind;
+
+        /// <summary>Có sửa trên bản 2D đang chờ Update (tên / Del / Merge / Split của đoạn thuộc tuyến).</summary>
+        public bool Pending
+        {
+            get
+            {
+                var keys = PanelData.Build?.Remote?.PendingKeys;
+                return keys != null && keys.Count > 0 && Line.Pieces.Any(p => p.Key != null && keys.Contains(p.Key));
+            }
+        }
 
         public string NameTip => IsUserName
             ? $"Your name (auto: {AutoName}). Type a new one and press Enter; empty = back to {AutoName}. Applies to all selected rows."

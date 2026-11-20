@@ -232,7 +232,9 @@ namespace MCG_3DPanel.UI
             {
                 try
                 {
-                    string err = WithDb(p.Db, tr => NameStore.Save(tr, p.SourceBtrId));
+                    // Bản 2D đọc nền file 3D: ghi phần sửa chờ Update vào bản 2D, không ghi file 3D.
+                    string err = p.Build?.Remote != null ? MCG_3DPanel.Commands.Remote3DSession.SavePending(p.Build)
+                                                        : WithDb(p.Db, tr => NameStore.Save(tr, p.SourceBtrId));
                     if (err != null) errors.Add($"{p.PanelName}: {err}");
                 }
                 catch (System.Exception ex) { errors.Add($"{p.PanelName}: {ex.Message}"); }
@@ -377,11 +379,14 @@ namespace MCG_3DPanel.UI
         private static bool InActiveDrawing(NamingRow r)
         {
             var doc = AcadApp.DocumentManager.MdiActiveDocument;
+            // Bản 2D bị khoá (lệch file 3D / file 3D đang mở) ⇒ không sửa; OtherDrawingText nêu lý do.
+            if (r?.PanelData?.Build?.Remote?.Locked == true) return false;
             return doc != null && r?.PanelData?.Db != null && r.PanelData.Db == doc.Database;
         }
 
         private static string OtherDrawingText(NamingRow r)
-            => $"Panel {r?.Panel} is in drawing {DrawingName(r?.PanelData?.Db)} — switch to it to rename.";
+            => r?.PanelData?.Build?.Remote?.Locked == true ? r.PanelData.Build.Remote.LockReason
+             : $"Panel {r?.Panel} is in drawing {DrawingName(r?.PanelData?.Db)} — switch to it to rename.";
 
         private static string DrawingName(Database db)
         {

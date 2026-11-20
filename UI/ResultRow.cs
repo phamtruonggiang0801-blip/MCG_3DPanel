@@ -113,6 +113,8 @@ namespace MCG_3DPanel.UI
 
         /// <summary>Có correction cho part này ⇒ grid tô chữ xanh (ResultRowStyle).</summary>
         public bool IsCorrected { get; set; }
+        /// <summary>Có sửa trên bản 2D đang chờ Update (chưa vào file 3D).</summary>
+        public bool Pending { get; set; }
 
         public event PropertyChangedEventHandler PropertyChanged;
         internal event Action<ResultRow> KindChanged;
@@ -172,6 +174,15 @@ namespace MCG_3DPanel.UI
                 PanelKey = panelKey,
                 SourceKey = corrKey,
             };
+            if (build.Remote != null)
+            {
+                // Đang ở bản 2D (spec 2026-11-20 3d-controls-in-2d): highlight entity 2D gốc; dòng có sửa chờ Update được đánh dấu.
+                row.Path = p?.IdPath != null ? Commands.Remote3DSession.PathIn2D(build, p.IdPath)
+                                            : Commands.Remote3DSession.PathForKey(build, corrKey ?? s.DeleteKey);
+                row.Bounds = Commands.Remote3DSession.BoundsIn2D(row.Path) ?? new Extents3d();
+                row.Pending = (corrKey != null && build.Remote.PendingKeys.Contains(corrKey))
+                              || (s.DeleteKey != null && build.Remote.PendingKeys.Contains(s.DeleteKey));
+            }
             row.Kind = d.Kind;
             row.Flipped = corr?.FlipDir == true;
             if (p != null && !s.Deleted && (p.Type == PartType.HP || p.Type == PartType.FlatBar))
@@ -183,8 +194,9 @@ namespace MCG_3DPanel.UI
                 row.CanSnip = true;
                 row.SnipLoLabel = horiz ? "◀ L" : "▼ B";
                 row.SnipHiLabel = horiz ? "R ▶" : "T ▲";
-                row.SnipLoOn = p.SnipLo;
-                row.SnipHiOn = p.SnipHi;
+                // Bản 2D: solid chưa dựng lại ⇒ Sniped End ép đang chờ hiện theo correction.
+                row.SnipLoOn = build.Remote != null ? corr?.SnipLo ?? p.SnipLo : p.SnipLo;
+                row.SnipHiOn = build.Remote != null ? corr?.SnipHi ?? p.SnipHi : p.SnipHi;
                 row.EndLo = aIsLo ? a : b;
                 row.EndHi = aIsLo ? b : a;
                 if (p.Type == PartType.HP)
