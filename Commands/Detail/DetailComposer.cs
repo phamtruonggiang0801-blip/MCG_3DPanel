@@ -49,17 +49,17 @@ namespace MCG_3DPanel.Commands.Detail
                 {
                     var (brk, edges) = DetailComposeRules.TopPlateRuns(loops[i], dist, BoundaryTol);
                     topBreaks.AddRange(brk);
-                    // Lỗ khoét nằm trọn trong vùng ⇒ nét liền AM_0 (5 mẫu: Circle AM_0), tròn ⇒ Circle; mép tấm ⇒ AM_7 (kỹ sư 2026-11-18)
+                    // Lỗ khoét nằm trọn trong vùng: cùng layer Top Plate AM_7 (kỹ sư 2026-11-20), tròn ⇒ Circle
                     bool hole = brk.Count == 0 && DetailComposeRules.IsHole(loops, i);
                     if (hole && DetailComposeRules.IsCircle(loops[i], HoleRoundTol, out P2 c, out double rad))
                     {
                         var circle = new Circle(new Point3d(c.X, c.Y, 0), Vector3d.ZAxis, rad);
                         circle.SetDatabaseDefaults(Db);
-                        circle.Layer = AM0;
+                        circle.Layer = AM7;
                         ents.Add(circle);
                         continue;
                     }
-                    foreach (var e in edges) ents.Add(Poly(e.Pts, e.Closed, hole ? AM0 : AM7));
+                    foreach (var e in edges) ents.Add(Poly(e.Pts, e.Closed, AM7));
                 }
                 AddStructure(r, shift, ents, dist, topBreaks, AM4);
                 var m = Matrix3d.Displacement(new Vector3d(shift.X, shift.Y, 0));
@@ -186,8 +186,8 @@ namespace MCG_3DPanel.Commands.Detail
         // ─── Đồ 2D (chỉ Detail Plan / View) ────────────────────────────────────
 
         /// <summary>Đồ chỉ có trên bản vẽ 2D, toạ độ plan (WCS): đi cây block _Assy (bỏ Top Plate; Structure chỉ lấy block ký hiệu; đi xuống
-        /// mọi block &lt;panel&gt;_* trừ Lashing Hole). Block khác giữ nguyên nếu điểm chèn trong vùng: nằm thẳng trong _Assy ⇒ AM_2,
-        /// trong block con ⇒ giữ layer gốc. Đường cong trong các block chứa: cắt theo vùng, bỏ AM_9; polyline của Wire guide support ⇒ AM_7 rộng 3.
+        /// mọi block &lt;panel&gt;_* trừ Lashing Hole). Block khác giữ nguyên nếu điểm chèn trong vùng, đổi sang AM_2 ở mọi cấp
+        /// (kỹ sư 2026-11-20). Đường cong trong các block chứa: cắt theo vùng, bỏ AM_9; polyline của Wire guide support ⇒ AM_7 rộng 3.
         /// Chỉ ĐỌC cây _Assy — entity trả về là bản chép.</summary>
         public static List<Entity> TwoDItems(Transaction tr, BlockReference assyRef, DetailRegion region, List<string> warnings = null)
         {
@@ -238,8 +238,8 @@ namespace MCG_3DPanel.Commands.Detail
                         var leaf = (BlockReference)br.Clone();
                         res.Add(leaf);
                         leaf.TransformBy(xf);
-                        // Chỉ phụ kiện nằm TRỰC TIẾP trong _Assy ⇒ AM_2; block trong block con giữ layer gốc (kỹ sư 2026-11-18)
-                        if (depth == 0) leaf.Layer = AM2;
+                        // Mọi block chép từ 2D (phụ kiện, ký hiệu góc trong _Structure, Hole width…) ⇒ AM_2 (kỹ sư 2026-11-20)
+                        leaf.Layer = AM2;
                         continue;
                     }
                     if (symbolsOnly) continue;   // nét kết cấu 2D (trong _Structure): không chép
