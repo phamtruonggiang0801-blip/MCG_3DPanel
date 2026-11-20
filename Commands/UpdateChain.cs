@@ -56,6 +56,7 @@ namespace MCG_3DPanel.Commands
             _request = null;
             _planViewRequested = false;
             if (req?.Remote == null) return;
+            TraceLog.Write($"{Command}: plan view = {planOnly}, pending = {req.Remote.PendingKeys.Count}, locked = {req.Remote.LockReason}");
             try
             {
                 if (planOnly && req.Remote.PendingKeys.Count == 0) PlanViewOnly(req);
@@ -78,9 +79,13 @@ namespace MCG_3DPanel.Commands
             string file3D = r.File3D;
             Document doc3D = PanelCommands.FindOpen(file3D);
             bool wasOpen = doc3D != null;
+            TraceLog.Write($"PlanViewOnly: {file3D}, open before = {wasOpen}");
             if (doc3D == null) doc3D = Application.DocumentManager.Open(file3D, false);
+            TraceLog.Write("PlanViewOnly: 3D opened");
             PanelCommands.Activate(doc3D);
+            TraceLog.Write("PlanViewOnly: 3D active, Plan View starts");
             string msg = PlanViewCommand.CreateFor(doc3D, out bool err);
+            TraceLog.Write($"PlanViewOnly: Plan View returned (error = {err}): {msg}");
             string extra = "";
             if (!wasOpen && DocOf(doc3D.Database) != null)
             {
@@ -193,6 +198,7 @@ namespace MCG_3DPanel.Commands
 
         private static void Finish(string msg, bool error)
         {
+            TraceLog.Write($"UpdateChain.Finish (error = {error}): {msg}");
             try { Finished?.Invoke(msg, error); }
             catch (System.Exception ex) { System.Diagnostics.Debug.WriteLine("[UpdateChain] Finished: " + ex.Message); }
             try { Application.DocumentManager.MdiActiveDocument?.Editor?.WriteMessage("\n[MCG_3DPanel] " + msg + "\n"); } catch { }

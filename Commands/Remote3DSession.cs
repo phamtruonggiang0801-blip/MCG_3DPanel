@@ -85,7 +85,9 @@ namespace MCG_3DPanel.Commands
                 Drop(entries, key);
             }
 
+            TraceLog.Write($"Remote3DSession: read 3D file for {doc2D.Name} ({(e == null ? "first" : "changed")})");
             Detail3DSource src = Detail3DSource.Open(doc2D.Database, doc2D.Name, refId, null, out string why);
+            TraceLog.Write($"Remote3DSession: {(src == null ? "no file: " + why : "read " + src.FilePath)}");
             if (src == null)
             {
                 if (!string.IsNullOrEmpty(why)) notes.Add(why);

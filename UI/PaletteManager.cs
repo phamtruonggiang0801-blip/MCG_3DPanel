@@ -107,11 +107,23 @@ namespace MCG_3DPanel.UI
         private void RefreshTabs(Autodesk.AutoCAD.DatabaseServices.Database eventDb = null)
         {
             if (MCG_3DPanel.Commands.PanelCommands.IsBuilding) return;
+            // Chốt chặn nạp lồng: đang nạp mà sự kiện document bắn lại ⇒ bỏ lần lồng (chẩn đoán tràn stack 2026-11-20).
+            if (_refreshing) { MCG_3DPanel.Commands.TraceLog.Write("RefreshTabs: re-entered, skipped"); return; }
+            _refreshing = true;
+            try { RefreshTabsCore(eventDb); }
+            finally { _refreshing = false; }
+        }
+
+        private bool _refreshing;
+
+        private void RefreshTabsCore(Autodesk.AutoCAD.DatabaseServices.Database eventDb)
+        {
             Guarded(() =>
             {
                 // Sự kiện document truyền Database của chính document đó (không lấy MdiActiveDocument: document đang đóng
                 // sẽ bị nạp lại vào cache sau Forget).
                 var db = eventDb ?? Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument?.Database;
+                MCG_3DPanel.Commands.TraceLog.Write("RefreshTabs: " + (FindDoc(db)?.Name ?? "(none)"));
                 if (db == null) { _input.ShowPanel(null); return; }   // đóng hết drawing: OnDocumentClosing đã dọn bảng
                 var builds = MCG_3DPanel.Commands.PanelSession.For(db, out string message);
                 // Bản vẽ 2D (không có panel 3D): đọc nền file <panel>_3D*.dwg cạnh nó — sửa chờ Update (spec 2026-11-20 3d-controls-in-2d).
@@ -126,6 +138,7 @@ namespace MCG_3DPanel.UI
                 // Highlight dùng chung 1 trạng thái ⇒ tab ĐANG MỞ chạy SAU để vùng chọn của nó thắng.
                 if (_activeTab == "Naming") { _result.ShowFile(builds, message); _naming.ShowFile(builds, message); }
                 else { _naming.ShowFile(builds, message); _result.ShowFile(builds, message); }
+                MCG_3DPanel.Commands.TraceLog.Write($"RefreshTabs: done, {builds.Count} panel(s)");
             });
         }
 
