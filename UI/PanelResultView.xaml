@@ -84,9 +84,17 @@
                 </Button.ContextMenu>
             </Button>
             <!-- Bản vẽ 2D (spec 2026-11-20 3d-controls-in-2d): áp sửa chờ vào 3D, vẽ lại Plan View + Detail. Chỉ hiện khi đọc nền file 3D. -->
-            <Button x:Name="BtnUpdate2D" Content="Update" Style="{StaticResource ToolbarPrimaryButtonStyle}" Visibility="Collapsed"
-                    Click="BtnUpdate2D_Click"
-                    ToolTip="Apply the waiting edits to the 3D file, then redraw the Plan View and the details of this panel"/>
+            <Button x:Name="BtnUpdate2D" Content="Update ▾" Style="{StaticResource ToolbarPrimaryButtonStyle}" Visibility="Collapsed"
+                    Click="BtnUpdate2D_Click" ToolTip="Apply the waiting edits: to the drawing (names) or to the 3D model">
+                <Button.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Update Drawing" Click="MnuUpdateDrawing_Click"
+                                  ToolTip="Redraw the Plan View and the details from the current 3D file, with the waiting names. Other edits keep waiting for Update 3D Model."/>
+                        <MenuItem Header="Update 3D Model" Click="MnuUpdateModel_Click"
+                                  ToolTip="Rebuild the 3D file with every waiting edit. The drawing is not redrawn — run Update Drawing afterwards."/>
+                    </ContextMenu>
+                </Button.ContextMenu>
+            </Button>
             <Button x:Name="BtnCopy" Content="Copy" Style="{StaticResource ToolbarButtonStyle}"
                     Click="BtnCopy_Click" ToolTip="Copy the table to the clipboard (paste straight into Excel)"/>
             <Button x:Name="BtnPick" Content="Pick" Style="{StaticResource ToolbarButtonStyle}"

@@ -16,3 +16,21 @@ public class UpdateChainRulesTests
     [Fact] public void Applied1() =>
         Assert.Equal("3D updated. 1 edit from the 2D drawing applied.", UpdateChainRules.Summary(false, null, false, null, 1));
 }
+
+public class UpdateDrawingRulesTests
+{
+    [Fact] public void PlanAndDetails_NamesApplied_GeometryWaits() =>
+        Assert.Equal("Plan View and Details updated with 2 waiting names. 3 edits still wait for Update 3D Model.",
+            UpdateChainRules.DrawingSummary(true, null, true, null, 2, 3));
+    [Fact] public void PlanOnly_NothingWaiting() =>
+        Assert.Equal("Plan View updated.", UpdateChainRules.DrawingSummary(true, null, false, null, 0, 0));
+    [Fact] public void OneName() =>
+        Assert.Equal("Plan View updated with 1 waiting name.", UpdateChainRules.DrawingSummary(true, null, false, null, 1, 0));
+    [Fact] public void PlanFailed() =>
+        Assert.Equal("Plan View failed: X. Details were not updated.", UpdateChainRules.DrawingSummary(true, "X", true, null, 0, 0));
+    [Fact] public void DetailsFailed() =>
+        Assert.Equal("Plan View updated; Details failed: Y. 1 edit still waits for Update 3D Model.",
+            UpdateChainRules.DrawingSummary(true, null, true, "Y", 0, 1));
+    [Fact] public void NoDrawing() =>
+        Assert.Equal("This panel has no Plan View or details yet — use Create Drawing.", UpdateChainRules.DrawingSummary(false, null, false, null, 0, 0));
+}

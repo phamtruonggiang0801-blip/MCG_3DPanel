@@ -179,7 +179,7 @@ namespace MCG_3DPanel.UI
             var remoteBuilds = kept.Where(b => b.Remote != null).ToList();
             BtnUpdate2D.Visibility = remoteBuilds.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
             int waiting = remoteBuilds.GroupBy(b => b.Remote.AssyBtr2D).Sum(g => g.First().Remote.PendingKeys.Count);
-            BtnUpdate2D.Content = waiting > 0 ? $"Update ({waiting})" : "Update";
+            BtnUpdate2D.Content = waiting > 0 ? $"Update ({waiting}) ▾" : "Update ▾";
 
             // Drawing không có panel (vd bản 2D) ⇒ bảng trống + gợi ý.
             if (kept.Count == 0)
@@ -726,16 +726,28 @@ namespace MCG_3DPanel.UI
             cm.IsOpen = true;
         }
 
-        /// <summary>Update từ bản 2D: panel của dòng đang chọn (không chọn ⇒ panel đầu tiên). Nhiều panel ⇒ mỗi lần 1 panel.</summary>
+        /// <summary>Mở menu Update (Drawing / 3D Model) dưới nút — kỹ sư 2026-11-20.</summary>
         private void BtnUpdate2D_Click(object sender, RoutedEventArgs e)
+        {
+            var cm = BtnUpdate2D.ContextMenu;
+            cm.PlacementTarget = BtnUpdate2D;
+            cm.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            cm.IsOpen = true;
+        }
+
+        private void MnuUpdateDrawing_Click(object sender, RoutedEventArgs e) => RunUpdate(Commands.UpdateChain.RequestDrawing, "Updating the drawing…");
+        private void MnuUpdateModel_Click(object sender, RoutedEventArgs e) => RunUpdate(Commands.UpdateChain.RequestModel, "Updating the 3D model…");
+
+        /// <summary>Panel của dòng đang chọn (không chọn ⇒ panel đầu tiên của bản 2D). Nhiều panel ⇒ mỗi lần 1 panel.</summary>
+        private void RunUpdate(Action<BuildResult> request, string status)
         {
             try
             {
                 var b = Selected.Select(r => r.Build).FirstOrDefault(x => x?.Remote != null)
                         ?? _builds.FirstOrDefault(x => x.Kept && x.Remote != null);
                 if (b == null) { SetStatus("Nothing to update — open the 2D drawing of a panel that has a 3D file.", error: true); return; }
-                SetStatus($"Updating {System.IO.Path.GetFileName(b.Remote.File3D)}…");
-                Commands.UpdateChain.Request(b);
+                SetStatus(status);
+                request(b);
             }
             catch (System.Exception ex) { SetStatus("Update failed: " + ex.Message, error: true); }
         }
@@ -749,9 +761,7 @@ namespace MCG_3DPanel.UI
                         ?? _builds.FirstOrDefault(x => x.Kept && x.Remote != null && x.Remote.AssyRef2D.Database == db);
                 Commands.TraceLog.Write("Menu Plan View: " + (b == null ? "3D file path" : "from 2D, " + b.Remote.File3D));
                 if (b == null) { PlanViewCommand.Request(); return; }   // đang ở file 3D: như cũ
-                SetStatus(b.Remote.PendingKeys.Count > 0
-                    ? $"Updating {System.IO.Path.GetFileName(b.Remote.File3D)} with the waiting edits, then writing the Plan View…"
-                    : "Writing the Plan View…");
+                SetStatus("Writing the Plan View…");
                 Commands.UpdateChain.RequestPlanView(b);
             }
             catch (System.Exception ex) { SetStatus("Plan View failed: " + ex.Message, error: true); }

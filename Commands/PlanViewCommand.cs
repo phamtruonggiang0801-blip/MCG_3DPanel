@@ -82,6 +82,33 @@ namespace MCG_3DPanel.Commands
             TraceLog.Write("PlanView: snapshot read");
             string path = Source2DLocator.Find(doc3D, build, out string why) ?? throw new StopException(why);
             TraceLog.Write("PlanView: 2D drawing " + path);
+            return WriteInto(path, input, build);
+        }
+
+        /// <summary>Plan View từ bản 2D KHÔNG mở file 3D (kỹ sư 2026-11-20): <paramref name="remote"/> đọc từ database phụ (tên chờ đã
+        /// nạp trong NameStore, correction theo file 3D). Trả thông báo; <paramref name="error"/> = dừng / lỗi. Không ném.</summary>
+        internal static string CreateFrom2D(BuildResult remote, Document doc2D, out bool error)
+        {
+            error = false;
+            try
+            {
+                PlanViewInput input = Remote3DSession.WithFileCorrections(remote, b =>
+                    PlanViewSnapshot.Read(remote.Remote.SideDb, b, out string snapErr) ?? throw new StopException(snapErr));
+                TraceLog.Write("PlanView (2D): snapshot read");
+                return WriteInto(doc2D.Name, input, remote);
+            }
+            catch (StopException stop) { error = true; return stop.Message; }
+            catch (System.Exception ex)
+            {
+                error = true;
+                try { Application.DocumentManager.MdiActiveDocument?.Editor?.WriteMessage("\n[MCG_3DPanel] Plan View error detail:\n" + ex + "\n"); } catch { }
+                return ex.Message + " (details on the command line)";
+            }
+        }
+
+        /// <summary>Bước 3–9: mở / kích hoạt bản vẽ 2D <paramref name="path"/> và ghi Plan View từ <paramref name="input"/>.</summary>
+        private static string WriteInto(string path, PlanViewInput input, BuildResult build)
+        {
             string refH = build.SourceRefId.Handle.ToString(), btrH = build.SourceBtrId.Handle.ToString();
 
             // 3. Mở / kích hoạt bản vẽ 2D. Từ đây KHÔNG dùng Editor của file 3D.

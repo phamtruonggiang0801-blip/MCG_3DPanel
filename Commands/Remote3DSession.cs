@@ -183,6 +183,25 @@ namespace MCG_3DPanel.Commands
             }
         }
 
+        /// <summary>Chạy <paramref name="f"/> trên panel đọc lại từ database phụ với correction CỦA FILE 3D (bỏ sửa hình học đang chờ — 3D
+        /// chưa dựng lại) nhưng giữ tên đang chờ trong NameStore: Update Drawing / Plan View từ bản 2D (kỹ sư 2026-11-20). Trả store về như cũ.</summary>
+        public static T WithFileCorrections<T>(BuildResult remote, Func<BuildResult, T> f)
+        {
+            RemoteLink r = remote?.Remote ?? throw new InvalidOperationException("not a panel read from a 3D file");
+            string key = CorrectionStore.PanelKey(remote.SourceBtrId);
+            string current = CorrectionStore.Snapshot(key);
+            CorrectionStore.LoadJson(key, r.BaseCorr);
+            try
+            {
+                var notes = new List<string>();
+                var build = PanelSession.ReadAll(r.SideDb, notes).FirstOrDefault(b => b.BlockName == remote.BlockName)
+                            ?? throw new InvalidOperationException(notes.FirstOrDefault() ?? "the panel could not be read from the 3D file");
+                build.Remote = r;
+                return f(build);
+            }
+            finally { CorrectionStore.LoadJson(key, current); }
+        }
+
         /// <summary>Pending (JSON) trên định nghĩa _Assy của bản 2D; không có ⇒ null.</summary>
         public static string ReadPending(Database db2D, ObjectId assyBtr2D)
         {

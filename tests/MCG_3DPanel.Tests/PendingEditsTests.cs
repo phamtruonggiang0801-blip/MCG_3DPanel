@@ -157,3 +157,19 @@ public class PendingEditsTests
         Assert.Empty(KeyRemap.Handles(null));
     }
 }
+
+public class PendingCountsTests
+{
+    [Fact]
+    public void Counts_SplitsNamesFromGeometry()
+    {
+        string bc = CorrectionJson.Serialize(new Dictionary<string, PartCorrection>(), new string[0]);
+        string cc = CorrectionJson.Serialize(new Dictionary<string, PartCorrection> { { "A#0", new PartCorrection { FlipDir = true } } }, new[] { "B#0" });
+        string bn = NamesJson.Serialize(new Dictionary<string, string>());
+        string cn = NamesJson.Serialize(new Dictionary<string, string> { { "C#0", "T1" } }, null, new[] { new[] { "D#0", "E#0" } });
+        var (names, geometry) = PendingEdits.Counts(PendingEdits.Diff(bc, cc, bn, cn));
+        Assert.Equal(3, names);      // C#0, D#0, E#0
+        Assert.Equal(2, geometry);   // A#0, B#0
+        Assert.Equal((0, 0), PendingEdits.Counts(null));
+    }
+}

@@ -27,6 +27,31 @@ namespace MCG_3DPanel.Services.Update
             return s;
         }
 
+        /// <summary>Câu báo Update Drawing (kỹ sư 2026-11-20): vẽ lại Plan View + Details từ 3D hiện có, áp tên đang chờ; sửa hình học
+        /// vẫn chờ Update 3D Model.</summary>
+        /// <param name="names">Số tên chờ đã đưa lên bản vẽ.</param>
+        /// <param name="stillWaiting">Số sửa hình học còn chờ Update 3D Model.</param>
+        public static string DrawingSummary(bool planView, string planErr, bool detail, string detailErr, int names, int stillWaiting)
+        {
+            if (!planView && !detail) return "This panel has no Plan View or details yet — use Create Drawing.";
+            string s;
+            if (planView && planErr != null)
+                s = $"Plan View failed: {planErr}." + (detail ? " Details were not updated." : "");
+            else
+            {
+                var done = new List<string>();
+                if (planView) done.Add("Plan View");
+                if (detail && detailErr == null) done.Add("Details");
+                string with = names > 0 ? $" with {names} waiting name{(names > 1 ? "s" : "")}" : "";
+                s = done.Count > 0 ? Join(done) + " updated" + with : "";
+                if (detail && detailErr != null) s += (s.Length > 0 ? "; " : "") + $"Details failed: {detailErr}";
+                s += ".";
+            }
+            if (stillWaiting > 0)
+                s += $" {stillWaiting} edit{(stillWaiting > 1 ? "s" : "")} still wait{(stillWaiting > 1 ? "" : "s")} for Update 3D Model.";
+            return s;
+        }
+
         static string Join(List<string> items) =>
             items.Count == 1 ? items[0] : string.Join(", ", items.GetRange(0, items.Count - 1)) + " and " + items[items.Count - 1];
     }

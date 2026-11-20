@@ -36,6 +36,9 @@ namespace MCG_3DPanel.UI
         /// <summary>Cột Kind: "Web" / "Web (merged)".</summary>
         public string KindText => Line.IsMerged ? $"{Kind} (merged)" : Kind;
 
+        /// <summary>Tổng chiều dài các đoạn của tuyến (mm, hệ block 2D) — cột Length để sort (kỹ sư 2026-11-20).</summary>
+        public double Length => Line.Pieces.Sum(p => System.Math.Sqrt((p.X1 - p.X0) * (p.X1 - p.X0) + (p.Y1 - p.Y0) * (p.Y1 - p.Y0)));
+
         /// <summary>Có sửa trên bản 2D đang chờ Update (tên / Del / Merge / Split của đoạn thuộc tuyến).</summary>
         public bool Pending
         {

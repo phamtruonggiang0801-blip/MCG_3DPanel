@@ -29,6 +29,43 @@ namespace MCG_3DPanel.UI
         public PanelNamingView()
         {
             InitializeComponent();
+            // Câu báo Update / Plan View từ bản 2D (tab Result nạp lại các tab; ở đây chỉ hiện câu báo).
+            MCG_3DPanel.Commands.UpdateChain.Finished += (msg, err) => SetStatus(msg, err);
+        }
+
+        // ─── Update (bản vẽ 2D): cùng menu như tab Result — kỹ sư 2026-11-20 ─────────
+
+        /// <summary>Hiện nút khi có panel đọc nền từ file 3D; nhãn kèm số sửa chờ.</summary>
+        private void UpdateButton()
+        {
+            var remote = _panels.Select(p => p.Build).Where(b => b?.Remote != null).ToList();
+            BtnUpdate2D.Visibility = remote.Count > 0 ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+            int waiting = remote.GroupBy(b => b.Remote.AssyBtr2D).Sum(g => g.First().Remote.PendingKeys.Count);
+            BtnUpdate2D.Content = waiting > 0 ? $"Update ({waiting}) ▾" : "Update ▾";
+        }
+
+        private void BtnUpdate2D_Click(object sender, RoutedEventArgs e)
+        {
+            var cm = BtnUpdate2D.ContextMenu;
+            cm.PlacementTarget = BtnUpdate2D;
+            cm.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            cm.IsOpen = true;
+        }
+
+        private void MnuUpdateDrawing_Click(object sender, RoutedEventArgs e) => RunUpdate(MCG_3DPanel.Commands.UpdateChain.RequestDrawing, "Updating the drawing…");
+        private void MnuUpdateModel_Click(object sender, RoutedEventArgs e) => RunUpdate(MCG_3DPanel.Commands.UpdateChain.RequestModel, "Updating the 3D model…");
+
+        private void RunUpdate(Action<BuildResult> request, string status)
+        {
+            try
+            {
+                var b = Selected.Select(r => r.PanelData.Build).FirstOrDefault(x => x?.Remote != null)
+                        ?? _panels.Select(p => p.Build).FirstOrDefault(x => x?.Remote != null);
+                if (b == null) { SetStatus("Nothing to update — open the 2D drawing of a panel that has a 3D file.", error: true); return; }
+                SetStatus(status);
+                request(b);
+            }
+            catch (System.Exception ex) { SetStatus("Update failed: " + ex.Message, error: true); }
         }
 
         private PanelPosition Position => PositionProvider?.Invoke() ?? PanelPosition.Center;
@@ -77,6 +114,7 @@ namespace MCG_3DPanel.UI
         {
             // 2 lần chèn cùng block 2D = cùng 1 bộ tên (lưu trên định nghĩa block) ⇒ chỉ 1 lần (review I2).
             _panels = BulkEdit.OnePer(panels ?? new List<NamingPanel>(), p => p.PanelKey, out int dup);
+            UpdateButton();
             Rebind(keep);
             RestoreSummary();
             if (dup > 0) SetStatus(Summary() + $"  ·  {dup} copy(ies) of the same 2D block listed once (they share their names).");
@@ -244,6 +282,7 @@ namespace MCG_3DPanel.UI
 
         private void Report(string note, List<string> errors)
         {
+            UpdateButton();   // số sửa chờ đổi sau khi đặt / xoá tên trên bản 2D
             if (errors.Count > 0) SetStatus(note + "  ·  " + string.Join(" · ", errors), error: true);
             else SetStatus(note + "  ·  " + Summary());
         }

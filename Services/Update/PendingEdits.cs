@@ -144,6 +144,30 @@ namespace MCG_3DPanel.Services.Update
             return r;
         }
 
+        /// <summary>(số khoá tên — phần Names, số khoá hình học — phần Corr): Update Drawing chỉ áp được tên (kỹ sư 2026-11-20).</summary>
+        public static (int Names, int Geometry) Counts(string pending)
+        {
+            Doc doc = Read(pending);
+            if (doc == null) return (0, 0);
+            var g = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (doc.Corr != null)
+            {
+                g.UnionWith(doc.Corr.Set.Keys); g.UnionWith(doc.Corr.Cleared);
+                g.UnionWith(doc.Corr.Deleted); g.UnionWith(doc.Corr.Restored);
+            }
+            var n = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (doc.Names != null)
+            {
+                n.UnionWith(doc.Names.Set.Keys); n.UnionWith(doc.Names.Cleared);
+                n.UnionWith(doc.Names.Deleted); n.UnionWith(doc.Names.Undeleted);
+                foreach (var grp in doc.Names.MergesAdded.Concat(doc.Names.MergesRemoved)) n.UnionWith(grp);
+                n.UnionWith(doc.Names.SplitsAdded); n.UnionWith(doc.Names.SplitsRemoved);
+            }
+            n.RemoveWhere(string.IsNullOrEmpty);
+            g.RemoveWhere(string.IsNullOrEmpty);
+            return (n.Count, g.Count);
+        }
+
         /// <summary>Số khoá đang chờ (0 nếu không có).</summary>
         public static int Count(string pending) => Keys(pending).Count;
 

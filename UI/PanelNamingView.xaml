@@ -31,6 +31,18 @@
 
         <WrapPanel Grid.Row="0" Margin="1,0,1,2">
             <!-- Kỹ sư 2026-11-05: bỏ Select panel / Copy / Position — panel nạp từ Build 3D, Position theo tab Input. -->
+            <!-- Bản vẽ 2D: cùng menu Update như tab Result (kỹ sư 2026-11-20). -->
+            <Button x:Name="BtnUpdate2D" Content="Update ▾" Style="{StaticResource ToolbarPrimaryButtonStyle}" Visibility="Collapsed"
+                    Click="BtnUpdate2D_Click" ToolTip="Apply the waiting edits: to the drawing (names) or to the 3D model">
+                <Button.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Update Drawing" Click="MnuUpdateDrawing_Click"
+                                  ToolTip="Redraw the Plan View and the details from the current 3D file, with the waiting names. Other edits keep waiting for Update 3D Model."/>
+                        <MenuItem Header="Update 3D Model" Click="MnuUpdateModel_Click"
+                                  ToolTip="Rebuild the 3D file with every waiting edit. The drawing is not redrawn — run Update Drawing afterwards."/>
+                    </ContextMenu>
+                </Button.ContextMenu>
+            </Button>
             <Button x:Name="BtnPick" Content="Pick" Style="{StaticResource ToolbarButtonStyle}"
                     Click="BtnPick_Click" ToolTip="Click objects, or drag a window on empty space (left→right = fully inside, right→left = touching), to find their lines. Shift + click / drag (or type R) = unselect, A = add again. Enter = done, Esc = clear the selection"/>
         </WrapPanel>
@@ -89,6 +101,9 @@
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
                 <DataGridTextColumn Header="Size" Binding="{Binding Spec}" Width="*" MinWidth="110" IsReadOnly="True"/>
+                <!-- Tổng chiều dài các đoạn của tuyến (mm) — sort theo số (kỹ sư 2026-11-20). -->
+                <DataGridTextColumn Header="Length" Binding="{Binding Length, StringFormat={}{0:0}}" SortMemberPath="Length"
+                                    Width="Auto" IsReadOnly="True"/>
                 <DataGridTextColumn Header="Kind" Binding="{Binding KindText}" Width="Auto" IsReadOnly="True"/>
             </DataGrid.Columns>
         </DataGrid>

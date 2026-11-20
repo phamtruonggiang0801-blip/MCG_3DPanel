@@ -118,3 +118,16 @@ Nút Update (tab Result, ở 2D; tab Input giữ nút Build/Update hiện có �
 - Cách Plan View chạy khi file 3D không active (mở file 3D tạm hay đọc snapshot từ database phụ).
 - Kiểu đánh dấu dòng chờ (màu / ký hiệu) theo `PanelStyles.xaml` và skill ui-guidelines.
 - Cấu trúc cache đọc file 3D.
+
+## Bổ sung sau chạy thử (kỹ sư 2026-11-20)
+
+- "Sửa nhanh bản vẽ" chủ yếu là sửa tên. Nút **Update ▾** (dropdown như Create Drawing, có ở tab Result và Naming):
+  - **Update Drawing** — vẽ lại Plan View + Details từ file 3D hiện có, KHÔNG mở file 3D (Plan View đọc database phụ), áp tên
+    đang chờ; sửa hình học (Kind, ⇄, Snip, Tripping, Collar, FB height, Delete) vẫn chờ, câu báo nêu số còn chờ. Block 2D lệch
+    file 3D ⇒ từ chối, bảo chạy Update 3D Model trước.
+  - **Update 3D Model** — dựng lại file 3D với mọi sửa chờ, không vẽ lại bản vẽ (nhắc chạy Update Drawing nếu panel có bản vẽ).
+- Create Drawing ▸ Plan View trên bản 2D = phần Plan View của Update Drawing (cả khi chưa có Plan View), không mở file 3D.
+- Tab Naming thêm cột **Length** = tổng chiều dài các đoạn của tuyến (mm), sort theo số.
+- Update / Plan View từ bản 2D chạy thẳng từ nút palette (không qua lệnh của bản 2D — lệnh đó làm mất phần ghi vào bản 2D); tab
+  không tự nạp trong lúc chạy; database phụ không bao giờ dùng document 3D đang mở (lỗi 0xc0000005).
+- Chưa làm: Build / Update 3D Model chạy ngầm không mở file 3D (chờ kỹ sư: sau Build lần đầu có cần xem 3D không).
