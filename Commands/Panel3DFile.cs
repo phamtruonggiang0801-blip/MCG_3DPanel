@@ -111,6 +111,8 @@ namespace MCG_3DPanel.Commands
             public List<Services.Update.ShapeRecord> Shapes = new List<Services.Update.ShapeRecord>();
             /// <summary>Dòng báo kết quả đổi khoá (giữ / bỏ, base point dời), cách nhau "\n"; null = không có gì để báo.</summary>
             public string RemapNote;
+            /// <summary>File cũ có correction hoặc tên người dùng.</summary>
+            public bool HasEdits => !string.IsNullOrWhiteSpace(CorrectionsJson) || !string.IsNullOrWhiteSpace(NamesJson);
         }
 
         /// <summary>Đọc file 3D cũ từ đĩa bằng database phụ (chỉ đọc, chia sẻ), luôn giải phóng database. Meta null ⇒ file không có dữ liệu panel
@@ -133,7 +135,7 @@ namespace MCG_3DPanel.Commands
                     old.CorrectionsJson = CorrectionXRecord.Read(tr, btr2D, CorrectionXRecord.CorrectionsKey);
                     old.NamesJson = CorrectionXRecord.Read(tr, btr2D, CorrectionXRecord.NamesKey);
                     old.BlockName = ((BlockTableRecord)tr.GetObject(btr2D, OpenMode.ForRead)).Name;
-                    old.Shapes = ShapeRecordReader.Records(tr, btr2D);
+                    if (old.HasEdits) old.Shapes = ShapeRecordReader.Records(tr, btr2D);   // không có chỉnh sửa ⇒ không cần so hình
                 }
                 return old;
             }

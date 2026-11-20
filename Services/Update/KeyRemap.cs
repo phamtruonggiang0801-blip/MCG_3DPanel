@@ -74,6 +74,18 @@ namespace MCG_3DPanel.Services.Update
             return NamesJson.Serialize(newNames, newDeleted, newMerges, newSplits);   // nhóm Merge còn < 2 khoá tự bị bỏ
         }
 
+        /// <summary>Dòng báo sau khi đổi khoá: "giữ / bỏ" chỉ khi có chỉnh sửa (kept + dropped &gt; 0), mỗi base point dời 1 dòng;
+        /// không có gì ⇒ null (không báo "0 edits…" — ux-quality-bar).</summary>
+        public static string Note(int kept, int dropped, IEnumerable<(string Block, MCG_3DPanel.Services.Detail.P2 Offset)> shifts)
+        {
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            var lines = new List<string>();
+            if (kept + dropped > 0) lines.Add($"{kept} edits kept on unchanged parts; {dropped} dropped because their 2D part changed.");
+            foreach (var (block, off) in shifts ?? Enumerable.Empty<(string, MCG_3DPanel.Services.Detail.P2)>())
+                lines.Add($"The base point of {block} moved by ({off.X.ToString("0.#", inv)}, {off.Y.ToString("0.#", inv)}).");
+            return lines.Count == 0 ? null : string.Join("\n", lines);
+        }
+
         static List<string> Keys(IEnumerable<string> keys, IReadOnlyDictionary<string, string> map, ref int kept, ref int dropped)
         {
             var r = new List<string>();

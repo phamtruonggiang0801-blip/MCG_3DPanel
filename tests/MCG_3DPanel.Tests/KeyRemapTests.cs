@@ -60,3 +60,23 @@ public class KeyRemapTests
         Assert.Equal(0, kept + dropped);
     }
 }
+
+public class RemapNoteTests
+{
+    [Fact] public void NothingStored_NoNote() => Assert.Null(KeyRemap.Note(0, 0, new List<(string, MCG_3DPanel.Services.Detail.P2)>()));
+
+    [Fact]
+    public void KeptDroppedAndShift()
+    {
+        var s = new List<(string, MCG_3DPanel.Services.Detail.P2)> { ("7D-16P_Assy", new MCG_3DPanel.Services.Detail.P2(100.25, -50)) };
+        Assert.Equal("5 edits kept on unchanged parts; 2 dropped because their 2D part changed.\nThe base point of 7D-16P_Assy moved by (100.3, -50).",
+            KeyRemap.Note(5, 2, s));
+    }
+
+    [Fact]
+    public void ShiftOnly_NoEdits_OnlyShiftLine()
+    {
+        var s = new List<(string, MCG_3DPanel.Services.Detail.P2)> { ("B", new MCG_3DPanel.Services.Detail.P2(10, 0)) };
+        Assert.Equal("The base point of B moved by (10, 0).", KeyRemap.Note(0, 0, s));
+    }
+}

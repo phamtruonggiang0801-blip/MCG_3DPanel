@@ -182,4 +182,27 @@ public class ShapeMatcherTests
         Assert.Equal("3", m.Map["1"]);
         Assert.Equal("4", m.Map["2"]);
     }
+
+    [Theory]   // review: độ lệch rơi đúng giữa 2 ô lưới 0.5 + nhiễu số thực ⇒ phiếu chia đôi
+    [InlineData(100.25)]
+    [InlineData(1234.75)]
+    public void MidpointShiftWithNoise_ShiftFound(double dx)
+    {
+        var o = Enumerable.Range(0, 20).Select(i => Rect("O" + i, i * 1000, 0, 80, 6)).ToList();
+        var n = o.Select((r, i) => Shift(r, "N" + i, dx + (i % 2 == 0 ? 1e-9 : -1e-9), 0)).ToList();
+        var m = ShapeMatcher.Match(o, n);
+        Assert.Equal(20, m.Map.Count);
+        Assert.Equal("N5", m.Map["O5"]);
+        Assert.Equal(dx, Assert.Single(m.Shifts).Offset.X, 3);
+    }
+
+    [Fact]   // review: F1 kéo dài tại chỗ (handle còn), F3 mới chép đè lên hình cũ của F1 ⇒ F1 KHÔNG được chuyển sang F3
+    public void HandleStillPresent_NotRekeyedToAnotherPart()
+    {
+        var f1 = Rect("F1", 0, 0, 80, 6);
+        var f1Stretched = Rect("F1", 0, 0, 120, 6);
+        var f3 = Rect("F3", 0, 0, 80, 6);
+        var m = ShapeMatcher.Match(new[] { f1 }, new[] { f1Stretched, f3 });
+        Assert.False(m.Map.ContainsKey("F1"));
+    }
 }

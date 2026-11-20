@@ -47,6 +47,9 @@ namespace MCG_3DPanel.Services.Update
                 else rest.Add(o);
             }
             foreach (var o in rest)
+            {
+                // Handle cũ vẫn còn ⇒ cùng đối tượng, sửa tại chỗ: không được chuyển sang part khác (giữ như Update cũ — review 2026-11-20)
+                if (byHandle.ContainsKey(o.Handle)) continue;
                 foreach (var n in news)
                 {
                     if (used.Contains(n) || !Equal(o, n, off, tol)) continue;
@@ -54,38 +57,47 @@ namespace MCG_3DPanel.Services.Update
                     map[o.Handle] = n.Handle;
                     break;
                 }
+            }
         }
 
-        /// <summary>Độ lệch base point: mỗi entity cũ bỏ phiếu cho các độ lệch (làm tròn lưới 0.5) tới entity mới cùng loại/layer/cỡ;
-        /// thắng khi được HƠN NỬA số entity cũ có ứng viên và hơn hẳn hạng nhì; trả trung bình độ lệch thật của các cặp trong ô thắng.</summary>
+        /// <summary>Độ lệch base point: mỗi entity cũ bỏ phiếu cho các độ lệch (ô lưới 0.5) tới entity mới cùng loại/layer/cỡ. Một phiếu
+        /// tính cho cả 8 ô kề (độ lệch rơi giữa 2 ô + nhiễu số thực không bị chia phiếu — review 2026-11-20). Ô thắng cần HƠN NỬA số
+        /// entity cũ có ứng viên và hơn hẳn ô mạnh nhất ngoài vùng kề nó; trả trung bình độ lệch thật của các cặp trong vùng 3×3 đó.</summary>
         static P2 Offset(List<ShapeRecord> olds, List<ShapeRecord> news)
         {
             var cand = news.GroupBy(SizeKey).ToDictionary(g => g.Key, g => g.ToList());
-            var votes = new Dictionary<(long, long), (int Count, double Sx, double Sy, int N)>();
+            var pairs = new List<((long X, long Y) Bin, P2 D)>();
+            var support = new Dictionary<(long, long), HashSet<int>>();
             int withCand = 0;
-            foreach (var o in olds)
+            for (int i = 0; i < olds.Count; i++)
             {
-                if (!cand.TryGetValue(SizeKey(o), out var cs)) continue;
+                if (!cand.TryGetValue(SizeKey(olds[i]), out var cs)) continue;
                 withCand++;
-                P2 a = MinCorner(o);
-                var seen = new HashSet<(long, long)>();
+                P2 a = MinCorner(olds[i]);
                 foreach (var n in cs)
                 {
                     P2 d = MinCorner(n) - a;
-                    var key = ((long)Math.Round(d.X / Grid), (long)Math.Round(d.Y / Grid));
-                    votes.TryGetValue(key, out var v);
-                    if (seen.Add(key)) v.Count++;
-                    v.Sx += d.X; v.Sy += d.Y; v.N++;
-                    votes[key] = v;
+                    var bin = ((long)Math.Round(d.X / Grid), (long)Math.Round(d.Y / Grid));
+                    pairs.Add((bin, d));
+                    for (long dx = -1; dx <= 1; dx++)
+                        for (long dy = -1; dy <= 1; dy++)
+                        {
+                            var nb = (bin.Item1 + dx, bin.Item2 + dy);
+                            if (!support.TryGetValue(nb, out var set)) support[nb] = set = new HashSet<int>();
+                            set.Add(i);
+                        }
                 }
             }
-            if (withCand == 0 || votes.Count == 0) return new P2(0, 0);
-            var ranked = votes.OrderByDescending(kv => kv.Value.Count).ToList();
+            if (withCand == 0 || support.Count == 0) return new P2(0, 0);
+            var ranked = support.OrderByDescending(kv => kv.Value.Count).ToList();
             var best = ranked[0];
             if (best.Value.Count * 2 <= withCand) return new P2(0, 0);
-            if (ranked.Count > 1 && ranked[1].Value.Count == best.Value.Count) return new P2(0, 0);
-            if (best.Key == (0L, 0L)) return new P2(0, 0);
-            return new P2(best.Value.Sx / best.Value.N, best.Value.Sy / best.Value.N);
+            bool Near((long, long) a, (long, long) b, long r) => Math.Abs(a.Item1 - b.Item1) <= r && Math.Abs(a.Item2 - b.Item2) <= r;
+            var rival = ranked.FirstOrDefault(kv => !Near(kv.Key, best.Key, 2));
+            if (rival.Value != null && rival.Value.Count == best.Value.Count) return new P2(0, 0);
+            var near = pairs.Where(p => Near(p.Bin, best.Key, 1)).ToList();
+            var mean = new P2(near.Average(p => p.D.X), near.Average(p => p.D.Y));
+            return mean.Length < 0.01 ? new P2(0, 0) : mean;
         }
 
         static string SizeKey(ShapeRecord r)
