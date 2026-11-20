@@ -369,11 +369,4 @@ public class DetailComposeRulesTests
         Assert.False(DetailComposeRules.SolidInPlan("Bracket", "", cut));     // không gán được tấm
     }
 
-    [Theory]
-    [InlineData("Hole width 60 plan", 0.2)]
-    [InlineData("hole width 60 plan", 0.2)]
-    [InlineData("Hole width 60", 1.0)]
-    [InlineData("CAS-0031289 - tv", 1.0)]
-    public void TwoDBlockScale_OnlyHoleWidth60Plan(string name, double expected) =>
-        Assert.Equal(expected, DetailComposeRules.TwoDBlockScale(name), 9);
 }

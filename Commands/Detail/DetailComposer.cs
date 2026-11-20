@@ -238,8 +238,6 @@ namespace MCG_3DPanel.Commands.Detail
                         var leaf = (BlockReference)br.Clone();
                         res.Add(leaf);
                         leaf.TransformBy(xf);
-                        double k = DetailComposeRules.TwoDBlockScale(n);   // thu quanh điểm chèn (vị trí trùng mẫu tay)
-                        if (k != 1.0) leaf.TransformBy(Matrix3d.Scaling(k, leaf.Position));
                         // Mọi block chép từ 2D (phụ kiện, ký hiệu góc trong _Structure, Hole width…) ⇒ AM_2 (kỹ sư 2026-11-20)
                         leaf.Layer = AM2;
                         continue;
