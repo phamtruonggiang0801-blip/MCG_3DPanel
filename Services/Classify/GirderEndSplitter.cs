@@ -17,8 +17,9 @@ namespace MCG_3DPanel.Services.Classify
     ///  · L = khoảng cách từ đầu end tại HP/FB tới MÉP GẦN của Web VUÔNG GÓC (chỉ tính <see cref="PartType.Web"/>).
     ///  · <b>Max Stiff</b> = <see cref="GirderEndDetector.HpMaxSpan"/> (fallback <see cref="ClassifyUtil.GE_MAX_L"/> khi =0).
     ///  · L &lt; Max Stiff ⇒ <b>GE</b>: cắt tại đó, đoạn sát HP/FB = GE (Code "GE-HP"/"GE-FB").
-    ///  · L ≥ Max Stiff (hoặc không có Web vuông góc) ⇒ <b>GB</b>: vùng GB = từ đầu end tới HP xuyên GẦN NHẤT + 100mm
-    ///    (+ <see cref="ClassifyUtil.GB_TOE_PAD"/> đoạn đáy thẳng) — Code "GB-HP"/"GB-FB"; phần còn lại = Web chữ nhật.
+    ///  · L ≥ Max Stiff (hoặc không có Web vuông góc) ⇒ vẫn <b>GE</b> (kỹ sư 2026-11-20: đầu web luôn là GE; GB chỉ khi
+    ///    người dùng ép): vùng = từ đầu end tới HP xuyên GẦN NHẤT + 100mm
+    ///    (+ <see cref="ClassifyUtil.GB_TOE_PAD"/> đoạn đáy thẳng); phần còn lại = Web chữ nhật.
     ///    Mốc toe = HP/FB xuyên HOẶC dừng cách mặt web ≤ 50mm (<see cref="NearestToeAnchor"/>, kỹ sư 2026-11-04).
     ///    Không có mốc trước Web vuông góc ⇒ giữ Web, ghi Notes.
     /// GE/GB + Web còn lại là 1 tấm liền: <see cref="PanelPart.JoinWithWeb"/> để Build3DService hợp nhất.
@@ -36,8 +37,15 @@ namespace MCG_3DPanel.Services.Classify
             double maxStiff = GirderEndDetector.HpMaxSpan(result);
             if (maxStiff <= 0) maxStiff = ClassifyUtil.GE_MAX_L;
 
-            var work = new Queue<PanelPart>(result.OfType(PartType.Web)
-                .Where(p => p.MemberLength >= ClassifyUtil.WEB_MIN_LEN && ClassifyUtil.IsRectangle(p)));
+            // Web DÀI = cả dải web thẳng hàng (GroupId): web liên tục có thể gồm nhiều tấm khác dày hàn nối tiếp, đầu dải chạm
+            // HP/FB là GE dù tấm đầu ngắn (kỹ sư 2026-11-20 — vd 7D-16P 2B7B3 t10 dài 827 nối web t6 2B53B).
+            var webs = result.OfType(PartType.Web).ToList();
+            var runSpan = webs.Where(w => w.GroupId >= 0).GroupBy(w => w.GroupId).ToDictionary(g => g.Key,
+                g => GirderRules.RunSpan(g.Select(w => w.IsHorizontal
+                    ? (w.Bounds.MinPoint.X, w.Bounds.MaxPoint.X) : (w.Bounds.MinPoint.Y, w.Bounds.MaxPoint.Y))));
+            double RunLen(PanelPart w) => w.GroupId >= 0 && runSpan.TryGetValue(w.GroupId, out var s) ? Math.Max(s, w.MemberLength) : w.MemberLength;
+            var work = new Queue<PanelPart>(webs
+                .Where(p => RunLen(p) >= ClassifyUtil.WEB_MIN_LEN && ClassifyUtil.IsRectangle(p)));
 
             while (work.Count > 0)
             {
@@ -87,15 +95,19 @@ namespace MCG_3DPanel.Services.Classify
                     }
                     else
                     {
+                        // Đầu web dài luôn là GE (kỹ sư 2026-11-20); GB chỉ còn là bracket rời dài > max span
+                        // (GirderEndDetector) hoặc khi người dùng ép GB. L ≥ Max Stiff / không có Web vuông góc ⇒ vùng
+                        // GE đo theo HP/FB xuyên gần nhất như GB cũ.
+                        bool forcedGb = intent == CorrectionIntent.ForceGB;
                         if (s < 0)
                         {
                             result.Notes.Add($"[GirderEndSplitter] {p.Id.Handle}: đầu ({e.X:0},{e.Y:0}) chạm {kind}, L " +
-                                (t > 0 ? $"={t:0}" : "(không có Web vuông góc)") + $" ≥ Max Stiff {maxStiff:0} → GB nhưng KHÔNG có HP/FB xuyên " +
-                                "hoặc dừng ≤ 50mm để định vị toe → giữ Web chữ nhật.");
+                                (t > 0 ? $"={t:0}" : "(không có Web vuông góc)") + $" ≥ Max Stiff {maxStiff:0} nhưng KHÔNG có HP/FB xuyên " +
+                                "hoặc dừng ≤ 50mm để định vị đầu " + (forcedGb ? "GB" : "GE") + " → giữ Web chữ nhật.");
                             continue;
                         }
-                        zone = s + ClassifyUtil.GB_TOE_PAST_HP + ClassifyUtil.GB_TOE_PAD; tag = "GB";
-                        anchorInfo = $" (mốc toe {anchor.Id.Handle} {how})";
+                        zone = s + ClassifyUtil.GB_TOE_PAST_HP + ClassifyUtil.GB_TOE_PAD; tag = forcedGb ? "GB" : "GE";
+                        anchorInfo = $" (mốc {anchor.Id.Handle} {how})";
                     }
 
                     if (zone >= p.MemberLength - 1.0)

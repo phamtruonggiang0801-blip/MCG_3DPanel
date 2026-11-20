@@ -181,11 +181,11 @@ namespace MCG_3DPanel.Services
                 AssignSourceKeys(result, hpParts, fbParts);
                 ApplyTypeCorrections(result, corrections);
 
-                // 2a. Tầng Web DÀI (≥1000) có đầu chạm HP/FB → cắt GE (L<775) / GB
+                // 2a. Tầng Web DÀI (≥1000) có đầu chạm HP/FB → cắt GE (đầu web luôn là GE, kỹ sư 2026-11-20)
                 GirderEndSplitter.Apply(result, hpParts, fbParts, corrections);
 
-                // 2b. Tách Girder End (GE) khỏi Bracket (collinear + liên tục với Web chính)
-                GirderEndDetector.Apply(result, hpParts, fbParts);
+                // 2b. Bracket dài hơn max span HP → GB (kỹ sư 2026-11-20)
+                GirderEndDetector.Apply(result, hpParts, fbParts, corrections);
 
                 // 3. Mã bracket + hướng bụng HP
                 Point3d center = result.TopPlate?.Centroid ?? Point3d.Origin;

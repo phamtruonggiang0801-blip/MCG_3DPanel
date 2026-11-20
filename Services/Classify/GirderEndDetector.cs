@@ -21,18 +21,33 @@ namespace MCG_3DPanel.Services.Classify
     /// </summary>
     internal static class GirderEndDetector
     {
-        public static void Apply(ClassificationResult result, List<PanelPart> hpParts, List<PanelPart> fbParts)
+        /// <summary>Kỹ sư 2026-11-20: bracket (1 đầu HP/FB, 1 đầu Web) dài HƠN max span HP ⇒ GB (cả tấm); không thì giữ
+        /// Bracket cho <see cref="BracketCoder"/> gán OB/IB/BF. (Trước đây: mảnh ≥ 600 và dày ≥ 10 ⇒ GE — GE nay chỉ là đầu
+        /// web dài, do <see cref="GirderEndSplitter"/> tách.)</summary>
+        public static void Apply(ClassificationResult result, List<PanelPart> hpParts, List<PanelPart> fbParts,
+            IReadOnlyDictionary<string, Corrections.PartCorrection> corrections = null)
         {
+            double maxStiff = HpMaxSpan(result);
+            if (maxStiff <= 0) maxStiff = ClassifyUtil.GE_MAX_L;
             foreach (var p in result.OfType(PartType.Bracket).ToList())
             {
-                if (p.MemberLength < ClassifyUtil.GE_MIN_LEN || p.FootprintThickness < ClassifyUtil.GE_MIN_THK) continue;
+                if (!GirderRules.IsGirderBracket(p.MemberLength, maxStiff)) continue;
+                // Người dùng đã ép OB/IB/BF ở tab Result ⇒ giữ bracket
+                if (corrections != null && p.SourceKey != null && corrections.TryGetValue(p.SourceKey, out var c))
+                {
+                    var intent = UI.ResultCatalog.ParseIntent(c.Kind);
+                    if (intent == UI.CorrectionIntent.BracketOB || intent == UI.CorrectionIntent.BracketIB
+                        || intent == UI.CorrectionIntent.BracketBF) continue;
+                }
 
                 bool hp = hpParts.Any(h => ClassifyUtil.Adjacent(p, h, ClassifyUtil.ADJ_TOL));
                 bool fb = fbParts.Any(f => ClassifyUtil.Adjacent(p, f, ClassifyUtil.ADJ_TOL));
                 if (!hp && !fb) continue;
 
                 p.Type = PartType.GirderEnd;
-                p.Code = hp ? "GE-HP" : "GE-FB";
+                p.Code = GirderRules.Code(true, hp);
+                result.Notes.Add($"[GirderEndDetector] {p.Id.Handle} (thk {p.FootprintThickness:0}, dài {p.MemberLength:0}) " +
+                    $"> max span HP {maxStiff:0} → {p.Code}.");
             }
         }
 
