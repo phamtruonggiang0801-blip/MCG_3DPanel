@@ -74,6 +74,36 @@ to each insertion of it, so records stay in their own definition. One record per
 - Identical duplicates (same signature several times) are paired in drawing order; they are interchangeable.
 - Each new record is used once. Unmatched old records ⇒ their edits are dropped; unmatched new records ⇒ automatic.
 
+### Base point shift (engineer 2026-11-20)
+
+Moving the block reference in the official drawing changes nothing above: records are in their own definition's
+coordinates. Changing the **base point of a definition** (BASE / Block Editor in Global, or a Global block with another
+base point) shifts every entity of that definition by the same vector, and no record would match. So, per definition
+present in both trees (same name), before matching:
+
+1. **Candidate pairs:** old and new records with the same `Type`, `Layer` and shape size (vertex count for polylines,
+   radius for circles/arcs, name for block references).
+2. **Vote:** for each pair, offset = new reference point − old reference point, where the reference point is the minimum
+   corner of the record's extents (independent of start vertex and direction). Round offsets to a 0.5 mm grid and count,
+   per offset, the number of **distinct old records** that have a pair with it.
+3. **Pick:** the offset with the most old records wins if it gathers **more than half** of the definition's old records
+   that have any candidate; otherwise (no majority, or a tie) the offset is (0, 0).
+4. **Match** that definition's records with the offset subtracted from the new geometry (block reference insertion points
+   included), then refine nothing else: the 0.5 mm rule above applies as is.
+
+Results:
+
+- Only the base point changed ⇒ every part matches, every edit is kept.
+- Base point changed and some parts edited ⇒ unchanged parts are still the majority, the offset is found, their edits
+  are kept; edited parts are dropped.
+- Translation only: content rotated or mirrored inside the definition counts as changed (my call).
+- The status names it when an offset is used: `The base point of {block} moved by ({dx}, {dy}).`, so the engineer knows
+  why the parts still matched.
+
+Accepted limit: moving a whole nested block inside the panel (e.g. the `_Structure` reference relative to `_Top Plate`)
+keeps the edits of its parts, since they did not change inside their own definition, although their position relative
+to the rest of the panel did. Rare; the engineer can Delete/re-correct in the Result tab.
+
 ### Re-keying
 
 Keys hold handles as `{hex}#{n}` tokens, alone (`2B7B3#0`) or inside generated keys (`CollarPlate:2B7B3#0~2B53D#1`,
