@@ -29,6 +29,13 @@ namespace MCG_3DPanel.Services.Update
             return missing ? null : r;
         }
 
+        /// <summary>Các handle hex trong khoá, theo thứ tự xuất hiện (khoá sinh ra như Collar chứa nhiều handle).</summary>
+        public static IEnumerable<string> Handles(string key)
+        {
+            if (string.IsNullOrEmpty(key)) yield break;
+            foreach (Match m in Token.Matches(key)) yield return m.Groups[1].Value;
+        }
+
         static bool TryMap(IReadOnlyDictionary<string, string> map, string hex, out string to)
         {
             if (map.TryGetValue(hex, out to)) return true;
