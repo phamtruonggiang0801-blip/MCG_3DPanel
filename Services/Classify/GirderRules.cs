@@ -14,6 +14,14 @@ namespace MCG_3DPanel.Services.Classify
         public static bool IsGirderBracket(double memberLength, double maxStiff) =>
             maxStiff > 0 && memberLength > maxStiff;
 
+        /// <summary>Chiều dài cả dải web thẳng hàng: từ đầu xa nhất tới đầu xa nhất theo trục (các khoảng [Lo, Hi]); rỗng ⇒ 0.</summary>
+        public static double RunSpan(System.Collections.Generic.IEnumerable<(double Lo, double Hi)> pieces)
+        {
+            double lo = double.MaxValue, hi = double.MinValue;
+            foreach (var (a, b) in pieces) { if (a < lo) lo = a; if (b > hi) hi = b; }
+            return hi > lo ? hi - lo : 0;
+        }
+
         /// <summary>Mã cho bracket đã thành GB / đầu web đã thành GE: "GB-HP", "GE-FB"…</summary>
         public static string Code(bool girderBracket, bool touchesHp) =>
             (girderBracket ? "GB" : "GE") + (touchesHp ? "-HP" : "-FB");

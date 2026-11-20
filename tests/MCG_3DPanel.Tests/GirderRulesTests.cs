@@ -23,3 +23,13 @@ public class GirderRulesTests
     [InlineData(false, false, "GE-FB")]
     public void Codes(bool gb, bool hp, string code) => Assert.Equal(code, GirderRules.Code(gb, hp));
 }
+
+public class GirderRunTests
+{
+    [Fact]   // 7D-16P girder y≈12737: t10 2B7B3 (60..887.5) + t6 2B53B (887.5..11909.5) + t10 2FB20 (11909.5..12709.5)
+    public void RunSpan_WholeGirderLine() =>
+        Assert.Equal(12649.5, GirderRules.RunSpan(new[] { (60.0, 887.5), (887.5, 11909.5), (11909.5, 12709.5) }), 6);
+
+    [Fact]
+    public void RunSpan_Empty_Zero() => Assert.Equal(0, GirderRules.RunSpan(new (double, double)[0]));
+}

@@ -37,8 +37,15 @@ namespace MCG_3DPanel.Services.Classify
             double maxStiff = GirderEndDetector.HpMaxSpan(result);
             if (maxStiff <= 0) maxStiff = ClassifyUtil.GE_MAX_L;
 
-            var work = new Queue<PanelPart>(result.OfType(PartType.Web)
-                .Where(p => p.MemberLength >= ClassifyUtil.WEB_MIN_LEN && ClassifyUtil.IsRectangle(p)));
+            // Web DÀI = cả dải web thẳng hàng (GroupId): web liên tục có thể gồm nhiều tấm khác dày hàn nối tiếp, đầu dải chạm
+            // HP/FB là GE dù tấm đầu ngắn (kỹ sư 2026-11-20 — vd 7D-16P 2B7B3 t10 dài 827 nối web t6 2B53B).
+            var webs = result.OfType(PartType.Web).ToList();
+            var runSpan = webs.Where(w => w.GroupId >= 0).GroupBy(w => w.GroupId).ToDictionary(g => g.Key,
+                g => GirderRules.RunSpan(g.Select(w => w.IsHorizontal
+                    ? (w.Bounds.MinPoint.X, w.Bounds.MaxPoint.X) : (w.Bounds.MinPoint.Y, w.Bounds.MaxPoint.Y))));
+            double RunLen(PanelPart w) => w.GroupId >= 0 && runSpan.TryGetValue(w.GroupId, out var s) ? Math.Max(s, w.MemberLength) : w.MemberLength;
+            var work = new Queue<PanelPart>(webs
+                .Where(p => RunLen(p) >= ClassifyUtil.WEB_MIN_LEN && ClassifyUtil.IsRectangle(p)));
 
             while (work.Count > 0)
             {
