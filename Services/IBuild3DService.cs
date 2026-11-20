@@ -59,6 +59,9 @@ namespace MCG_3DPanel.Services
     public class RemoteLink
     {
         public string File3D { get; set; }
+        /// <summary>Database chứa solid / part của dòng: database phụ, HOẶC database của file 3D đang mở như document. Đóng database này ⇒
+        /// bỏ dòng (so sánh tham chiếu — không chạm ObjectId của database đã giải phóng).</summary>
+        public Database SideDb { get; set; }
         /// <summary>Reference / định nghĩa block _Assy trong BẢN VẼ 2D (nơi lưu MCG3D_PENDING).</summary>
         public ObjectId AssyRef2D { get; set; }
         public ObjectId AssyBtr2D { get; set; }

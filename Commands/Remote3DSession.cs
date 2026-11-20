@@ -140,6 +140,7 @@ namespace MCG_3DPanel.Commands
                 b.Remote = new RemoteLink
                 {
                     File3D = e.Src.FilePath,
+                    SideDb = side,
                     AssyRef2D = refId,
                     AssyBtr2D = btrId,
                     LockReason = lockReason,
@@ -282,8 +283,13 @@ namespace MCG_3DPanel.Commands
         /// <summary>Bản vẽ 2D sắp đóng: giải phóng database phụ của nó.</summary>
         public static void Forget(Database db2D)
         {
-            if (db2D == null || !_cache.TryGetValue(db2D.UnmanagedObject, out var entries)) return;
-            foreach (var k in entries.Keys.ToList()) Drop(entries, k);
+            if (db2D == null) return;
+            // File 3D đang mở như document sắp đóng: entry nào đọc từ database của nó phải bỏ (dòng trỏ vào database sắp giải phóng).
+            foreach (var entries in _cache.Values)
+                foreach (var k in entries.Where(kv => ReferenceEquals(kv.Value.Src?.SourceDb, db2D)).Select(kv => kv.Key).ToList())
+                    Drop(entries, k);
+            if (!_cache.TryGetValue(db2D.UnmanagedObject, out var own)) return;
+            foreach (var k in own.Keys.ToList()) Drop(own, k);
             _cache.Remove(db2D.UnmanagedObject);
         }
 

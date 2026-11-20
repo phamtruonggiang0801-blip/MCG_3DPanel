@@ -143,7 +143,8 @@ namespace MCG_3DPanel.UI
             if (db == null || _builds.Count == 0) return;
             int before = _builds.Count;
             // Panel đọc nền từ file 3D thuộc bản 2D (AssyRef2D) — database phụ của nó bị giải phóng cùng lúc (review 2026-11-20).
-            var left = _builds.Where(b => b.Remote != null ? b.Remote.AssyRef2D.Database != db
+            // …và panel đọc từ file 3D đang mở như document: đóng file 3D đó ⇒ bỏ (so tham chiếu SideDb, không chạm ObjectId).
+            var left = _builds.Where(b => b.Remote != null ? b.Remote.AssyRef2D.Database != db && !ReferenceEquals(b.Remote.SideDb, db)
                                                            : b.BlockRefId.IsNull || b.BlockRefId.Database != db).ToList();
             if (left.Count == before) return;
             if (left.Count == 0)

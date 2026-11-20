@@ -424,7 +424,8 @@ namespace MCG_3DPanel.UI
         public void OnDocumentClosing(Database db)
         {
             if (db == null || _panels.Count == 0) return;
-            var left = _panels.Where(p => p.Db != db).ToList();
+            // Panel đọc từ file 3D đang mở như document: đóng file đó ⇒ bỏ (so tham chiếu, không chạm ObjectId).
+            var left = _panels.Where(p => p.Db != db && !ReferenceEquals(p.Build?.Remote?.SideDb, db)).ToList();
             if (left.Count == _panels.Count) return;
             SetPanels(left, null);
             if (left.Count == 0) SetStatus("Drawing closed — open a saved 2D drawing to Build 3D, or a 3D panel file to work on it.");

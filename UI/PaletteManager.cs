@@ -62,7 +62,6 @@ namespace MCG_3DPanel.UI
                 {
                     var db = e.Document?.Database;
                     Guarded(() => MCG_3DPanel.Commands.PanelSession.Forget(db));
-                    Guarded(() => MCG_3DPanel.Commands.Remote3DSession.Forget(db));   // database phụ file 3D của bản 2D này
                     Guarded(() => MCG_3DPanel.Commands.PanelCommands.ForgetDatabase(db));
                     Guarded(() => MCG_3DPanel.Commands.EntityHighlighter.ForgetDatabase(db));
                     Guarded(() => MCG_3DPanel.Services.Corrections.CorrectionStore.ClearDatabase(db));
@@ -70,6 +69,8 @@ namespace MCG_3DPanel.UI
                     Guarded(() => _result.OnDocumentClosing(db));
                     Guarded(() => _naming.OnDocumentClosing(db));
                     Guarded(() => _input.OnDocumentClosing(db));
+                    // SAU các tab: dòng đọc nền phải rời bảng trước khi database phụ / database file 3D bị giải phóng.
+                    Guarded(() => MCG_3DPanel.Commands.Remote3DSession.Forget(db));
                 };
                 // Đổi drawing: tắt highlight/marker KHI drawing cũ còn là current (Transient/Highlight gắn view của nó).
                 Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.DocumentToBeDeactivated += (s, e) => Guarded(() =>
