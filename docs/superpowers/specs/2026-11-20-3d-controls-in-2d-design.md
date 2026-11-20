@@ -130,4 +130,4 @@ Nút Update (tab Result, ở 2D; tab Input giữ nút Build/Update hiện có �
 - Tab Naming thêm cột **Length** = tổng chiều dài các đoạn của tuyến (mm), sort theo số.
 - Update / Plan View từ bản 2D chạy thẳng từ nút palette (không qua lệnh của bản 2D — lệnh đó làm mất phần ghi vào bản 2D); tab
   không tự nạp trong lúc chạy; database phụ không bao giờ dùng document 3D đang mở (lỗi 0xc0000005).
-- Chưa làm: Build / Update 3D Model chạy ngầm không mở file 3D (chờ kỹ sư: sau Build lần đầu có cần xem 3D không).
+- Build / Update dựng NGẦM trong database phụ, lưu thẳng xuống đĩa, không mở file 3D. Cuối lô hỏi "Open the 3D file(s)?" (mặc định No); file đang mở trước Update thì mở lại không hỏi; Update 3D Model từ bản 2D không hỏi (kỹ sư 2026-11-20).
