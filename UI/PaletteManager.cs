@@ -107,6 +107,8 @@ namespace MCG_3DPanel.UI
         private void RefreshTabs(Autodesk.AutoCAD.DatabaseServices.Database eventDb = null)
         {
             if (MCG_3DPanel.Commands.PanelCommands.IsBuilding) return;
+            // Update / Plan View từ bản 2D đang mở-đóng file 3D: không nạp giữa chừng, cuối lệnh nạp 1 lần (lỗi 0xc0000005 2026-11-20).
+            if (MCG_3DPanel.Commands.UpdateChain.Running) return;
             // Chốt chặn nạp lồng: đang nạp mà sự kiện document bắn lại ⇒ bỏ lần lồng (chẩn đoán tràn stack 2026-11-20).
             if (_refreshing) { MCG_3DPanel.Commands.TraceLog.Write("RefreshTabs: re-entered, skipped"); return; }
             _refreshing = true;

@@ -21,6 +21,11 @@ namespace MCG_3DPanel.Commands
         /// <summary>(thông báo, lỗi?) khi chuỗi kết thúc.</summary>
         public static event Action<string, bool> Finished;
 
+        /// <summary>Đang chạy lệnh Update / Plan View từ bản 2D: mở / đóng / chuyển document liên tục ⇒ các tab KHÔNG tự nạp
+        /// (như <see cref="PanelCommands.IsBuilding"/>); câu báo cuối bắn sau khi cờ tắt để tab nạp lại 1 lần.</summary>
+        public static bool Running { get; private set; }
+        private static (string Msg, bool Error)? _deferred;
+
         private static BuildResult _request;
         private static bool _planViewRequested;   // Create Drawing ▸ Plan View trên bản 2D: luôn vẽ Plan View (kể cả chưa có)
 
@@ -57,6 +62,8 @@ namespace MCG_3DPanel.Commands
             _planViewRequested = false;
             if (req?.Remote == null) return;
             TraceLog.Write($"{Command}: plan view = {planOnly}, pending = {req.Remote.PendingKeys.Count}, locked = {req.Remote.LockReason}");
+            Running = true;
+            _deferred = null;
             try
             {
                 if (planOnly && req.Remote.PendingKeys.Count == 0) PlanViewOnly(req);
@@ -66,6 +73,13 @@ namespace MCG_3DPanel.Commands
             {
                 try { Application.DocumentManager.MdiActiveDocument?.Editor?.WriteMessage("\n[MCG_3DPanel] Update error detail:\n" + ex + "\n"); } catch { }
                 Finish("Update failed: " + ex.Message + " (details on the command line)", true);
+            }
+            finally
+            {
+                Running = false;
+                var d = _deferred;
+                _deferred = null;
+                if (d != null) Finish(d.Value.Msg, d.Value.Error);
             }
         }
 
@@ -198,6 +212,7 @@ namespace MCG_3DPanel.Commands
 
         private static void Finish(string msg, bool error)
         {
+            if (Running) { _deferred = (msg, error); return; }   // bắn sau khi cờ tắt (tab nạp lại được)
             TraceLog.Write($"UpdateChain.Finish (error = {error}): {msg}");
             try { Finished?.Invoke(msg, error); }
             catch (System.Exception ex) { System.Diagnostics.Debug.WriteLine("[UpdateChain] Finished: " + ex.Message); }

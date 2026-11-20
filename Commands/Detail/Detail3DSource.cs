@@ -50,7 +50,7 @@ namespace MCG_3DPanel.Commands.Detail
 
         /// <summary>choose(paths) chọn 1 file khi có nhiều file khớp (null ⇒ huỷ). Trả null kèm <paramref name="why"/> khi không có file dùng được.</summary>
         public static Detail3DSource Open(Database db2D, string drawingPath, ObjectId assyRefId,
-            Func<IList<string>, string> choose, out string why)
+            Func<IList<string>, string> choose, out string why, bool useOpenDocument = true)
         {
             why = null;
             string panel, assyName, fingerprint;
@@ -80,7 +80,7 @@ namespace MCG_3DPanel.Commands.Detail
                 {
                     try
                     {
-                        Loaded l = Load(file);
+                        Loaded l = Load(file, useOpenDocument);
                         if (l != null) loaded.Add(l);   // null = file không phải panel (không có meta)
                     }
                     catch (System.Exception ex)
@@ -137,10 +137,12 @@ namespace MCG_3DPanel.Commands.Detail
         }
 
         /// <summary>Đọc meta + block reference của 1 file. Null ⇒ file không có dữ liệu panel. Lỗi đọc ⇒ ném (database phụ đã được giải phóng).</summary>
-        private static Loaded Load(string path)
+        /// <param name="useOpenDocument">false (tab đọc nền trên bản 2D): luôn đọc bản riêng từ đĩa — database của document 3D đang mở có thể
+        /// bị giải phóng bất cứ lúc nào (lỗi 0xc0000005 2026-11-20).</param>
+        private static Loaded Load(string path, bool useOpenDocument = true)
         {
             var l = new Loaded();
-            var doc = PanelCommands.FindOpen(path);
+            var doc = useOpenDocument ? PanelCommands.FindOpen(path) : null;
             bool ok = false;
             try
             {

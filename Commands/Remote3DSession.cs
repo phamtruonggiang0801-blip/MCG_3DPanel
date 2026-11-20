@@ -86,7 +86,8 @@ namespace MCG_3DPanel.Commands
             }
 
             TraceLog.Write($"Remote3DSession: read 3D file for {doc2D.Name} ({(e == null ? "first" : "changed")})");
-            Detail3DSource src = Detail3DSource.Open(doc2D.Database, doc2D.Name, refId, null, out string why);
+            // Luôn database phụ riêng, kể cả khi file 3D đang mở (document đó đóng ⇒ database của nó giải phóng giữa chừng).
+            Detail3DSource src = Detail3DSource.Open(doc2D.Database, doc2D.Name, refId, null, out string why, useOpenDocument: false);
             TraceLog.Write($"Remote3DSession: {(src == null ? "no file: " + why : "read " + src.FilePath)}");
             if (src == null)
             {
@@ -304,7 +305,8 @@ namespace MCG_3DPanel.Commands
                 Database side = e.Src?.SourceDb;
                 // Cache store của database phụ phải bỏ TRƯỚC khi giải phóng (con trỏ có thể bị database mới dùng lại). Xét database
                 // LÚC ĐỌC là của ta (không phải document đang mở) — không xét file đang mở BÂY GIỜ (review 2026-11-20: Update mở lại file 3D).
-                if (side != null && !side.IsDisposed && !e.OpenAsDoc)
+                // Database phụ luôn là bản riêng (useOpenDocument: false) ⇒ luôn dọn cache của nó.
+                if (side != null && !side.IsDisposed)
                 {
                     CorrectionStore.ClearDatabase(side);
                     NameStore.ClearDatabase(side);
