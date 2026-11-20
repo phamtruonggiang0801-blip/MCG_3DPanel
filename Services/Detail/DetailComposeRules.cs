@@ -19,6 +19,11 @@ namespace MCG_3DPanel.Services.Detail
     {
         // Block mẫu A$C1A6307D4 (dump 7D-16P), chèn tỉ lệ 0.4 như mọi bản vẽ mẫu.
         const double MarkScale = 0.4;
+
+        /// <summary>Hệ số thu nhỏ block chép từ 2D vào detail: chỉ "Hole width 60 plan" ⇒ 0.2 như detail tay DET.3 CAS-0062239
+        /// (kỹ sư 2026-11-20); block khác giữ nguyên (1).</summary>
+        public static double TwoDBlockScale(string blockName) =>
+            string.Equals(blockName, "Hole width 60 plan", System.StringComparison.OrdinalIgnoreCase) ? 0.2 : 1.0;
         public const double BarHalf = 62.3669 * MarkScale;
         public const double BarWidth = 9.6 * MarkScale;
         public const double NeckLength = 133.4212 * MarkScale;
