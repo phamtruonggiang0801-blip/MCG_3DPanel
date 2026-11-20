@@ -22,6 +22,7 @@ namespace MCG_3DPanel.Commands
         public static event Action<string, bool> Finished;
 
         private static BuildResult _request;
+        private static bool _planViewRequested;   // Create Drawing ▸ Plan View trên bản 2D: luôn vẽ Plan View (kể cả chưa có)
 
         // Trạng thái chờ Detail Update (lệnh Modal chạy sau, báo qua DetailCommands.Finished).
         private static bool _waitDetail;
@@ -31,12 +32,19 @@ namespace MCG_3DPanel.Commands
         private static string _extra;
 
         /// <summary>Gọi từ palette (bản vẽ 2D đang active): chạy lệnh trong ngữ cảnh lệnh của document đó.</summary>
-        public static void Request(BuildResult remote)
+        public static void Request(BuildResult remote) => Request(remote, false);
+
+        /// <summary>Create Drawing ▸ Plan View từ bản 2D: không có sửa chờ ⇒ chỉ mở file 3D vẽ Plan View rồi đóng; có ⇒ Update đầy đủ
+        /// và luôn vẽ Plan View (Plan View không được thiếu sửa chờ).</summary>
+        public static void RequestPlanView(BuildResult remote) => Request(remote, true);
+
+        private static void Request(BuildResult remote, bool planView)
         {
             Document doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null || remote?.Remote == null) return;
             if (PanelCommands.IsBuilding) { Finish("A build is running — try again when it finishes.", true); return; }
             _request = remote;
+            _planViewRequested = planView;
             doc.SendStringToExecute(Command + " ", true, false, false);
         }
 
@@ -44,9 +52,15 @@ namespace MCG_3DPanel.Commands
         public void Run()
         {
             BuildResult req = _request;
+            bool planOnly = _planViewRequested;
             _request = null;
+            _planViewRequested = false;
             if (req?.Remote == null) return;
-            try { Start(req); }
+            try
+            {
+                if (planOnly && req.Remote.PendingKeys.Count == 0) PlanViewOnly(req);
+                else Start(req, planOnly);
+            }
             catch (System.Exception ex)
             {
                 try { Application.DocumentManager.MdiActiveDocument?.Editor?.WriteMessage("\n[MCG_3DPanel] Update error detail:\n" + ex + "\n"); } catch { }
@@ -54,7 +68,36 @@ namespace MCG_3DPanel.Commands
             }
         }
 
-        private static void Start(BuildResult req)
+        /// <summary>Plan View từ bản 2D khi không có sửa chờ: mở file 3D (nếu chưa mở), vẽ Plan View (tự về bản 2D), đóng file 3D nếu
+        /// trước đó chưa mở.</summary>
+        private static void PlanViewOnly(BuildResult req)
+        {
+            RemoteLink r = req.Remote;
+            if (r.Locked) { Finish(r.LockReason, true); return; }   // block lệch file 3D: Plan View sẽ sai ⇒ Update trước
+            Document doc2D = DocOf(r.AssyRef2D.Database) ?? throw new InvalidOperationException("the 2D drawing is closed");
+            string file3D = r.File3D;
+            Document doc3D = PanelCommands.FindOpen(file3D);
+            bool wasOpen = doc3D != null;
+            if (doc3D == null) doc3D = Application.DocumentManager.Open(file3D, false);
+            PanelCommands.Activate(doc3D);
+            string msg = PlanViewCommand.CreateFor(doc3D, out bool err);
+            string extra = "";
+            if (!wasOpen && DocOf(doc3D.Database) != null)
+            {
+                try
+                {
+                    if (Application.DocumentManager.MdiActiveDocument == doc3D) PanelCommands.Activate(doc2D);
+                    if (!PanelCommands.IsSavedOnDisk(doc3D)) PanelCommands.SaveOpenTarget(doc3D, Path.GetFileName(file3D));
+                    doc3D.CloseAndDiscard();
+                }
+                catch (System.Exception ex) { extra = $" Could not close {Path.GetFileName(file3D)}: {ex.Message}"; }
+            }
+            try { if (Application.DocumentManager.MdiActiveDocument != doc2D) PanelCommands.Activate(doc2D); }
+            catch (System.Exception ex) { extra += $" Could not switch back to {Path.GetFileName(doc2D.Name)}: {ex.Message}"; }
+            Finish((err ? "Plan View failed: " : "") + msg + extra, err || extra.Length > 0);
+        }
+
+        private static void Start(BuildResult req, bool forcePlanView = false)
         {
             // Lần trước Detail Update không báo về ⇒ bỏ chờ, không để câu báo cũ hiện ở lệnh Detail sau (review minor).
             DetailCommands.Finished -= OnDetailFinished;
@@ -75,7 +118,7 @@ namespace MCG_3DPanel.Commands
             string file3D = r.File3D;
             bool wasOpen = PanelCommands.FindOpen(file3D) != null;
             string btrH = r.AssyBtr2D.Handle.ToString();
-            bool planView = PlanViewWriter.HasPlanView(doc2D.Database, btrH);
+            bool planView = forcePlanView || PlanViewWriter.HasPlanView(doc2D.Database, btrH);
             bool detail = DetailCommands.HasPanelWith3DFile(doc2D, out bool hasDetail) && hasDetail;
 
             var run = new BuildRun();

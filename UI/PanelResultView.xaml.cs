@@ -713,9 +713,11 @@ namespace MCG_3DPanel.UI
         {
             var db = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument?.Database;
             bool has3D = db != null && PanelSession.For(db, out _).Any(b => b.Kept && !b.BlockRefId.IsNull);
-            MnuPlanView.IsEnabled = has3D;
-            MnuPlanView.ToolTip = has3D ? "Write the Plan View sheet of this panel into the 2D drawing it was built from"
-                                        : "Open a 3D panel file first";
+            // Bản 2D đọc nền file 3D: Plan View chạy được từ đây (mở file 3D ngầm) — kỹ sư 2026-11-20.
+            bool remote = !has3D && _builds.Any(b => b.Kept && b.Remote != null && b.Remote.AssyRef2D.Database == db);
+            MnuPlanView.IsEnabled = has3D || remote;
+            MnuPlanView.ToolTip = has3D || remote ? "Write the Plan View sheet of this panel into the 2D drawing it was built from"
+                                                  : "Build 3D first, or open a 3D panel file";
             UpdateDetailMenus();
             var cm = BtnCreateDrawing.ContextMenu;
             cm.PlacementTarget = BtnCreateDrawing;
@@ -737,7 +739,21 @@ namespace MCG_3DPanel.UI
             catch (System.Exception ex) { SetStatus("Update failed: " + ex.Message, error: true); }
         }
 
-        private void MnuPlanView_Click(object sender, RoutedEventArgs e) => PlanViewCommand.Request();
+        private void MnuPlanView_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var db = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument?.Database;
+                var b = Selected.Select(r => r.Build).FirstOrDefault(x => x?.Remote != null && x.Remote.AssyRef2D.Database == db)
+                        ?? _builds.FirstOrDefault(x => x.Kept && x.Remote != null && x.Remote.AssyRef2D.Database == db);
+                if (b == null) { PlanViewCommand.Request(); return; }   // đang ở file 3D: như cũ
+                SetStatus(b.Remote.PendingKeys.Count > 0
+                    ? $"Updating {System.IO.Path.GetFileName(b.Remote.File3D)} with the waiting edits, then writing the Plan View…"
+                    : "Writing the Plan View…");
+                Commands.UpdateChain.RequestPlanView(b);
+            }
+            catch (System.Exception ex) { SetStatus("Plan View failed: " + ex.Message, error: true); }
+        }
 
         // ─── Create Drawing ▸ Details (spec 2026-11-16) ───────────────────
 
