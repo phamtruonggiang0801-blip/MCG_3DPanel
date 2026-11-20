@@ -768,7 +768,6 @@ namespace MCG_3DPanel.UI
                 var db = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument?.Database;
                 var b = Selected.Select(r => r.Build).FirstOrDefault(x => x?.Remote != null && x.Remote.AssyRef2D.Database == db)
                         ?? _builds.FirstOrDefault(x => x.Kept && x.Remote != null && x.Remote.AssyRef2D.Database == db);
-                Commands.TraceLog.Write("Menu Plan View: " + (b == null ? "3D file path" : "from 2D, " + b.Remote.File3D));
                 if (b == null) { PlanViewCommand.Request(); return; }   // đang ở file 3D: như cũ
                 SetStatus("Writing the Plan View…");
                 Commands.UpdateChain.RequestPlanView(b);

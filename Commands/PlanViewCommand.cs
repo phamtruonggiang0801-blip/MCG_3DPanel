@@ -34,7 +34,6 @@ namespace MCG_3DPanel.Commands
         {
             Document doc3D = _doc3D ?? Application.DocumentManager.MdiActiveDocument;
             _doc3D = null;
-            TraceLog.Write("MCG_PlanView: " + doc3D?.Name);
             if (doc3D == null) return;
             try { Finish(Create(doc3D), false); }
             catch (StopException stop) { Finish(stop.Message, true); }
@@ -79,9 +78,7 @@ namespace MCG_3DPanel.Commands
             // 2–4. Ảnh chụp từ file 3D, rồi tìm bản vẽ 2D.
             PlanViewInput input;
             using (doc3D.LockDocument()) input = PlanViewSnapshot.Read(doc3D.Database, build, out string snapErr) ?? throw new StopException(snapErr);
-            TraceLog.Write("PlanView: snapshot read");
             string path = Source2DLocator.Find(doc3D, build, out string why) ?? throw new StopException(why);
-            TraceLog.Write("PlanView: 2D drawing " + path);
             return WriteInto(path, input, build);
         }
 
@@ -94,7 +91,6 @@ namespace MCG_3DPanel.Commands
             {
                 PlanViewInput input = Remote3DSession.WithFileCorrections(remote, b =>
                     PlanViewSnapshot.Read(remote.Remote.SideDb, b, out string snapErr) ?? throw new StopException(snapErr));
-                TraceLog.Write("PlanView (2D): snapshot read");
                 return WriteInto(doc2D.Name, input, remote);
             }
             catch (StopException stop) { error = true; return stop.Message; }
@@ -122,9 +118,7 @@ namespace MCG_3DPanel.Commands
             {
                 // 5–6. Tờ + mô hình + tài nguyên có sẵn.
                 SheetContext sheet = PlanViewWriter.Sheet(db, refH, input, out var assyRef, out string sheetErr) ?? throw new StopException(sheetErr);
-                TraceLog.Write("PlanView: sheet found, building the model");
                 PlanViewModel model = PlanViewBuilder.Build(input, sheet);
-                TraceLog.Write("PlanView: model built");
                 var missing = PlanViewWriter.Missing(db, model);
                 var blocks = PlanViewBlockSource.Prepare(db, model.RequiredBlocks);   // chỉ đọc
                 missing.AddRange(blocks.Unavailable.Select(b => "block " + b));
@@ -150,9 +144,7 @@ namespace MCG_3DPanel.Commands
                 int labels, dims;
                 // Bổ sung block TRƯỚC, commit riêng: trong transaction ngoài, 1 lần chạy lỗi sẽ rollback block vừa chép thành bản ghi
                 // "đã xoá" vẫn giữ tên ⇒ lần sau tưởng đã có / chép không được (lỗi 'Rec. for tolerance' 2026-11-10). Undo vẫn gỡ được.
-                TraceLog.Write("PlanView: adding blocks");
                 List<string> addedTables = PlanViewBlockSource.Apply(db, blocks);
-                TraceLog.Write("PlanView: blocks added, writing");
                 var stillMissing = PlanViewBlockSource.NotLive(db, model.RequiredBlocks);
                 if (stillMissing.Count > 0)
                     throw new StopException("Plan View stopped; these blocks could not be added: " + string.Join(", ", stillMissing.Select(b => b + Origin(blocks, b)))
@@ -165,7 +157,6 @@ namespace MCG_3DPanel.Commands
                     (labels, dims) = PlanViewWriter.Write(db, model, sheet, btrH);
                     outer.Commit();
                 }
-                TraceLog.Write("PlanView: written");
                 Application.UpdateScreen();
                 string added = "";
                 if (blocks.FromTemplate.Count > 0) added += " Added from CAS.dwt: " + string.Join(", ", blocks.FromTemplate) + ".";

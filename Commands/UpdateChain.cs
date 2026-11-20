@@ -41,7 +41,6 @@ namespace MCG_3DPanel.Commands
         {
             if (remote?.Remote == null || Application.DocumentManager.MdiActiveDocument == null) return;
             if (PanelCommands.IsBuilding || Running) { Finish("A build or update is running — try again when it finishes.", true); return; }
-            TraceLog.Write($"{what}: pending = {remote.Remote.PendingKeys.Count}, locked = {remote.Remote.LockReason}");
             DetailCommands.Finished -= OnDetailFinished;   // lần trước Detail không báo về ⇒ bỏ chờ
             _waitDetail = false;
             Running = true;
@@ -171,7 +170,6 @@ namespace MCG_3DPanel.Commands
         private static void Finish(string msg, bool error)
         {
             if (Running) { _deferred = (msg, error); return; }   // bắn sau khi cờ tắt (tab nạp lại được)
-            TraceLog.Write($"UpdateChain.Finish (error = {error}): {msg}");
             try { Finished?.Invoke(msg, error); }
             catch (System.Exception ex) { System.Diagnostics.Debug.WriteLine("[UpdateChain] Finished: " + ex.Message); }
             try { Application.DocumentManager.MdiActiveDocument?.Editor?.WriteMessage("\n[MCG_3DPanel] " + msg + "\n"); } catch { }
