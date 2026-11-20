@@ -63,8 +63,9 @@ Kỹ sư chọn: cách A (sửa nhiều rồi Update một lần) và phương �
 
 - Khi bản vẽ 2D active (DocumentBecameCurrent / mở palette / sau Update): với mỗi reference `*_Assy` trong Model Space tìm
   file 3D như Detail đang làm; đọc ngầm (`ReadDwgFile`, chỉ đọc) ra danh sách dòng Result + Naming và corrections/names đã lưu.
-- Dữ liệu dòng là **ảnh chụp** (không giữ ObjectId của database phụ — database phụ đóng ngay sau khi đọc). Mọi tham chiếu tới
-  part đi qua khoá `{hex}#{n}` ⇒ ánh xạ sang entity 2D gốc trong bản vẽ đang mở.
+- Database phụ (chỉ đọc, đã nạp hết vào bộ nhớ, không khoá file) **giữ mở** trong lúc bản vẽ 2D còn mở — dòng Result/Naming
+  dùng lại nguyên `BuildResult` đọc từ nó (sửa khi lập plan: dòng cần ObjectId solid/part). Highlight / Pick trên 2D đi qua
+  handle (`{hex}#{n}`, `IdPath`) ⇒ ánh xạ sang entity 2D gốc trong bản vẽ đang mở. Đóng bản vẽ 2D / file 3D đổi ⇒ giải phóng.
 - Cache theo (đường dẫn file 3D, thời điểm sửa file); file 3D đổi ⇒ đọc lại.
 
 ### Kiểm tra block 2D còn khớp file 3D
@@ -84,8 +85,9 @@ Kỹ sư chọn: cách A (sửa nhiều rồi Update một lần) và phương �
 
 Nút Update (tab Result, ở 2D; tab Input giữ nút Build/Update hiện có — dùng chung một luồng):
 1. Luồng Update hiện có (`PrepareUpdate` → đổi khoá nếu DC → dựng file 3D mới).
-2. **Sau** đổi khoá: phủ sửa chờ lên corrections/names mang sang (sửa chờ thắng khi trùng khoá). Khoá chờ không còn part
-   ⇒ bỏ, đếm vào dòng báo ("n pending edits dropped because their part no longer exists").
+2. **Trước** đổi khoá: phủ sửa chờ lên corrections/names đọc từ file 3D cũ (sửa chờ thắng khi trùng khoá) — sửa chờ ghi theo
+   handle của file 3D cũ nên đi cùng bước đổi khoá như mọi chỉnh sửa khác (sửa khi lập plan); khoá không còn part ⇒ bỏ và đếm
+   trong dòng báo "kept / dropped" hiện có.
 3. Dựng 3D xong: vẽ lại Plan View (nếu panel đã có Plan View — dùng luồng Replace hiện có, kể cả hộp thoại phần vẽ tay), rồi
    Detail Update cho các Detail đã có của panel.
 4. Thành công bước 1–2 ⇒ xoá `MCG3D_PENDING`. Bước 3 lỗi ⇒ sửa đã nằm trong file 3D, chỉ báo bước nào chưa cập nhật.
