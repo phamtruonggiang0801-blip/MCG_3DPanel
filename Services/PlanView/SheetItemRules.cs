@@ -49,7 +49,9 @@ namespace MCG_3DPanel.Services.PlanView
 
         public static List<PvInsert> LashingPlan(PlanViewInput input, SheetContext s)
         {
-            var (x, y) = LashingInsertion(input, s);
+            var (ax, ay) = LashingInsertion(input, s);   // gốc hệ block _Assy của mặt bằng lỗ lashing
+            // Top Plate lồng trong _Assy tại TopPlateBlockAt (≠ 0 khi insertion point _Assy đã dời — kỹ sư 2026-11-20).
+            double x = ax + input.TopPlateBlockAt.X, y = ay + input.TopPlateBlockAt.Y;
             var (md1, md2, mdY) = Md(input, s);
             return new List<PvInsert>
             {

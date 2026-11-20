@@ -88,6 +88,24 @@ namespace MCG_3DPanel.Tests
             Assert.InRange(md1.X - tp.X, 4302.6 - 5, 4302.6 + 5); Assert.InRange(md2.X - tp.X, 10933.2 - 7, 10933.2 + 7); Assert.InRange(md1.Y, 20462 - 2, 20462 + 2);   // X so với tấm (tờ tay 17P)
         }
 
+        /// <summary>Kỹ sư 2026-11-20: dời insertion point của _Assy ở Global ⇒ _Top Plate lồng trong _Assy KHÔNG còn ở gốc (0,0). Chèn lại
+        /// Top Plate / Lashing Hole phải cộng điểm chèn thật của nó, hình tấm (M.D1/M.D2) giữ nguyên chỗ.</summary>
+        [Fact] public void LashingPlan_TopPlateNotAtAssyOrigin_ShiftedInsert()
+        {
+            var i = new PlanViewInput { Panel = "7D-17P", TopPlate = (-359.06, -12891.26, 15939.84, 500.84), PlateThickness = 6, HasLashingHoleBlock = true };
+            var s = new SheetContext { Scale = 50, FrameX = 0, FrameY = 0, PlanMinX = 4660.7, PlanMinY = 9585.4, PlanMaxX = 20959.6, PlanMaxY = 22977.5,
+                                       AssyTransform = new[] { 1.0, 0, 0, 1, 5019.76, 22476.66 } };
+            var at0 = SheetItemRules.LashingPlan(i, s);
+            i.TopPlateBlockAt = (-15450.57, 120.5);
+            i.LashingBlockOffset = (3170.4, -10522.7);
+            var at1 = SheetItemRules.LashingPlan(i, s);
+            var tp0 = at0.Single(x => x.Block == "7D-17P_Top Plate"); var tp1 = at1.Single(x => x.Block == "7D-17P_Top Plate");
+            Assert.Equal(tp0.X - 15450.57, tp1.X, 2); Assert.Equal(tp0.Y + 120.5, tp1.Y, 2);
+            var lh = at1.Single(x => x.Block == "7D-17P_Lashing Hole");
+            Assert.Equal(tp1.X + 3170.4, lh.X, 2); Assert.Equal(tp1.Y - 10522.7, lh.Y, 2);
+            Assert.Equal(at0.Single(x => x.Block == "M.D1").X, at1.Single(x => x.Block == "M.D1").X, 2);   // hình tấm không dời
+        }
+
         [Fact] public void NoLashingBlock_NoLashingPlan()
         {
             var i = Panel7D17P(); i.HasLashingHoleBlock = false;

@@ -92,6 +92,9 @@ namespace MCG_3DPanel.Services.PlanView
         public bool HasLashingHoleBlock { get; set; }
         /// <summary>Điểm chèn của &lt;panel&gt;_Lashing Hole trừ điểm chèn &lt;panel&gt;_Top Plate trong _Assy (tờ 7D-17C: 3170.4, −10522.7).</summary>
         public (double X, double Y) LashingBlockOffset { get; set; }
+        /// <summary>Điểm chèn của &lt;panel&gt;_Top Plate trong _Assy (hệ block 2D). (0,0) khi điểm chèn _Assy trùng Top Plate; khác khi
+        /// người dùng dời insertion point của _Assy (kỹ sư 2026-11-20) — chèn lại Top Plate phải cộng điểm này.</summary>
+        public (double X, double Y) TopPlateBlockAt { get; set; }
         /// <summary>Block COG trong &lt;panel&gt;_Top Plate (tâm + bán kính vòng tròn, hệ block); null = không có.</summary>
         public (double X, double Y, double R)? Cog { get; set; }
     }

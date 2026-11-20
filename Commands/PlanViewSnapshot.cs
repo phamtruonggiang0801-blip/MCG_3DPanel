@@ -148,6 +148,7 @@ namespace MCG_3DPanel.Commands
             // lại cả 2 block phải giữ đúng độ lệch này.
             if (topAt.HasValue && lashAt.HasValue)
                 input.LashingBlockOffset = (lashAt.Value.X - topAt.Value.X, lashAt.Value.Y - topAt.Value.Y);
+            if (topAt.HasValue) input.TopPlateBlockAt = (topAt.Value.X, topAt.Value.Y);
         }
 
         // ─── Ký hiệu: B (Tripping), S (Sniped End), Kind GE/GB (cột Kind tab Result), mã bracket OB… ───
