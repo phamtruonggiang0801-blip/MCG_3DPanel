@@ -111,13 +111,15 @@ namespace MCG_3DPanel.Commands
             public List<Services.Update.ShapeRecord> Shapes = new List<Services.Update.ShapeRecord>();
             /// <summary>Dòng báo kết quả đổi khoá (giữ / bỏ, base point dời), cách nhau "\n"; null = không có gì để báo.</summary>
             public string RemapNote;
+            /// <summary>Số sửa chờ từ bản 2D (MCG3D_PENDING) đã phủ lên chỉnh sửa của file cũ; 0 = không có.</summary>
+            public int PendingApplied;
             /// <summary>File cũ có correction hoặc tên người dùng.</summary>
             public bool HasEdits => !string.IsNullOrWhiteSpace(CorrectionsJson) || !string.IsNullOrWhiteSpace(NamesJson);
         }
 
         /// <summary>Đọc file 3D cũ từ đĩa bằng database phụ (chỉ đọc, chia sẻ), luôn giải phóng database. Meta null ⇒ file không có dữ liệu panel
         /// dùng được (kể cả Position lạ). File hỏng, hoặc mất block 2D mà meta trỏ tới ⇒ ném: correction không đọc được thì không được coi là không có.</summary>
-        public static OldPanelData ReadOld(string path)
+        public static OldPanelData ReadOld(string path, bool readShapes = false)
         {
             Database db = null;
             try
@@ -135,7 +137,8 @@ namespace MCG_3DPanel.Commands
                     old.CorrectionsJson = CorrectionXRecord.Read(tr, btr2D, CorrectionXRecord.CorrectionsKey);
                     old.NamesJson = CorrectionXRecord.Read(tr, btr2D, CorrectionXRecord.NamesKey);
                     old.BlockName = ((BlockTableRecord)tr.GetObject(btr2D, OpenMode.ForRead)).Name;
-                    if (old.HasEdits) old.Shapes = ShapeRecordReader.Records(tr, btr2D);   // không có chỉnh sửa ⇒ không cần so hình
+                    // Không có chỉnh sửa (kể cả sửa chờ từ bản 2D — readShapes) ⇒ không cần so hình
+                    if (old.HasEdits || readShapes) old.Shapes = ShapeRecordReader.Records(tr, btr2D);
                 }
                 return old;
             }
@@ -177,6 +180,8 @@ namespace MCG_3DPanel.Commands
                 ObjectId btr2D = ((BlockReference)tr.GetObject(refId, OpenMode.ForRead)).BlockTableRecord;
                 CorrectionXRecord.Write(tr, btr2D, CorrectionXRecord.CorrectionsKey, carry.CorrectionsJson);
                 CorrectionXRecord.Write(tr, btr2D, CorrectionXRecord.NamesKey, carry.NamesJson);
+                // Sửa chờ đã phủ vào carry; bản chép từ bản 2D không được nằm lại trong file 3D.
+                CorrectionXRecord.Write(tr, btr2D, CorrectionXRecord.PendingKey, null);
                 tr.Commit();
             }
         }

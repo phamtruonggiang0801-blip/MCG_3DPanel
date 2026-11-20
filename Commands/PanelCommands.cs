@@ -136,6 +136,37 @@ namespace MCG_3DPanel.Commands
             return last;
         }
 
+        /// <summary>Update đúng 1 panel từ bản vẽ 2D đang mở (nút Update tab Result — spec 2026-11-20 3d-controls-in-2d): luồng
+        /// <see cref="UpdateFile"/> (áp sửa chờ, đổi khoá), bọc <see cref="IsBuilding"/> / <see cref="BuildFinished"/> như Build.
+        /// Thành công ⇒ build mới + <paramref name="fileDoc"/> (file 3D đã lưu, đang active); dừng ⇒ null, lý do ở <paramref name="run"/>.</summary>
+        internal static BuildResult RunUpdate(Document doc2D, ObjectId assyRef, string file3D, BuildRun run, out Document fileDoc)
+        {
+            fileDoc = null;
+            IsBuilding = true;
+            try
+            {
+                string name;
+                using (Transaction tr = doc2D.Database.TransactionManager.StartOpenCloseTransaction())
+                    name = PartCollector.GetName(tr, (BlockReference)tr.GetObject(assyRef, OpenMode.ForRead));
+                var job = new PanelJob { RefId = assyRef, Name = name, Target = file3D, Update = true };
+                BuildResult build = UpdateFile(doc2D.Name, job, "[1/1]", run, out fileDoc);
+                if (build == null) return null;
+                run.Files++;
+                run.Solids += build.SolidCount;
+                var last = new List<BuildResult> { build };
+                SaveBuildReport(last);
+                try { FileBuilt?.Invoke(fileDoc.Database, last); }
+                catch (System.Exception ex) { run.Problems.Add($"The tabs could not be updated: {ex.Message}"); }
+                return build;
+            }
+            finally
+            {
+                IsBuilding = false;
+                try { BuildFinished?.Invoke(); }
+                catch (System.Exception ex) { Say($"\n{LOG_PREFIX} The tabs could not be updated: {ex.Message}\n"); }
+            }
+        }
+
         /// <summary>Tạo file, mở, dựng, lưu 1 panel. Trả null nếu file không được giữ (không solid / lỗi): file vừa tạo bị bỏ, đã báo người dùng.</summary>
         private static BuildResult BuildInNewFile(string sourceFile, PanelJob job,string tag, PanelInput input, PanelPosition position,
             BuildRun run, out Document fileDoc)
@@ -286,6 +317,14 @@ namespace MCG_3DPanel.Commands
                 Say($"\n{LOG_PREFIX} The previous version of {file} was kept as {Path.GetFileName(backup)}.\n");
                 if (carry.RemapNote != null) run.Problems.AddRange(carry.RemapNote.Split('\n'));
                 AddUnmatchedNote(carry, build, run);
+                if (carry.PendingApplied > 0)
+                {
+                    // Sửa chờ đã vào file 3D ⇒ xoá khỏi bản 2D (spec 2026-11-20 3d-controls-in-2d). Lỗi ⇒ báo, Update vẫn giữ.
+                    Document src = FindOpen(sourceFile);
+                    string err = src == null ? $"The waiting edits are still in {Path.GetFileName(sourceFile)} (the drawing is closed)."
+                                             : Remote3DSession.ClearPendingForRef(src, job.RefId);
+                    if (err != null) run.Problems.Add(err); else run.PendingApplied += carry.PendingApplied;
+                }
                 fileDoc = doc;
                 return build;
             }
@@ -336,8 +375,20 @@ namespace MCG_3DPanel.Commands
                 }
             }
 
-            try { carry = Panel3DFile.ReadOld(job.Target); }
+            // Sửa chờ trên bản 2D (spec 2026-11-20 3d-controls-in-2d): khoá theo handle file cũ ⇒ phủ TRƯỚC khi đổi khoá.
+            string pending;
+            try { pending = Remote3DSession.ReadPendingForRef(job.RefId); }
+            catch (System.Exception ex) { return $"Could not read the waiting edits of {file} ({ex.Message}). The old file was not changed."; }
+
+            try { carry = Panel3DFile.ReadOld(job.Target, readShapes: pending != null); }
             catch (System.Exception ex) { return $"Could not read {file} ({ex.Message}). Use New copy."; }
+            if (pending != null && carry.Meta != null)
+            {
+                Services.Update.PendingEdits.Apply(pending, carry.CorrectionsJson, carry.NamesJson, out string c, out string n);
+                carry.CorrectionsJson = c;
+                carry.NamesJson = n;
+                carry.PendingApplied = Services.Update.PendingEdits.Count(pending);
+            }
 
             string selectedBlock;
             List<Services.Update.ShapeRecord> newShapes;
@@ -983,5 +1034,7 @@ namespace MCG_3DPanel.Commands
         public int Opened;
         /// <summary>Lỗi phụ cần báo trên thanh trạng thái, vd không xoá được file.</summary>
         public List<string> Problems = new List<string>();
+        /// <summary>Số sửa chờ từ bản 2D đã áp vào 3D và xoá khỏi bản 2D.</summary>
+        public int PendingApplied;
     }
 }

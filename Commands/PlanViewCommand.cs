@@ -45,6 +45,21 @@ namespace MCG_3DPanel.Commands
             }
         }
 
+        /// <summary>Vẽ lại Plan View từ <paramref name="doc3D"/> trong ngữ cảnh lệnh Session đang chạy (Update từ bản 2D), không bắn
+        /// <see cref="Finished"/>. Trả thông báo; <paramref name="error"/> = dừng / lỗi. Không ném.</summary>
+        internal static string CreateFor(Document doc3D, out bool error)
+        {
+            error = false;
+            try { return Create(doc3D); }
+            catch (StopException stop) { error = true; return stop.Message; }
+            catch (System.Exception ex)
+            {
+                error = true;
+                try { Application.DocumentManager.MdiActiveDocument?.Editor?.WriteMessage("\n[MCG_3DPanel] Plan View error detail:\n" + ex + "\n"); } catch { }
+                return ex.Message + " (details on the command line)";
+            }
+        }
+
         /// <summary>Trả thông báo trạng thái; lỗi người dùng cần biết ⇒ ném <see cref="StopException"/>.</summary>
         private static string Create(Document doc3D)
         {

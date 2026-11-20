@@ -433,6 +433,19 @@ namespace MCG_3DPanel.Commands
             rb.Dispose(); return true;
         }
 
+        /// <summary>Model Space của bản 2D có entity Plan View của panel <paramref name="btrHandle"/> (tool đã vẽ) — Update từ bản 2D
+        /// chỉ vẽ lại khi đã có (spec 2026-11-20 3d-controls-in-2d).</summary>
+        internal static bool HasPlanView(Database db, string btrHandle)
+        {
+            using (Transaction tr = db.TransactionManager.StartOpenCloseTransaction())
+            {
+                var ms = (BlockTableRecord)tr.GetObject(SymbolUtilityServices.GetBlockModelSpaceId(db), OpenMode.ForRead);
+                foreach (ObjectId id in ms)
+                    if (tr.GetObject(id, OpenMode.ForRead) is Entity e && IsOwn(e, btrHandle)) return true;
+            }
+            return false;
+        }
+
         private static bool IsOwn(Entity ent, string btrHandle)
         {
             ResultBuffer rb = ent.GetXDataForApplication(App);

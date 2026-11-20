@@ -24,6 +24,12 @@ namespace MCG_3DPanel.UI
             StepExport.Finished += (msg, err) => SetStatus(msg, err);
             PlanViewCommand.Finished += (msg, err) => SetStatus(msg, err);
             Commands.Detail.DetailCommands.Finished += (msg, err) => SetStatus(msg, err);
+            // Update từ bản 2D xong: nạp lại (dòng hết dấu chờ) rồi hiện câu báo của chuỗi.
+            Commands.UpdateChain.Finished += (msg, err) =>
+            {
+                try { PaletteManager.Instance.Refresh(); } catch (System.Exception ex) { msg += " The tabs could not be updated: " + ex.Message; err = true; }
+                SetStatus(msg, err);
+            };
             Loaded += (s, e) =>
             {
                 // STEPOUT chỉ có khi chạy AutoCAD Mechanical — không có thì nút mờ + tooltip giải thích.
@@ -164,6 +170,12 @@ namespace MCG_3DPanel.UI
             var kept = _builds.Where(b => b.Kept).ToList();
             // Cột Panel chỉ cần khi có từ 2 panel trở lên — 1 panel thì thừa, lấn chỗ của Kind.
             ColPanel.Visibility = kept.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+
+            // Nút Update chỉ khi panel đọc nền từ file 3D (đang ở bản 2D); nhãn kèm số sửa chờ.
+            var remoteBuilds = kept.Where(b => b.Remote != null).ToList();
+            BtnUpdate2D.Visibility = remoteBuilds.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            int waiting = remoteBuilds.GroupBy(b => b.Remote.AssyBtr2D).Sum(g => g.First().Remote.PendingKeys.Count);
+            BtnUpdate2D.Content = waiting > 0 ? $"Update ({waiting})" : "Update";
 
             // Drawing không có panel (vd bản 2D) ⇒ bảng trống + gợi ý.
             if (kept.Count == 0)
@@ -706,6 +718,20 @@ namespace MCG_3DPanel.UI
             cm.PlacementTarget = BtnCreateDrawing;
             cm.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
             cm.IsOpen = true;
+        }
+
+        /// <summary>Update từ bản 2D: panel của dòng đang chọn (không chọn ⇒ panel đầu tiên). Nhiều panel ⇒ mỗi lần 1 panel.</summary>
+        private void BtnUpdate2D_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var b = Selected.Select(r => r.Build).FirstOrDefault(x => x?.Remote != null)
+                        ?? _builds.FirstOrDefault(x => x.Kept && x.Remote != null);
+                if (b == null) { SetStatus("Nothing to update — open the 2D drawing of a panel that has a 3D file.", error: true); return; }
+                SetStatus($"Updating {System.IO.Path.GetFileName(b.Remote.File3D)}…");
+                Commands.UpdateChain.Request(b);
+            }
+            catch (System.Exception ex) { SetStatus("Update failed: " + ex.Message, error: true); }
         }
 
         private void MnuPlanView_Click(object sender, RoutedEventArgs e) => PlanViewCommand.Request();

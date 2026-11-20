@@ -204,6 +204,8 @@ namespace MCG_3DPanel.UI
             var notes = new List<string>();
             if (run.Empty > 0) notes.Add($"{run.Empty} panel(s) built nothing");
             if (run.Failed > 0) notes.Add($"{run.Failed} panel(s) failed, see the command line");
+            if (run.PendingApplied > 0)
+                notes.Add($"{run.PendingApplied} edit{(run.PendingApplied > 1 ? "s" : "")} from the 2D drawing applied");
             notes.AddRange(run.Problems);
             string tail = string.Concat(notes.Select(n => " · " + n));
             bool error = run.Failed > 0 || run.Problems.Count > 0;

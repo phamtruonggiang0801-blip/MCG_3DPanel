@@ -1,0 +1,143 @@
+using System;
+using System.IO;
+using System.Linq;
+using Autodesk.AutoCAD.ApplicationServices;
+using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.Runtime;
+using MCG_3DPanel.Commands.Detail;
+using MCG_3DPanel.Services;
+using MCG_3DPanel.Services.Update;
+
+[assembly: CommandClass(typeof(MCG_3DPanel.Commands.UpdateChain))]
+
+namespace MCG_3DPanel.Commands
+{
+    /// <summary>Nút Update trên bản vẽ 2D (spec 2026-11-20 3d-controls-in-2d): Update file 3D (áp sửa chờ) → vẽ lại Plan View nếu đã có →
+    /// đóng file 3D nếu trước đó chưa mở → Update Details nếu đã có Detail → về bản 2D. Phần lỗi nêu tên trong câu báo cuối.</summary>
+    public class UpdateChain
+    {
+        public const string Command = "MCG_UpdateFrom2D";
+
+        /// <summary>(thông báo, lỗi?) khi chuỗi kết thúc.</summary>
+        public static event Action<string, bool> Finished;
+
+        private static BuildResult _request;
+
+        // Trạng thái chờ Detail Update (lệnh Modal chạy sau, báo qua DetailCommands.Finished).
+        private static bool _waitDetail;
+        private static bool _planView;
+        private static string _planErr;
+        private static int _applied;
+        private static string _extra;
+
+        /// <summary>Gọi từ palette (bản vẽ 2D đang active): chạy lệnh trong ngữ cảnh lệnh của document đó.</summary>
+        public static void Request(BuildResult remote)
+        {
+            Document doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null || remote?.Remote == null) return;
+            if (PanelCommands.IsBuilding) { Finish("A build is running — try again when it finishes.", true); return; }
+            _request = remote;
+            doc.SendStringToExecute(Command + " ", true, false, false);
+        }
+
+        [CommandMethod(Command, CommandFlags.Session)]
+        public void Run()
+        {
+            BuildResult req = _request;
+            _request = null;
+            if (req?.Remote == null) return;
+            try { Start(req); }
+            catch (System.Exception ex)
+            {
+                try { Application.DocumentManager.MdiActiveDocument?.Editor?.WriteMessage("\n[MCG_3DPanel] Update error detail:\n" + ex + "\n"); } catch { }
+                Finish("Update failed: " + ex.Message + " (details on the command line)", true);
+            }
+        }
+
+        private static void Start(BuildResult req)
+        {
+            RemoteLink r = req.Remote;
+            Document doc2D = DocOf(r.AssyRef2D.Database) ?? throw new InvalidOperationException("the 2D drawing is closed");
+            string name2D = Path.GetFileName(doc2D.Name);
+            if (r.Locked && r.LockReason != Remote3DSession.Changed2D) { Finish(r.LockReason, true); return; }   // file 3D đang mở
+
+            // Update đọc block 2D từ file trên đĩa ⇒ bản 2D phải đã lưu (vừa ghi sửa chờ nên thường là chưa).
+            if (!PanelCommands.IsSavedOnDisk(doc2D))
+            {
+                if (!MCG_3DPanel.UI.UnsavedFileDialog.AskSave(name2D)) { Finish($"Update cancelled: {name2D} has unsaved changes.", true); return; }
+                string err = PanelCommands.SaveOpenTarget(doc2D, name2D);
+                if (err != null) { Finish(err, true); return; }
+            }
+
+            string file3D = r.File3D;
+            bool wasOpen = PanelCommands.FindOpen(file3D) != null;
+            string btrH = r.AssyBtr2D.Handle.ToString();
+            bool planView = PlanViewWriter.HasPlanView(doc2D.Database, btrH);
+            bool detail = DetailCommands.HasPanelWith3DFile(doc2D, out bool hasDetail) && hasDetail;
+
+            var run = new BuildRun();
+            BuildResult build = PanelCommands.RunUpdate(doc2D, r.AssyRef2D, file3D, run, out Document doc3D);
+            if (build == null)
+            {
+                // 3D không đổi ⇒ sửa chờ còn nguyên trong bản 2D.
+                Finish(string.Join(" · ", new[] { run.Stop }.Concat(run.Problems).Where(s => !string.IsNullOrEmpty(s)))
+                       is string s && s.Length > 0 ? s : "Update failed — see the command line.", true);
+                return;
+            }
+
+            string planErr = null;
+            if (planView)
+            {
+                string msg = PlanViewCommand.CreateFor(doc3D, out bool err);
+                if (err) planErr = msg;
+            }
+
+            if (!wasOpen && DocOf(doc3D.Database) != null)
+            {
+                try
+                {
+                    if (Application.DocumentManager.MdiActiveDocument == doc3D) PanelCommands.Activate(doc2D);
+                    if (!PanelCommands.IsSavedOnDisk(doc3D)) PanelCommands.SaveOpenTarget(doc3D, Path.GetFileName(file3D));
+                    doc3D.CloseAndDiscard();
+                }
+                catch (System.Exception ex) { run.Problems.Add($"Could not close {Path.GetFileName(file3D)}: {ex.Message}"); }
+            }
+            try { if (Application.DocumentManager.MdiActiveDocument != doc2D) PanelCommands.Activate(doc2D); }
+            catch (System.Exception ex) { run.Problems.Add($"Could not switch back to {name2D}: {ex.Message}"); }
+
+            string extra = run.Problems.Count > 0 ? " " + string.Join(" · ", run.Problems) : "";
+            if (detail && planErr == null)
+            {
+                // Detail Update là lệnh Modal của bản 2D: chạy sau lệnh này, báo kết quả qua DetailCommands.Finished.
+                _waitDetail = true;
+                _planView = planView; _planErr = planErr; _applied = run.PendingApplied; _extra = extra;
+                DetailCommands.Finished -= OnDetailFinished;
+                DetailCommands.Finished += OnDetailFinished;
+                DetailCommands.Request(DetailCommands.UpdateCommand);
+                return;
+            }
+            Finish(UpdateChainRules.Summary(planView, planErr, detail, null, run.PendingApplied) + extra, planErr != null || run.Problems.Count > 0);
+        }
+
+        private static void OnDetailFinished(string msg, bool error)
+        {
+            DetailCommands.Finished -= OnDetailFinished;
+            if (!_waitDetail) return;
+            _waitDetail = false;
+            Finish(UpdateChainRules.Summary(_planView, _planErr, true, error ? msg : null, _applied) + _extra, error || _extra.Length > 0);
+        }
+
+        private static void Finish(string msg, bool error)
+        {
+            try { Finished?.Invoke(msg, error); }
+            catch (System.Exception ex) { System.Diagnostics.Debug.WriteLine("[UpdateChain] Finished: " + ex.Message); }
+            try { Application.DocumentManager.MdiActiveDocument?.Editor?.WriteMessage("\n[MCG_3DPanel] " + msg + "\n"); } catch { }
+        }
+
+        private static Document DocOf(Database db)
+        {
+            foreach (Document d in Application.DocumentManager) if (d.Database == db) return d;
+            return null;
+        }
+    }
+}

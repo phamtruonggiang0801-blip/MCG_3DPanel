@@ -184,6 +184,29 @@ namespace MCG_3DPanel.Commands
                 return CorrectionXRecord.Read(tr, assyBtr2D, CorrectionXRecord.PendingKey);
         }
 
+        /// <summary>Pending của block mà reference <paramref name="refId"/> (bản vẽ 2D) chèn; không có ⇒ null.</summary>
+        public static string ReadPendingForRef(ObjectId refId)
+        {
+            if (refId.IsNull) return null;
+            ObjectId btr;
+            using (Transaction tr = refId.Database.TransactionManager.StartOpenCloseTransaction())
+                btr = ((BlockReference)tr.GetObject(refId, OpenMode.ForRead)).BlockTableRecord;
+            return ReadPending(refId.Database, btr);
+        }
+
+        /// <summary>Như <see cref="ClearPending"/>, theo reference _Assy.</summary>
+        public static string ClearPendingForRef(Document doc2D, ObjectId refId)
+        {
+            try
+            {
+                ObjectId btr;
+                using (Transaction tr = doc2D.Database.TransactionManager.StartOpenCloseTransaction())
+                    btr = ((BlockReference)tr.GetObject(refId, OpenMode.ForRead)).BlockTableRecord;
+                return ClearPending(doc2D, btr);
+            }
+            catch (System.Exception ex) { return "The waiting edits could not be cleared from the 2D drawing (" + ex.Message + ")."; }
+        }
+
         /// <summary>Xoá pending của panel trong bản 2D (sau Update thành công) và bỏ database phụ của nó. Trả lỗi hoặc null.</summary>
         public static string ClearPending(Document doc2D, ObjectId assyBtr2D)
         {
