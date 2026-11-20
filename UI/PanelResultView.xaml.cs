@@ -142,12 +142,15 @@ namespace MCG_3DPanel.UI
         {
             if (db == null || _builds.Count == 0) return;
             int before = _builds.Count;
-            var left = _builds.Where(b => b.BlockRefId.IsNull || b.BlockRefId.Database != db).ToList();
+            // Panel đọc nền từ file 3D thuộc bản 2D (AssyRef2D) — database phụ của nó bị giải phóng cùng lúc (review 2026-11-20).
+            var left = _builds.Where(b => b.Remote != null ? b.Remote.AssyRef2D.Database != db
+                                                           : b.BlockRefId.IsNull || b.BlockRefId.Database != db).ToList();
             if (left.Count == before) return;
             if (left.Count == 0)
             {
                 _builds = left;
                 GridResult.ItemsSource = null;
+                BtnUpdate2D.Visibility = Visibility.Collapsed;
                 SetStatus("Drawing closed — open a saved 2D drawing to Build 3D, or a 3D panel file to work on it.");
                 return;
             }

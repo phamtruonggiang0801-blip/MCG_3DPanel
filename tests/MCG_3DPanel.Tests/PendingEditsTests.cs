@@ -72,14 +72,55 @@ public class PendingEditsTests
         Assert.Equal("P1", names["E#0"]);
         Assert.False(names.ContainsKey("F#0"));
         Assert.Equal("KEEP", names["G#0"]);
-        Assert.Single(merges);
-        Assert.True(merges[0].SetEquals(new[] { "M#0", "M#2" }));
+        // Nhóm đổi trên bản 2D thêm vào; nhóm của file 3D (X) giữ — review 2026-11-20 (không thay nguyên khối)
+        Assert.Equal(2, merges.Count);
+        Assert.Contains(merges, g => g.SetEquals(new[] { "M#0", "M#2" }));
+        Assert.Contains(merges, g => g.SetEquals(new[] { "X#0", "X#1" }));
 
         // merges không đổi ⇒ carry giữ merges của nó
         string p2 = PendingEdits.Diff(null, null, b, Names(new Dictionary<string, string> { { "E#0", "P1" } }, merges: new[] { new[] { "M#0", "M#1" } }));
         PendingEdits.Apply(p2, null, carry, out _, out string no2);
         NamesJson.Deserialize(no2, out _, out var merges2);
         Assert.True(merges2[0].SetEquals(new[] { "X#0", "X#1" }));
+    }
+
+    [Fact]
+    public void Merge_On2D_KeepsGroupMadeIn3D()
+    {
+        string p = PendingEdits.Diff(null, null, Names(null), Names(null, merges: new[] { new[] { "C#0", "D#0" } }));
+        string carry = Names(null, merges: new[] { new[] { "A#0", "B#0" } });
+        PendingEdits.Apply(p, null, carry, out _, out string no);
+        NamesJson.Deserialize(no, out _, out var merges);
+        Assert.Equal(2, merges.Count);
+        Assert.Contains(merges, g => g.SetEquals(new[] { "A#0", "B#0" }));
+        Assert.Contains(merges, g => g.SetEquals(new[] { "C#0", "D#0" }));
+    }
+
+    [Fact]
+    public void UnmergeOnly_CountedAndRemovesOnlyThatGroup()
+    {
+        string b = Names(null, merges: new[] { new[] { "C#0", "D#0" } });
+        string p = PendingEdits.Diff(null, null, b, Names(null));
+        Assert.NotNull(p);
+        Assert.True(PendingEdits.Count(p) > 0);
+        Assert.Contains("C#0", PendingEdits.Keys(p));
+        string carry = Names(null, merges: new[] { new[] { "A#0", "B#0" }, new[] { "C#0", "D#0" } });
+        PendingEdits.Apply(p, null, carry, out _, out string no);
+        NamesJson.Deserialize(no, out _, out var merges);
+        Assert.Single(merges);
+        Assert.True(merges[0].SetEquals(new[] { "A#0", "B#0" }));
+    }
+
+    [Fact]
+    public void Splits_AddAndRemove_KeepOthers()
+    {
+        string b = Names(null, splits: new[] { "S#0" });
+        string p = PendingEdits.Diff(null, null, b, Names(null, splits: new[] { "T#0" }));
+        Assert.Contains("S#0", PendingEdits.Keys(p));
+        Assert.Contains("T#0", PendingEdits.Keys(p));
+        PendingEdits.Apply(p, null, Names(null, splits: new[] { "S#0", "U#0" }), out _, out string no);
+        NamesJson.Deserialize(no, out _, out _, out var splits);
+        Assert.True(splits.SetEquals(new[] { "T#0", "U#0" }));
     }
 
     [Fact]

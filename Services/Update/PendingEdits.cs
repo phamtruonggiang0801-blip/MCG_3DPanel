@@ -29,10 +29,13 @@ namespace MCG_3DPanel.Services.Update
             public List<string> Cleared { get; set; } = new List<string>();
             public List<string> Deleted { get; set; } = new List<string>();
             public List<string> Undeleted { get; set; } = new List<string>();
-            /// <summary>Giá trị nguyên khối: null = không đổi (giữ của file 3D).</summary>
-            public List<List<string>> Merges { get; set; }
-            public List<string> Splits { get; set; }
-            internal bool Empty => Set.Count == 0 && Cleared.Count == 0 && Deleted.Count == 0 && Undeleted.Count == 0 && Merges == null && Splits == null;
+            /// <summary>Nhóm Merge / khoá Split thêm hoặc bỏ so với file 3D — nhóm / khoá khác của file 3D giữ nguyên (review 2026-11-20).</summary>
+            public List<List<string>> MergesAdded { get; set; } = new List<List<string>>();
+            public List<List<string>> MergesRemoved { get; set; } = new List<List<string>>();
+            public List<string> SplitsAdded { get; set; } = new List<string>();
+            public List<string> SplitsRemoved { get; set; } = new List<string>();
+            internal bool Empty => Set.Count == 0 && Cleared.Count == 0 && Deleted.Count == 0 && Undeleted.Count == 0
+                                   && MergesAdded.Count == 0 && MergesRemoved.Count == 0 && SplitsAdded.Count == 0 && SplitsRemoved.Count == 0;
         }
 
         sealed class Doc
@@ -70,8 +73,10 @@ namespace MCG_3DPanel.Services.Update
             foreach (var k in bn.Keys) if (!cn.ContainsKey(k)) names.Cleared.Add(k);
             foreach (var k in cnd) if (!bnd.Contains(k)) names.Deleted.Add(k);
             foreach (var k in bnd) if (!cnd.Contains(k)) names.Undeleted.Add(k);
-            if (!SameGroups(bm, cm)) names.Merges = cm.Select(g => g.OrderBy(x => x, StringComparer.Ordinal).ToList()).ToList();
-            if (!bs.SetEquals(cs)) names.Splits = cs.OrderBy(x => x, StringComparer.Ordinal).ToList();
+            foreach (var g in cm) if (!bm.Any(x => x.SetEquals(g))) names.MergesAdded.Add(Sorted(g));
+            foreach (var g in bm) if (!cm.Any(x => x.SetEquals(g))) names.MergesRemoved.Add(Sorted(g));
+            foreach (var k in cs) if (!bs.Contains(k)) names.SplitsAdded.Add(k);
+            foreach (var k in bs) if (!cs.Contains(k)) names.SplitsRemoved.Add(k);
             if (!names.Empty) doc.Names = names;
 
             return doc.Corr == null && doc.Names == null ? null : JsonSerializer.Serialize(doc, Opt);
@@ -103,11 +108,12 @@ namespace MCG_3DPanel.Services.Update
                 foreach (var kv in doc.Names.Set) n[kv.Key] = kv.Value;
                 foreach (var k in doc.Names.Undeleted) deleted.Remove(k);
                 foreach (var k in doc.Names.Deleted) deleted.Add(k);
-                IEnumerable<IEnumerable<string>> m = doc.Names.Merges != null
-                    ? doc.Names.Merges.Select(g => (IEnumerable<string>)g).ToList()
-                    : merges.Select(g => (IEnumerable<string>)g).ToList();
-                IEnumerable<string> s = doc.Names.Splits ?? (IEnumerable<string>)splits;
-                namesOut = NamesJson.Serialize(n, deleted, m, s);
+                foreach (var g in doc.Names.MergesRemoved) merges.RemoveAll(x => x.SetEquals(g));
+                foreach (var g in doc.Names.MergesAdded)
+                    if (!merges.Any(x => x.SetEquals(g))) merges.Add(new HashSet<string>(g, StringComparer.Ordinal));
+                foreach (var k in doc.Names.SplitsRemoved) splits.Remove(k);
+                foreach (var k in doc.Names.SplitsAdded) splits.Add(k);
+                namesOut = NamesJson.Serialize(n, deleted, merges.Select(g => (IEnumerable<string>)g).ToList(), splits);
             }
         }
 
@@ -130,8 +136,9 @@ namespace MCG_3DPanel.Services.Update
                 r.UnionWith(doc.Names.Cleared);
                 r.UnionWith(doc.Names.Deleted);
                 r.UnionWith(doc.Names.Undeleted);
-                foreach (var g in doc.Names.Merges ?? new List<List<string>>()) r.UnionWith(g);
-                r.UnionWith(doc.Names.Splits ?? new List<string>());
+                foreach (var g in doc.Names.MergesAdded.Concat(doc.Names.MergesRemoved)) r.UnionWith(g);
+                r.UnionWith(doc.Names.SplitsAdded);
+                r.UnionWith(doc.Names.SplitsRemoved);
             }
             r.RemoveWhere(string.IsNullOrEmpty);
             return r;
@@ -149,18 +156,6 @@ namespace MCG_3DPanel.Services.Update
 
         static string Json(PartCorrection c) => JsonSerializer.Serialize(c, Opt);
 
-        static bool SameGroups(List<HashSet<string>> a, List<HashSet<string>> b)
-        {
-            if (a.Count != b.Count) return false;
-            var used = new bool[b.Count];
-            foreach (var g in a)
-            {
-                int i = -1;
-                for (int j = 0; j < b.Count && i < 0; j++) if (!used[j] && b[j].SetEquals(g)) i = j;
-                if (i < 0) return false;
-                used[i] = true;
-            }
-            return true;
-        }
+        static List<string> Sorted(IEnumerable<string> g) => g.OrderBy(x => x, StringComparer.Ordinal).ToList();
     }
 }

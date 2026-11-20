@@ -113,6 +113,8 @@ namespace MCG_3DPanel.Commands
             public string RemapNote;
             /// <summary>Số sửa chờ từ bản 2D (MCG3D_PENDING) đã phủ lên chỉnh sửa của file cũ; 0 = không có.</summary>
             public int PendingApplied;
+            /// <summary>Bản 2D có MCG3D_PENDING đã phủ vào carry ⇒ Update thành công phải xoá nó.</summary>
+            public bool HasPending;
             /// <summary>File cũ có correction hoặc tên người dùng.</summary>
             public bool HasEdits => !string.IsNullOrWhiteSpace(CorrectionsJson) || !string.IsNullOrWhiteSpace(NamesJson);
         }

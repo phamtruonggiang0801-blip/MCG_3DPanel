@@ -120,7 +120,8 @@ namespace MCG_3DPanel.UI
                     if (doc != null) builds = MCG_3DPanel.Commands.Remote3DSession.For2D(doc, out message);
                 }
                 // Input TRƯỚC các tab: Naming đọc Position từ ô Input qua PositionProvider.
-                _input.ShowPanel(builds.Count > 0 ? builds[0] : null);
+                // Panel đọc nền từ file 3D (bản 2D) KHÔNG đưa vào tab Input: tab Input trên bản 2D giữ Build / Update như cũ.
+                _input.ShowPanel(System.Linq.Enumerable.FirstOrDefault(builds, b => b.Remote == null));
                 // Highlight dùng chung 1 trạng thái ⇒ tab ĐANG MỞ chạy SAU để vùng chọn của nó thắng.
                 if (_activeTab == "Naming") { _result.ShowFile(builds, message); _naming.ShowFile(builds, message); }
                 else { _naming.ShowFile(builds, message); _result.ShowFile(builds, message); }

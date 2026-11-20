@@ -56,6 +56,9 @@ namespace MCG_3DPanel.Commands
 
         private static void Start(BuildResult req)
         {
+            // Lần trước Detail Update không báo về ⇒ bỏ chờ, không để câu báo cũ hiện ở lệnh Detail sau (review minor).
+            DetailCommands.Finished -= OnDetailFinished;
+            _waitDetail = false;
             RemoteLink r = req.Remote;
             Document doc2D = DocOf(r.AssyRef2D.Database) ?? throw new InvalidOperationException("the 2D drawing is closed");
             string name2D = Path.GetFileName(doc2D.Name);
@@ -65,7 +68,7 @@ namespace MCG_3DPanel.Commands
             if (!PanelCommands.IsSavedOnDisk(doc2D))
             {
                 if (!MCG_3DPanel.UI.UnsavedFileDialog.AskSave(name2D)) { Finish($"Update cancelled: {name2D} has unsaved changes.", true); return; }
-                string err = PanelCommands.SaveOpenTarget(doc2D, name2D);
+                string err = Save2D(doc2D);
                 if (err != null) { Finish(err, true); return; }
             }
 
@@ -117,6 +120,24 @@ namespace MCG_3DPanel.Commands
                 return;
             }
             Finish(UpdateChainRules.Summary(planView, planErr, detail, null, run.PendingApplied) + extra, planErr != null || run.Problems.Count > 0);
+        }
+
+        /// <summary>Lưu bản vẽ 2D chính thức như QSAVE: giữ phiên bản DWG gốc, .bak thường (review 2026-11-20 — không dùng đường lưu file 3D).
+        /// Trả lỗi hoặc null.</summary>
+        private static string Save2D(Document doc)
+        {
+            try
+            {
+                using (doc.LockDocument())
+                {
+                    Database db = doc.Database;
+                    db.SaveAs(doc.Name, true, db.OriginalFileVersion, db.SecurityParameters);
+                    try { Autodesk.AutoCAD.Internal.Utils.SetDbmod(0, db); }
+                    catch (System.Exception ex) { System.Diagnostics.Debug.WriteLine("[UpdateChain] SetDbmod: " + ex.Message); }
+                }
+                return null;
+            }
+            catch (System.Exception ex) { return $"Could not save {Path.GetFileName(doc.Name)}: {ex.Message}. Nothing was updated."; }
         }
 
         private static void OnDetailFinished(string msg, bool error)

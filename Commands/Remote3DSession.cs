@@ -29,6 +29,7 @@ namespace MCG_3DPanel.Commands
             public List<BuildResult> Builds;   // null ⇒ đọc lại từ Src (store đã giữ sửa)
             public string Notes;
             public bool OpenAsDoc;             // file 3D đang mở như document khi đọc
+            public string Fingerprint;         // vân tay block 2D lúc đọc — DC lại trong phiên ⇒ đọc lại, khoá sửa
             public string BaseCorr, BaseNames; // chỉnh sửa của file 3D lúc đọc — gốc tính pending
         }
 
@@ -70,10 +71,12 @@ namespace MCG_3DPanel.Commands
 
         private static Entry Fresh(Dictionary<string, Entry> entries, string key, Document doc2D, ObjectId refId, ObjectId btrId, List<string> notes)
         {
+            string fp = Fingerprint(doc2D.Database, btrId);
             if (entries.TryGetValue(key, out Entry e))
             {
                 bool same = e.Src != null && !e.Src.SourceDb.IsDisposed && SafeWriteTime(e.Src.FilePath) == e.WriteTime
-                            && (PanelCommands.FindOpen(e.Src.FilePath) != null) == e.OpenAsDoc;
+                            && (PanelCommands.FindOpen(e.Src.FilePath) != null) == e.OpenAsDoc
+                            && fp == e.Fingerprint;   // DC lại block trong phiên ⇒ đọc lại để Stale tính lại (review 2026-11-20)
                 if (same)
                 {
                     if (e.Builds == null) e.Builds = Read(e, doc2D, refId, btrId, applyPending: false);
@@ -88,7 +91,7 @@ namespace MCG_3DPanel.Commands
                 if (!string.IsNullOrEmpty(why)) notes.Add(why);
                 return null;
             }
-            e = new Entry { Src = src, WriteTime = SafeWriteTime(src.FilePath), OpenAsDoc = PanelCommands.FindOpen(src.FilePath) != null };
+            e = new Entry { Src = src, WriteTime = SafeWriteTime(src.FilePath), OpenAsDoc = PanelCommands.FindOpen(src.FilePath) != null, Fingerprint = fp };
             entries[key] = e;
             e.Builds = Read(e, doc2D, refId, btrId, applyPending: true);
             return e;
@@ -291,8 +294,9 @@ namespace MCG_3DPanel.Commands
             try
             {
                 Database side = e.Src?.SourceDb;
-                // Cache store của database phụ phải bỏ TRƯỚC khi giải phóng (con trỏ có thể bị database mới dùng lại).
-                if (side != null && !side.IsDisposed && PanelCommands.FindOpen(e.Src.FilePath) == null)
+                // Cache store của database phụ phải bỏ TRƯỚC khi giải phóng (con trỏ có thể bị database mới dùng lại). Xét database
+                // LÚC ĐỌC là của ta (không phải document đang mở) — không xét file đang mở BÂY GIỜ (review 2026-11-20: Update mở lại file 3D).
+                if (side != null && !side.IsDisposed && !e.OpenAsDoc)
                 {
                     CorrectionStore.ClearDatabase(side);
                     NameStore.ClearDatabase(side);
@@ -318,6 +322,16 @@ namespace MCG_3DPanel.Commands
                 }
             }
             return list;
+        }
+
+        private static string Fingerprint(Database db2D, ObjectId btrId)
+        {
+            try
+            {
+                using (Transaction tr = db2D.TransactionManager.StartOpenCloseTransaction())
+                    return Detail3DMatch.Fingerprint(SourceFingerprintReader.Records(tr, btrId));
+            }
+            catch (System.Exception) { return null; }   // không đọc được ⇒ coi như đổi (đọc lại)
         }
 
         private static Document DocOf(Database db)

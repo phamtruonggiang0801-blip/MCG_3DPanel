@@ -317,7 +317,7 @@ namespace MCG_3DPanel.Commands
                 Say($"\n{LOG_PREFIX} The previous version of {file} was kept as {Path.GetFileName(backup)}.\n");
                 if (carry.RemapNote != null) run.Problems.AddRange(carry.RemapNote.Split('\n'));
                 AddUnmatchedNote(carry, build, run);
-                if (carry.PendingApplied > 0)
+                if (carry.HasPending)   // cả pending chỉ có "bỏ gộp / bỏ tách" (không đếm khoá) cũng phải xoá — review 2026-11-20
                 {
                     // Sửa chờ đã vào file 3D ⇒ xoá khỏi bản 2D (spec 2026-11-20 3d-controls-in-2d). Lỗi ⇒ báo, Update vẫn giữ.
                     Document src = FindOpen(sourceFile);
@@ -388,6 +388,7 @@ namespace MCG_3DPanel.Commands
                 carry.CorrectionsJson = c;
                 carry.NamesJson = n;
                 carry.PendingApplied = Services.Update.PendingEdits.Count(pending);
+                carry.HasPending = true;
             }
 
             string selectedBlock;
