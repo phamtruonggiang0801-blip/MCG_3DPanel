@@ -580,7 +580,7 @@ namespace MCG_3DPanel.UI
                 {
                     var r0 = rows.First(r => r.Build?.Remote != null && r.Path == null);
                     // Đúng lý do (kỹ sư 2026-11-20): block 2D đã đổi ⇒ chờ Update 3D Model; part sinh thêm ⇒ không có hình 2D riêng.
-                    if (r0.Build.Remote.LockReason == Commands.Remote3DSession.Changed2D)
+                    if (r0.Build.Remote.Stale2D)
                         SetStatus("The 2D panel changed since the last Update — run Update 3D Model, then the rows find their objects again.", error: true);
                     else if (r0.Solid?.Part == null)
                         SetStatus("This part has no object of its own in the 2D drawing — it is made by the tool.");

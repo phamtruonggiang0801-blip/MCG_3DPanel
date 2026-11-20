@@ -63,7 +63,7 @@ namespace MCG_3DPanel.Commands
         /// <summary>Bản vẽ lấy từ file 3D hiện có: block 2D lệch file 3D / file 3D đang mở ⇒ không vẽ (sai), nói lý do.</summary>
         private static string DrawingRefusal(RemoteLink r) =>
             !r.Locked ? null
-            : r.LockReason == Remote3DSession.Changed2D ? "The 2D panel changed since the last Update — run Update 3D Model first."
+            : r.LockReason == Remote3DSession.Changed2D ? Remote3DSession.Changed2D
             : r.LockReason;
 
         private static void PlanViewOnly(BuildResult req)

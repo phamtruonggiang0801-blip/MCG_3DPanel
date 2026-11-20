@@ -244,6 +244,7 @@ namespace MCG_3DPanel.Commands
                     throw new System.InvalidOperationException("the panel is missing from the new file");
 
                 BuildResult build;
+                bool built = false;   // lỗi giữa chừng ⇒ finally dọn cache của database này trước khi giải phóng (review 2026-11-20)
                 try
                 {
                     HostApplicationServices.WorkingDatabase = db;   // entity mới lấy mặc định (layer, kiểu chữ…) từ đây
@@ -261,13 +262,16 @@ namespace MCG_3DPanel.Commands
                             db.SaveAs(job.Target, true, DwgVersion.Current, db.SecurityParameters);
                         }
                     }
+                    built = true;
                 }
-                finally { HostApplicationServices.WorkingDatabase = prevWorking; }
-                if (build.Kept) beforeRelease?.Invoke(build);   // việc cần part / solid (vd đếm chỉnh sửa không khớp) — trước khi xoá
+                finally
+                {
+                    HostApplicationServices.WorkingDatabase = prevWorking;
+                    if (!built) ReleaseCaches(db);
+                }
+                try { if (build.Kept) beforeRelease?.Invoke(build); }   // việc cần part / solid (vd đếm chỉnh sửa không khớp) — trước khi xoá
+                finally { ReleaseCaches(db); }
 
-                // Database sắp giải phóng: không để ObjectId nào của nó lọt ra (tab / cache chạm vào ⇒ AutoCAD crash).
-                CorrectionStore.ClearDatabase(db);
-                Naming.NameStore.ClearDatabase(db);
                 build.Solids.Clear();
                 build.ClassifiedParts.Clear();
                 build.BlockRefId = build.BtrId = build.SourceRefId = build.SourceBtrId = ObjectId.Null;
@@ -275,6 +279,13 @@ namespace MCG_3DPanel.Commands
             }
         }
 
+
+        /// <summary>Bỏ cache correction / tên của database phụ sắp giải phóng (khoá theo con trỏ — database sau có thể dùng lại con trỏ).</summary>
+        private static void ReleaseCaches(Database db)
+        {
+            try { CorrectionStore.ClearDatabase(db); } catch (System.Exception ex) { Debug.WriteLine($"{LOG_PREFIX} ClearDatabase: {ex.Message}"); }
+            try { Naming.NameStore.ClearDatabase(db); } catch (System.Exception ex) { Debug.WriteLine($"{LOG_PREFIX} NameStore.ClearDatabase: {ex.Message}"); }
+        }
 
         // ─── Update: lấy 2D đã lưu, giữ chỉnh sửa của file 3D cũ (spec 2026-11-09) ─────────────
         // LUẬT TRÊN HẾT: ở mọi điểm lỗi, người dùng vẫn còn .dwg cũ ở đúng tên hoặc ở .bak.

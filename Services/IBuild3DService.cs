@@ -68,6 +68,9 @@ namespace MCG_3DPanel.Services
         /// <summary>Không cho sửa (block 2D lệch file 3D, hoặc file 3D đang mở); lý do ở <see cref="LockReason"/>.</summary>
         public bool Locked => !string.IsNullOrEmpty(LockReason);
         public string LockReason { get; set; }
+        /// <summary>Block 2D đã đổi so với file 3D (DC lại / sửa sau lần Update cuối) — handle của file 3D không dùng được để tìm đối tượng 2D.
+        /// Tách khỏi <see cref="LockReason"/>: file 3D đang mở che mất lý do này (review 2026-11-20).</summary>
+        public bool Stale2D { get; set; }
         /// <summary>Chỉnh sửa đọc từ file 3D (JSON) — gốc để tính phần chờ.</summary>
         public string BaseCorr { get; set; }
         public string BaseNames { get; set; }

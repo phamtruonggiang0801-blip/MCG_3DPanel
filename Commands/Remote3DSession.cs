@@ -20,7 +20,7 @@ namespace MCG_3DPanel.Commands
     /// ghi XRecord MCG3D_PENDING lên block _Assy của bản 2D (<see cref="SavePending"/>), không rebuild.</summary>
     public static class Remote3DSession
     {
-        public const string Changed2D = "The 2D panel changed since the last Update — press Update first.";
+        public const string Changed2D = "The 2D panel changed since the last Update — run Update 3D Model first.";
 
         private sealed class Entry
         {
@@ -145,6 +145,7 @@ namespace MCG_3DPanel.Commands
                     AssyRef2D = refId,
                     AssyBtr2D = btrId,
                     LockReason = lockReason,
+                    Stale2D = e.Src.Stale == StaleState.Changed2D,
                     BaseCorr = e.BaseCorr,
                     BaseNames = e.BaseNames,
                     PendingKeys = new HashSet<string>(keys, StringComparer.OrdinalIgnoreCase),
@@ -255,7 +256,7 @@ namespace MCG_3DPanel.Commands
             if (r == null || idPath3D == null || idPath3D.Length == 0) return null;
             // Block 2D đã DC lại / sửa sau lần Update cuối: handle của file 3D có thể đã thuộc đối tượng KHÁC ⇒ không dò (zoom sai chỗ —
             // kỹ sư 2026-11-20); người dùng chạy Update 3D Model để khớp lại.
-            if (r.LockReason == Changed2D) return null;
+            if (r.Stale2D) return null;   // kể cả khi lý do khoá hiện là "file 3D đang mở" (review 2026-11-20)
             Database db2D = r.AssyRef2D.Database;
             var path = new ObjectId[idPath3D.Length];
             path[0] = r.AssyRef2D;
