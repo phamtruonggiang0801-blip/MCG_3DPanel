@@ -49,8 +49,19 @@ namespace MCG_3DPanel.Commands
                 _cache.Remove(key);
             }
 
-            var builds = new List<BuildResult>();
             var notes = new List<string>();
+            var builds = ReadAll(db, notes);
+            message = notes.Count > 0 ? string.Join("  ·  ", notes) : null;
+            // Danh sách rỗng KHÔNG nhớ: quét lại rẻ, và drawing 2D có thể có panel sau đó.
+            if (builds.Count > 0) _cache[key] = new Entry { Builds = builds, Message = message };
+            return new List<BuildResult>(builds);
+        }
+
+        /// <summary>Đọc mọi panel MCG3D_* của <paramref name="db"/> (drawing đang mở hoặc database phụ của file 3D) — không cache,
+        /// không ném; lý do đọc lỗi vào <paramref name="notes"/>.</summary>
+        internal static List<BuildResult> ReadAll(Database db, List<string> notes)
+        {
+            var builds = new List<BuildResult>();
             try
             {
                 foreach (PanelBlock panel in FindBlocks(db))
@@ -63,10 +74,7 @@ namespace MCG_3DPanel.Commands
             {
                 notes.Add($"The panels of this drawing could not be read: {ex.Message}");
             }
-            message = notes.Count > 0 ? string.Join("  ·  ", notes) : null;
-            // Danh sách rỗng KHÔNG nhớ: quét lại rẻ, và drawing 2D có thể có panel sau đó.
-            if (builds.Count > 0) _cache[key] = new Entry { Builds = builds, Message = message };
-            return new List<BuildResult>(builds);
+            return builds;
         }
 
         /// <summary>Build / rebuild xong: các dòng của drawing này chính là <paramref name="builds"/>.</summary>

@@ -82,6 +82,21 @@ namespace MCG_3DPanel.Services.Corrections
             if (deleted) s.Add(deleteKey); else s.Remove(deleteKey);
         }
 
+        /// <summary>Trạng thái cache của panel dạng JSON MCG3D_CORRECTIONS (sửa trên bản 2D — spec 2026-11-20 3d-controls-in-2d).</summary>
+        public static string Snapshot(string panelKey) => CorrectionJson.Serialize(For(panelKey), Deleted(panelKey));
+
+        /// <summary>Thay toàn bộ cache của panel bằng <paramref name="json"/> và coi như đã nạp (không đọc lại XRecord).</summary>
+        public static void LoadJson(string panelKey, string json)
+        {
+            if (string.IsNullOrEmpty(panelKey)) return;
+            _store.Remove(panelKey);
+            _deleted.Remove(panelKey);
+            _loaded.Add(panelKey);
+            CorrectionJson.Deserialize(json, out var parts, out var deleted);
+            if (parts.Count > 0) _store[panelKey] = parts;
+            if (deleted.Count > 0) _deleted[panelKey] = deleted;
+        }
+
         /// <summary>Bản vẽ sắp đóng: bỏ mọi correction của Database đó (con trỏ có thể bị DB mới dùng lại).</summary>
         public static void ClearDatabase(Database db)
         {

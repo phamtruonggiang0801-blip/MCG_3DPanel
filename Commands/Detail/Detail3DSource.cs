@@ -101,7 +101,7 @@ namespace MCG_3DPanel.Commands.Detail
                 }
 
                 Candidate3D pick = matches[0];
-                if (matches.Count > 1)
+                if (matches.Count > 1 && choose != null)   // không có choose (đọc nền cho tab) ⇒ file lưu mới nhất
                 {
                     string path = choose?.Invoke(matches.Select(m => m.Path).ToList());
                     pick = path == null ? null : matches.FirstOrDefault(m => string.Equals(m.Path, path, StringComparison.OrdinalIgnoreCase));

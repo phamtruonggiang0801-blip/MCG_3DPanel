@@ -168,6 +168,26 @@ namespace MCG_3DPanel.Naming
             }
         }
 
+        /// <summary>Trạng thái cache của panel dạng JSON MCG3D_NAMES (sửa trên bản 2D — spec 2026-11-20 3d-controls-in-2d).</summary>
+        public static string Snapshot(string panelKey) =>
+            NamesJson.Serialize(For(panelKey), Deleted(panelKey).ToList(), Merges(panelKey), Splits(panelKey).ToList());
+
+        /// <summary>Thay toàn bộ cache của panel bằng <paramref name="json"/> và coi như đã nạp (không đọc lại XRecord).</summary>
+        public static void LoadJson(string panelKey, string json)
+        {
+            if (string.IsNullOrEmpty(panelKey)) return;
+            _store.Remove(panelKey);
+            _deleted.Remove(panelKey);
+            _splits.Remove(panelKey);
+            _merges.Remove(panelKey);
+            _loaded.Add(panelKey);
+            var d = NamesJson.Deserialize(json, out var del, out var merges, out var splits);
+            if (d.Count > 0) _store[panelKey] = d;
+            if (del.Count > 0) DeletedSet(panelKey).UnionWith(del);
+            if (splits.Count > 0) SplitSet(panelKey).UnionWith(splits);
+            foreach (var g in merges) AddGroup(panelKey, g);
+        }
+
         /// <summary>Bản vẽ sắp đóng: bỏ cache của Database đó (con trỏ có thể bị DB mới dùng lại).</summary>
         public static void ClearDatabase(Database db)
         {

@@ -24,6 +24,8 @@ namespace MCG_3DPanel.Services
         /// <summary>Tên block 2D nguồn (Build nhiều panel 1 lúc → để biết solid thuộc panel nào).</summary>
         public string PanelBlockName { get; set; }
         public bool Kept { get; set; }
+        /// <summary>null = panel thật trong drawing này; khác null = đọc nền từ file 3D khi đang ở bản 2D.</summary>
+        public RemoteLink Remote { get; set; }
         // ─── Phục vụ rebuild từ tab Result (2026-11-04) ───
         /// <summary>Block reference 2D nguồn (Keep xoá nó — rebuild mở lại bằng openErased).</summary>
         public ObjectId SourceRefId { get; set; }
@@ -51,6 +53,23 @@ namespace MCG_3DPanel.Services
 
         /// <summary>Mọi part 2D đã phân loại của lần build này (kể cả part không ra solid) — nguồn của tab Naming.</summary>
         public System.Collections.Generic.List<PanelPart> ClassifiedParts { get; } = new System.Collections.Generic.List<PanelPart>();
+    }
+
+    /// <summary>Panel đọc nền từ file 3D khi đang ở bản vẽ 2D (spec 2026-11-20 3d-controls-in-2d): sửa ⇒ chờ Update, không rebuild.</summary>
+    public class RemoteLink
+    {
+        public string File3D { get; set; }
+        /// <summary>Reference / định nghĩa block _Assy trong BẢN VẼ 2D (nơi lưu MCG3D_PENDING).</summary>
+        public ObjectId AssyRef2D { get; set; }
+        public ObjectId AssyBtr2D { get; set; }
+        /// <summary>Không cho sửa (block 2D lệch file 3D, hoặc file 3D đang mở); lý do ở <see cref="LockReason"/>.</summary>
+        public bool Locked => !string.IsNullOrEmpty(LockReason);
+        public string LockReason { get; set; }
+        /// <summary>Chỉnh sửa đọc từ file 3D (JSON) — gốc để tính phần chờ.</summary>
+        public string BaseCorr { get; set; }
+        public string BaseNames { get; set; }
+        public System.Collections.Generic.ISet<string> PendingKeys { get; set; } =
+            new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>1 solid trong block 3D: id để highlight/zoom + part nguồn để gắn nhãn loại.</summary>
