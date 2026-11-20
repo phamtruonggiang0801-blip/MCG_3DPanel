@@ -21,6 +21,19 @@ namespace MCG_3DPanel.UI
             return dialog._save;
         }
 
+        /// <summary>Build 3D trên bản vẽ 2D chưa lưu (kỹ sư 2026-11-20: gộp Save vào Build): true = lưu rồi Build.</summary>
+        public static bool AskSaveBeforeBuild(string fileName)
+        {
+            var dialog = new UnsavedFileDialog(fileName);
+            dialog.TxtMessage.Text = $"{fileName} has unsaved changes. Build 3D reads the saved drawing.";
+            dialog.BtnSave.Content = "Save and Build";
+            dialog.BtnSave.ToolTip = "Save this drawing (same DWG version, normal .bak), then build the 3D.";
+            dialog.BtnSkip.Content = "Cancel";
+            dialog.BtnSkip.ToolTip = "Do not save and do not build.";
+            AcadApp.ShowModalWindow(dialog);
+            return dialog._save;
+        }
+
         private void BtnSave_Click(object sender, RoutedEventArgs e)
         {
             _save = true;

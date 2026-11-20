@@ -17,9 +17,9 @@
         <StackPanel>
             <TextBlock x:Name="TxtMessage" Style="{StaticResource DialogTextStyle}" TextWrapping="Wrap"/>
             <StackPanel Style="{StaticResource DialogButtonRowStyle}">
-                <Button Content="Save and Update" IsDefault="True" Style="{StaticResource DialogPrimaryButtonStyle}" Click="BtnSave_Click"
+                <Button x:Name="BtnSave" Content="Save and Update" IsDefault="True" Style="{StaticResource DialogPrimaryButtonStyle}" Click="BtnSave_Click"
                         ToolTip="Save this file with its changes, then update it from the saved 2D drawing. The changes are kept."/>
-                <Button Content="Skip this panel" IsCancel="True" Style="{StaticResource DialogButtonStyle}"
+                <Button x:Name="BtnSkip" Content="Skip this panel" IsCancel="True" Style="{StaticResource DialogButtonStyle}"
                         ToolTip="Leave this file open and unchanged. The other panels still build."/>
             </StackPanel>
         </StackPanel>

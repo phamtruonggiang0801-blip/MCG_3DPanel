@@ -84,7 +84,14 @@ namespace MCG_3DPanel.Commands
                 run.Stop = "This is a 3D panel file with no panel to rebuild. Open the source 2D drawing to Build 3D.";
                 return null;
             }
-            if (!IsSavedOnDisk(active)) { run.Stop = "Save this drawing first, then Build 3D."; return null; }
+            if (!IsSavedOnDisk(active))
+            {
+                // Gộp Save vào Build (kỹ sư 2026-11-20): bản vẽ đã có tên ⇒ hỏi lưu rồi dựng; chưa có tên ⇒ phải Save As trước.
+                if (!active.IsNamedDrawing) { run.Stop = "Save this drawing with a name first (Save As), then Build 3D."; return null; }
+                if (!MCG_3DPanel.UI.UnsavedFileDialog.AskSaveBeforeBuild(Path.GetFileName(active.Name))) return null;   // huỷ
+                string saveErr = SaveDrawing(active);
+                if (saveErr != null) { run.Stop = saveErr; return null; }
+            }
             if (!TryPickPanels(out Document src, out ObjectId[] ids)) return null;
 
             Database source = src.Database;
@@ -586,6 +593,24 @@ namespace MCG_3DPanel.Commands
             {
                 run.Problems.Add($"Could not count the edits that no longer match the 2D drawing: {ex.Message}");
             }
+        }
+
+        /// <summary>Lưu bản vẽ 2D như QSAVE: giữ phiên bản DWG gốc, .bak thường (dùng cho Build 3D và Update 3D Model từ bản 2D).
+        /// Trả lỗi hoặc null.</summary>
+        internal static string SaveDrawing(Document doc)
+        {
+            try
+            {
+                using (doc.LockDocument())
+                {
+                    Database db = doc.Database;
+                    db.SaveAs(doc.Name, true, db.OriginalFileVersion, db.SecurityParameters);
+                    try { Autodesk.AutoCAD.Internal.Utils.SetDbmod(0, db); }
+                    catch (System.Exception ex) { Debug.WriteLine($"{LOG_PREFIX} SetDbmod: {ex.Message}"); }
+                }
+                return null;
+            }
+            catch (System.Exception ex) { return $"Could not save {Path.GetFileName(doc.Name)}: {ex.Message}. Nothing was changed."; }
         }
 
         /// <summary>Hỏi mở các file 3D vừa dựng ngầm (kỹ sư 2026-11-20: người dùng muốn thì mở, không thì thôi). Mặc định No.</summary>
